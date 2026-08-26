@@ -1,0 +1,389 @@
+/**
+ * Testes de integração do TS-06. Exigem o PostgreSQL local do docker-compose com as
+ * migrações aplicadas: `npm run db:up && npm run prisma:deploy`.
+ */
+import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
+
+import { deterministicResourceId, type TelemetryCyclePayload } from '@dynamox/contracts';
+
+import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
+
+const MACHINE_NAME = 'P-101-E2E';
+const MONITORING_POINT_NAME = 'Mancal E2E';
+const SENSOR_SERIAL = 'E2E-HF-001';
+
+const RESOURCE_ID = deterministicResourceId(
+  'dynamox-challenge',
+  'monitoring-point',
+  MACHINE_NAME,
+  MONITORING_POINT_NAME,
+);
+
+function buildPayload(): TelemetryCyclePayload {
+  return {
+    telemetryCycleData: {
+      measuringSystemUniqueIdentifier: SENSOR_SERIAL,
+      measuringSystemModel: { name: 'industrial-condition-sensor-sim', version: 1 },
+      measurements: [
+        {
+          resourceId: RESOURCE_ID,
+          attributes: { physicalQuantity: 'acceleration', axis: 'y', unit: 'g' },
+          dataPoints: [
+            { timestamp: '2026-08-26T12:00:00.000Z', value: 0.0204 },
+            { timestamp: '2026-08-26T12:00:10.000Z', value: 0.0209 },
+            { timestamp: '2026-08-26T12:00:20.000Z', value: 0.0201 },
+          ],
+        },
+        {
+          resourceId: RESOURCE_ID,
+          attributes: { physicalQuantity: 'temperature', unit: 'degC' },
+          dataPoints: [
+            { timestamp: '2026-08-26T12:00:00.000Z', value: 38.4 },
+            { timestamp: '2026-08-26T12:00:10.000Z', value: 38.6 },
+          ],
+        },
+      ],
+      metadata: {
+        origin: 'simulation',
+        generator: { name: 'industrial-condition-sensor-sim', version: '0.1.0' },
+        profile: 'HF+',
+        cycleId: 'e2e-cycle-0001',
+        synthetic: true,
+      },
+      tags: ['simulated', 'e2e'],
+    },
+    configuration: {
+      monitoringLocationMap: [{ mapLabel: MONITORING_POINT_NAME, mapValue: RESOURCE_ID }],
+      rpm: 1750,
+      scenario: 'normal',
+      seed: 20260826,
+    },
+  };
+}
+
+/** Desloca a janela para produzir um ciclo com conteúdo novo, sem colidir com o anterior. */
+function shiftedPayload(offsetMinutes: number): TelemetryCyclePayload {
+  const payload = buildPayload();
+  for (const measurement of payload.telemetryCycleData.measurements) {
+    for (const point of measurement.dataPoints) {
+      const shifted = new Date(new Date(point.timestamp).getTime() + offsetMinutes * 60_000);
+      point.timestamp = shifted.toISOString();
+    }
+  }
+  payload.telemetryCycleData.metadata.cycleId = `e2e-cycle-${offsetMinutes}`;
+  return payload;
+}
+
+const TOTAL_SAMPLES = buildPayload().telemetryCycleData.measurements.reduce(
+  (total, measurement) => total + measurement.dataPoints.length,
+  0,
+);
+
+describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+
+  const http = () => request(app.getHttpServer());
+
+  async function counts(): Promise<{ cycles: number; samples: number; series: number }> {
+    const [cycles, samples, series] = await Promise.all([
+      prisma.ingestionCycle.count({ where: { measuringSystemUid: SENSOR_SERIAL } }),
+      prisma.timeSeriesSample.count(),
+      prisma.timeSeries.count(),
+    ]);
+    return { cycles, samples, series };
+  }
+
+  async function removeFixtures(): Promise<void> {
+    await prisma.ingestionCycle.deleteMany({ where: { measuringSystemUid: SENSOR_SERIAL } });
+    await prisma.sensor.deleteMany({ where: { serialNumber: SENSOR_SERIAL } });
+    await prisma.machine.deleteMany({ where: { name: MACHINE_NAME } });
+  }
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api');
+    await app.init();
+
+    prisma = app.get(PrismaService);
+    await removeFixtures();
+
+    const machine = await prisma.machine.create({ data: { name: MACHINE_NAME, type: 'PUMP' } });
+    const point = await prisma.monitoringPoint.create({
+      data: { name: MONITORING_POINT_NAME, machineId: machine.id, externalResourceId: RESOURCE_ID },
+    });
+    await prisma.sensor.create({
+      data: { serialNumber: SENSOR_SERIAL, model: 'HF_PLUS', monitoringPointId: point.id },
+    });
+  });
+
+  afterAll(async () => {
+    await removeFixtures();
+    await app.close();
+  });
+
+  it('GET /api/health responde com o banco disponível', async () => {
+    const response = await http().get('/api/health').expect(200);
+    expect(response.body).toEqual(expect.objectContaining({ status: 'ok', database: 'up' }));
+  });
+
+  it('rejeita payload fora do contrato com 400 e lista de violações', async () => {
+    const response = await http()
+      .post('/api/telemetry-cycles')
+      .send({ telemetryCycleData: { measuringSystemUniqueIdentifier: SENSOR_SERIAL } })
+      .expect(400);
+
+    expect(response.body.code).toBe('CONTRACT_VIOLATION');
+    expect(response.body.violations?.length).toBeGreaterThan(0);
+  });
+
+  it('rejeita Idempotency-Key fora do formato seguro', async () => {
+    const response = await http()
+      .post('/api/telemetry-cycles')
+      .set('Idempotency-Key', 'a'.repeat(129))
+      .send(buildPayload())
+      .expect(400);
+
+    expect(response.body.code).toBe('INVALID_IDEMPOTENCY_KEY');
+  });
+
+  it('rejeita timestamp com precisão submilissegundo', async () => {
+    const payload = buildPayload();
+    payload.telemetryCycleData.measurements[0].dataPoints[0].timestamp =
+      '2026-08-26T12:00:00.0001Z';
+
+    const response = await http().post('/api/telemetry-cycles').send(payload).expect(400);
+    expect(response.body.code).toBe('CONTRACT_VIOLATION');
+  });
+
+  it('rejeita atomicamente payload com instante repetido na mesma série', async () => {
+    const before = await counts();
+
+    const payload = buildPayload();
+    payload.telemetryCycleData.measurements[0].dataPoints.push({
+      timestamp: '2026-08-26T12:00:10.000Z',
+      value: 0.0777,
+    });
+
+    const response = await http().post('/api/telemetry-cycles').send(payload).expect(409);
+    expect(response.body.code).toBe('SAMPLE_TIMESTAMP_CONFLICT');
+
+    expect(await counts()).toEqual(before);
+  });
+
+  it('rejeita grandeza escalar com eixo', async () => {
+    const payload = buildPayload();
+    payload.telemetryCycleData.measurements[1].attributes.axis = 'x';
+
+    const response = await http().post('/api/telemetry-cycles').send(payload).expect(422);
+    expect(response.body.code).toBe('QUANTITY_AXIS_MISMATCH');
+  });
+
+  it('rejeita ciclo de sensor desconhecido com 404 e sem escrita parcial', async () => {
+    const before = await counts();
+
+    const payload = buildPayload();
+    payload.telemetryCycleData.measuringSystemUniqueIdentifier = 'SENSOR-INEXISTENTE';
+
+    const response = await http()
+      .post('/api/telemetry-cycles')
+      .set('Idempotency-Key', 'chave-sensor-inexistente')
+      .send(payload)
+      .expect(404);
+
+    expect(response.body.code).toBe('SENSOR_NOT_FOUND');
+    expect(await counts()).toEqual(before);
+  });
+
+  it('persiste o ciclo na primeira ingestão e devolve 201', async () => {
+    const response = await http()
+      .post('/api/telemetry-cycles')
+      .set('Idempotency-Key', 'e2e-idempotency-key')
+      .send(buildPayload())
+      .expect(201);
+
+    expect(response.body.duplicate).toBe(false);
+    expect(response.body.measurementCount).toBe(2);
+    expect(response.body.sampleCount).toBe(TOTAL_SAMPLES);
+    expect(response.body.payloadFingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(response.body.timeSeriesIds).toHaveLength(2);
+
+    const persisted = await prisma.timeSeriesSample.count({
+      where: { ingestionCycleId: response.body.cycleId },
+    });
+    expect(persisted).toBe(TOTAL_SAMPLES);
+  });
+
+  it('mesma chave e mesmo payload: 200 duplicate:true com o resultado original', async () => {
+    const before = await counts();
+
+    const response = await http()
+      .post('/api/telemetry-cycles')
+      .set('Idempotency-Key', 'e2e-idempotency-key')
+      .send(buildPayload())
+      .expect(200);
+
+    expect(response.body.duplicate).toBe(true);
+    expect(response.body.sampleCount).toBe(TOTAL_SAMPLES);
+    expect(response.body.timeSeriesIds).toHaveLength(2);
+    expect(await counts()).toEqual(before);
+  });
+
+  it('mesma chave com um valor alterado: 409 IDEMPOTENCY_KEY_REUSED e banco inalterado', async () => {
+    const before = await counts();
+
+    const payload = buildPayload();
+    payload.telemetryCycleData.measurements[0].dataPoints[1].value = 0.9999;
+
+    const response = await http()
+      .post('/api/telemetry-cycles')
+      .set('Idempotency-Key', 'e2e-idempotency-key')
+      .send(payload)
+      .expect(409);
+
+    expect(response.body.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    expect(await counts()).toEqual(before);
+  });
+
+  it('mesmos limites e quantidade, valor intermediário diferente: não é falsa duplicata', async () => {
+    const payload = shiftedPayload(30);
+    payload.telemetryCycleData.measurements[0].dataPoints[1].value = 0.0777;
+
+    const first = await http()
+      .post('/api/telemetry-cycles')
+      .set('Idempotency-Key', 'e2e-janela-30')
+      .send(payload)
+      .expect(201);
+
+    // Mesma janela, mesma contagem, apenas o valor do meio muda: precisa ser aceito
+    // como conteúdo novo, e não descartado como repetição.
+    const variant = shiftedPayload(30);
+    variant.telemetryCycleData.measurements[0].dataPoints[1].value = 0.0888;
+
+    const second = await http()
+      .post('/api/telemetry-cycles')
+      .set('Idempotency-Key', 'e2e-janela-30-variante')
+      .send(variant)
+      .expect(409);
+
+    expect(first.body.duplicate).toBe(false);
+    // O conteúdo é novo (fingerprint diferente), mas ocuparia instantes já gravados:
+    // o conflito é de amostra, jamais uma duplicata silenciosa.
+    expect(second.body.code).toBe('SAMPLE_TIMESTAMP_CONFLICT');
+  });
+
+  it('chave diferente com payload idêntico: 200 duplicate:true e nenhum ciclo novo', async () => {
+    const before = await counts();
+
+    const response = await http()
+      .post('/api/telemetry-cycles')
+      .set('Idempotency-Key', 'e2e-outra-chave-mesmo-conteudo')
+      .send(buildPayload())
+      .expect(200);
+
+    expect(response.body.duplicate).toBe(true);
+    expect(response.body.idempotencyKey).toBe('e2e-idempotency-key');
+    expect(await counts()).toEqual(before);
+  });
+
+  it('mesmo request sem header enviado duas vezes: um ciclo e um conjunto de amostras', async () => {
+    const payload = shiftedPayload(60);
+    const before = await counts();
+
+    const first = await http().post('/api/telemetry-cycles').send(payload).expect(201);
+    const afterFirst = await counts();
+
+    const second = await http().post('/api/telemetry-cycles').send(payload).expect(200);
+    const afterSecond = await counts();
+
+    expect(first.body.duplicate).toBe(false);
+    expect(second.body.duplicate).toBe(true);
+    expect(second.body.cycleId).toBe(first.body.cycleId);
+    expect(afterFirst.cycles).toBe(before.cycles + 1);
+    expect(afterSecond).toEqual(afterFirst);
+  });
+
+  it('recusa mudança de unidade em série existente sem alterar o histórico', async () => {
+    const before = await counts();
+    const seriesBefore = await prisma.timeSeries.findFirst({
+      where: { sensor: { serialNumber: SENSOR_SERIAL }, physicalQuantity: 'ACCELERATION' },
+    });
+
+    const payload = shiftedPayload(90);
+    for (const measurement of payload.telemetryCycleData.measurements) {
+      if (measurement.attributes.physicalQuantity === 'acceleration') {
+        measurement.attributes.unit = 'm/s2';
+      }
+    }
+
+    const response = await http().post('/api/telemetry-cycles').send(payload).expect(409);
+    expect(response.body.code).toBe('SERIES_UNIT_CONFLICT');
+
+    const seriesAfter = await prisma.timeSeries.findUnique({ where: { id: seriesBefore!.id } });
+    expect(seriesAfter?.unit).toBe('g');
+    expect(await counts()).toEqual(before);
+  });
+
+  it('duas ingestões idênticas concorrentes: um único ciclo e respostas consistentes', async () => {
+    const payload = shiftedPayload(120);
+    const before = await counts();
+
+    const [left, right] = await Promise.all([
+      http().post('/api/telemetry-cycles').send(payload),
+      http().post('/api/telemetry-cycles').send(payload),
+    ]);
+
+    const statuses = [left.status, right.status].sort();
+    expect(statuses).toEqual([200, 201]);
+
+    expect(left.body.cycleId).toBe(right.body.cycleId);
+    expect(left.body.payloadFingerprint).toBe(right.body.payloadFingerprint);
+    expect(left.body.timeSeriesIds.sort()).toEqual(right.body.timeSeriesIds.sort());
+
+    const after = await counts();
+    expect(after.cycles).toBe(before.cycles + 1);
+    expect(after.samples).toBe(before.samples + TOTAL_SAMPLES);
+  });
+
+  it('recupera a série persistida, suas amostras e suas métricas', async () => {
+    const list = await http().get('/api/time-series').expect(200);
+
+    const series = (list.body as Array<Record<string, unknown>>).find(
+      (item) => item.sensorSerialNumber === SENSOR_SERIAL && item.axis === 'y',
+    );
+
+    expect(series).toEqual(
+      expect.objectContaining({
+        machineName: MACHINE_NAME,
+        machineType: 'Pump',
+        sensorModel: 'HF+',
+        physicalQuantity: 'acceleration',
+        unit: 'g',
+      }),
+    );
+
+    const samples = await http()
+      .get(`/api/time-series/${series!.id as string}/samples`)
+      .expect(200);
+
+    expect(samples.body.length).toBe(series!.sampleCount);
+    expect(samples.body[0].timestamp < samples.body[samples.body.length - 1].timestamp).toBe(true);
+
+    const metrics = await http()
+      .get(`/api/time-series/${series!.id as string}/metrics`)
+      .expect(200);
+
+    expect(metrics.body.count).toBe(series!.sampleCount);
+  });
+
+  it('responde 404 ao consultar série inexistente', async () => {
+    await http()
+      .get('/api/time-series/00000000-0000-0000-0000-000000000000/samples')
+      .expect(404);
+  });
+});

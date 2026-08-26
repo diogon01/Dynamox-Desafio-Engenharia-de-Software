@@ -1,0 +1,173 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MachineType {
+  PUMP
+  FAN
+}
+
+/// Os valores do enunciado são "TcAg", "TcAs" e "HF+". O identificador HF_PLUS existe
+/// porque enums Prisma não aceitam "+"; a tradução para o rótulo público fica no domínio.
+enum SensorModel {
+  TC_AG
+  TC_AS
+  HF_PLUS
+}
+
+enum PhysicalQuantity {
+  ACCELERATION
+  VELOCITY
+  TEMPERATURE
+  ROTATIONAL_SPEED
+}
+
+/// NONE representa grandezas não direcionais (temperatura). Um enum sem NULL mantém a
+/// unicidade de (sensor, grandeza, eixo) funcional no PostgreSQL, onde NULLs são distintos.
+enum Axis {
+  X
+  Y
+  Z
+  NONE
+}
+
+enum IngestionOrigin {
+  SIMULATION
+  ROSBAG_REPLAY
+  SEED
+  MANUAL
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Machine {
+  id               String            @id @default(uuid())
+  name             String            @unique
+  type             MachineType
+  monitoringPoints MonitoringPoint[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@map("machines")
+}
+
+model MonitoringPoint {
+  id        String  @id @default(uuid())
+  name      String
+  machineId String
+  machine   Machine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  /// Identificador determinístico de 24 hex usado como resourceId no contrato de telemetria.
+  /// Interno ao projeto; não é um ObjectId emitido pela Dynamox.
+  externalResourceId String @unique @db.VarChar(24)
+
+  sensor    Sensor?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([machineId, name])
+  @@index([machineId])
+  @@map("monitoring_points")
+}
+
+model Sensor {
+  id           String      @id @default(uuid())
+  serialNumber String      @unique
+  model        SensorModel
+
+  /// Um ponto de monitoramento recebe no máximo um sensor.
+  monitoringPointId String?          @unique
+  monitoringPoint   MonitoringPoint? @relation(fields: [monitoringPointId], references: [id], onDelete: SetNull)
+
+  timeSeries TimeSeries[]
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@map("sensors")
+}
+
+model TimeSeries {
+  id               String           @id @default(uuid())
+  sensorId         String
+  sensor           Sensor           @relation(fields: [sensorId], references: [id], onDelete: Cascade)
+  physicalQuantity PhysicalQuantity
+  axis             Axis             @default(NONE)
+  unit             String
+  displayName      Json?
+  samples          TimeSeriesSample[]
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([sensorId, physicalQuantity, axis])
+  @@index([sensorId])
+  @@map("time_series")
+}
+
+model TimeSeriesSample {
+  id           String     @id @default(uuid())
+  timeSeriesId String
+  timeSeries   TimeSeries @relation(fields: [timeSeriesId], references: [id], onDelete: Cascade)
+  timestamp    DateTime   @db.Timestamptz(3)
+  value        Float
+
+  ingestionCycleId String?
+  ingestionCycle   IngestionCycle? @relation(fields: [ingestionCycleId], references: [id], onDelete: SetNull)
+
+  /// Índice único de série + instante: garante a ordenação temporal das consultas e
+  /// impede que um replay do mesmo ciclo grave a mesma amostra duas vezes.
+  @@unique([timeSeriesId, timestamp])
+  @@index([ingestionCycleId])
+  @@map("time_series_samples")
+}
+
+model IngestionCycle {
+  id String @id @default(uuid())
+
+  /// Valor do header Idempotency-Key (ou o próprio fingerprint, quando o header não vem).
+  /// Identifica a *intenção* do cliente.
+  idempotencyKey String @unique @db.VarChar(128)
+
+  /// SHA-256 canônico do conteúdo completo do ciclo. Identifica o *conteúdo*.
+  /// Separar chave e conteúdo é o que permite distinguir uma repetição legítima
+  /// (mesma chave, mesmo fingerprint) de uma chave reutilizada indevidamente.
+  payloadFingerprint String @unique @db.Char(64)
+
+  /// Cópia rastreável de telemetryCycleData.metadata.cycleId.
+  cycleId String?
+
+  measuringSystemUid String
+  modelName          String
+  modelVersion       Float
+  origin             IngestionOrigin
+  tags               String[]
+  metadata           Json
+  configuration      Json
+  measurementCount   Int      @default(0)
+  sampleCount        Int      @default(0)
+
+  /// Séries afetadas por este ciclo, para que a resposta de uma repetição devolva
+  /// exatamente o mesmo resultado da ingestão original.
+  timeSeriesIds String[]
+
+  createdAt DateTime @default(now())
+
+  samples TimeSeriesSample[]
+
+  @@index([measuringSystemUid, createdAt])
+  @@index([cycleId])
+  @@map("ingestion_cycles")
+}

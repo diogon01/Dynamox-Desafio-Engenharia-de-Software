@@ -12,6 +12,7 @@ coverage/
 .claude/
 .vscode/
 .idea/
+.obsidian/
 .DS_Store
 
 *.log

@@ -25,9 +25,9 @@ import {
 } from '@dynamox/domain';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { toDomainMachineType } from '../common/machine-type.mapper';
 import {
   toDomainAxis,
-  toDomainMachineType,
   toDomainPhysicalQuantity,
   toDomainSensorModel,
   toPrismaAxis,

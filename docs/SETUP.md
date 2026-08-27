@@ -93,6 +93,11 @@ proteção (o frontend apenas espelha):
 | Método | Rota | Descrição |
 |---|---|---|
 | `GET` | `/api/auth/me` | Usuário da sessão, sem senha nem hash |
+| `POST` | `/api/machines` | Cria máquina (`name` + `type` em `Pump`/`Fan`). `409` para nome duplicado |
+| `GET` | `/api/machines` | Lista as máquinas, ordenadas por nome |
+| `GET` | `/api/machines/:id` | Uma máquina; `404` se não existir |
+| `PATCH` | `/api/machines/:id` | Altera `name` e/ou `type`; corpo vazio é `400` |
+| `DELETE` | `/api/machines/:id` | Remove a máquina (`204`); `404` se não existir |
 | `POST` | `/api/telemetry-cycles` | Ingestão idempotente de um ciclo de telemetria |
 | `GET` | `/api/time-series` | Séries persistidas com máquina, ponto, sensor e contagem |
 | `GET` | `/api/time-series/:id/samples` | Amostras ordenadas por instante (`?limit=`, padrão 500) |
@@ -110,6 +115,20 @@ curl -s http://localhost:3000/api/time-series -H "Authorization: Bearer $TOKEN"
 ```
 
 Sem o header, qualquer rota privada responde `401`.
+
+### Convenções do CRUD de máquinas
+
+- **Nome**: normalizado por `trim`, obrigatório, no máximo 120 caracteres. A unicidade é a
+  do índice do PostgreSQL — sensível a maiúsculas, e aplicada pelo banco (não por consulta
+  prévia), de modo que duas requisições concorrentes não criam duplicata.
+- **Tipo**: aceita exclusivamente `Pump` ou `Fan`; qualquer outro valor é `400`
+  (`INVALID_MACHINE_TYPE`). A resposta sempre usa esse vocabulário público, nunca o enum
+  interno do banco.
+- **Propriedades desconhecidas** no corpo são rejeitadas com `400`, em vez de ignoradas.
+- **Ordenação** da listagem: por `name` ascendente, para o resultado ser determinístico.
+- **Exclusão**: remover uma máquina apaga em cascata seus pontos de monitoramento
+  (política já declarada no schema); sensores associados são apenas desassociados, não
+  apagados.
 
 ### Ingestão de um ciclo
 

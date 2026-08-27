@@ -1,5 +1,5 @@
-import type { Axis as DomainAxis, MachineType, PhysicalQuantity, SensorModel } from '@dynamox/domain';
-import { Axis, MachineType as PrismaMachineType, PhysicalQuantity as PrismaPhysicalQuantity, SensorModel as PrismaSensorModel } from '@prisma/client';
+import type { Axis as DomainAxis, PhysicalQuantity, SensorModel } from '@dynamox/domain';
+import { Axis, PhysicalQuantity as PrismaPhysicalQuantity, SensorModel as PrismaSensorModel } from '@prisma/client';
 
 const PHYSICAL_QUANTITY_TO_PRISMA: Record<PhysicalQuantity, PrismaPhysicalQuantity> = {
   acceleration: PrismaPhysicalQuantity.ACCELERATION,
@@ -27,11 +27,6 @@ const PRISMA_TO_SENSOR_MODEL: Record<PrismaSensorModel, SensorModel> = {
   HF_PLUS: 'HF+',
 };
 
-const PRISMA_TO_MACHINE_TYPE: Record<PrismaMachineType, MachineType> = {
-  PUMP: 'Pump',
-  FAN: 'Fan',
-};
-
 export function toPrismaPhysicalQuantity(value: PhysicalQuantity): PrismaPhysicalQuantity {
   return PHYSICAL_QUANTITY_TO_PRISMA[value];
 }
@@ -51,8 +46,4 @@ export function toDomainAxis(value: Axis): DomainAxis | null {
 
 export function toDomainSensorModel(value: PrismaSensorModel): SensorModel {
   return PRISMA_TO_SENSOR_MODEL[value];
-}
-
-export function toDomainMachineType(value: PrismaMachineType): MachineType {
-  return PRISMA_TO_MACHINE_TYPE[value];
 }

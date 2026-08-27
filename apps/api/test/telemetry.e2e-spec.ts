@@ -2,6 +2,8 @@
  * Testes de integração do TS-06. Exigem o PostgreSQL local do docker-compose com as
  * migrações aplicadas: `npm run db:up && npm run prisma:deploy`.
  */
+import { randomBytes, scryptSync } from 'node:crypto';
+
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -88,6 +90,13 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
 
   const http = () => request(app.getHttpServer());
 
+  // Todas as rotas de telemetria agora exigem JWT (guard global do AUT-01).
+  let bearer = '';
+  const authed = {
+    get: (url: string) => http().get(url).set('Authorization', bearer),
+    post: (url: string) => http().post(url).set('Authorization', bearer),
+  };
+
   async function counts(): Promise<{ cycles: number; samples: number; series: number }> {
     const [cycles, samples, series] = await Promise.all([
       prisma.ingestionCycle.count({ where: { measuringSystemUid: SENSOR_SERIAL } }),
@@ -120,10 +129,27 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     await prisma.sensor.create({
       data: { serialNumber: SENSOR_SERIAL, model: 'HF_PLUS', monitoringPointId: point.id },
     });
+
+    const salt = randomBytes(16).toString('hex');
+    await prisma.user.upsert({
+      where: { email: 'telemetry-e2e@dynamox.local' },
+      update: {},
+      create: {
+        email: 'telemetry-e2e@dynamox.local',
+        name: 'Telemetria E2E',
+        passwordHash: `scrypt$${salt}$${scryptSync('Senha-E2E@2026', salt, 64).toString('hex')}`,
+      },
+    });
+    const login = await http()
+      .post('/api/auth/login')
+      .send({ email: 'telemetry-e2e@dynamox.local', password: 'Senha-E2E@2026' })
+      .expect(201);
+    bearer = `Bearer ${login.body.token}`;
   });
 
   afterAll(async () => {
     await removeFixtures();
+    await prisma.user.deleteMany({ where: { email: 'telemetry-e2e@dynamox.local' } });
     await app.close();
   });
 
@@ -133,7 +159,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
   });
 
   it('rejeita payload fora do contrato com 400 e lista de violações', async () => {
-    const response = await http()
+    const response = await authed
       .post('/api/telemetry-cycles')
       .send({ telemetryCycleData: { measuringSystemUniqueIdentifier: SENSOR_SERIAL } })
       .expect(400);
@@ -143,7 +169,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
   });
 
   it('rejeita Idempotency-Key fora do formato seguro', async () => {
-    const response = await http()
+    const response = await authed
       .post('/api/telemetry-cycles')
       .set('Idempotency-Key', 'a'.repeat(129))
       .send(buildPayload())
@@ -157,7 +183,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     payload.telemetryCycleData.measurements[0].dataPoints[0].timestamp =
       '2026-08-26T12:00:00.0001Z';
 
-    const response = await http().post('/api/telemetry-cycles').send(payload).expect(400);
+    const response = await authed.post('/api/telemetry-cycles').send(payload).expect(400);
     expect(response.body.code).toBe('CONTRACT_VIOLATION');
   });
 
@@ -170,7 +196,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
       value: 0.0777,
     });
 
-    const response = await http().post('/api/telemetry-cycles').send(payload).expect(409);
+    const response = await authed.post('/api/telemetry-cycles').send(payload).expect(409);
     expect(response.body.code).toBe('SAMPLE_TIMESTAMP_CONFLICT');
 
     expect(await counts()).toEqual(before);
@@ -180,7 +206,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     const payload = buildPayload();
     payload.telemetryCycleData.measurements[1].attributes.axis = 'x';
 
-    const response = await http().post('/api/telemetry-cycles').send(payload).expect(422);
+    const response = await authed.post('/api/telemetry-cycles').send(payload).expect(422);
     expect(response.body.code).toBe('QUANTITY_AXIS_MISMATCH');
   });
 
@@ -190,7 +216,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     const payload = buildPayload();
     payload.telemetryCycleData.measuringSystemUniqueIdentifier = 'SENSOR-INEXISTENTE';
 
-    const response = await http()
+    const response = await authed
       .post('/api/telemetry-cycles')
       .set('Idempotency-Key', 'chave-sensor-inexistente')
       .send(payload)
@@ -201,7 +227,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
   });
 
   it('persiste o ciclo na primeira ingestão e devolve 201', async () => {
-    const response = await http()
+    const response = await authed
       .post('/api/telemetry-cycles')
       .set('Idempotency-Key', 'e2e-idempotency-key')
       .send(buildPayload())
@@ -222,7 +248,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
   it('mesma chave e mesmo payload: 200 duplicate:true com o resultado original', async () => {
     const before = await counts();
 
-    const response = await http()
+    const response = await authed
       .post('/api/telemetry-cycles')
       .set('Idempotency-Key', 'e2e-idempotency-key')
       .send(buildPayload())
@@ -240,7 +266,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     const payload = buildPayload();
     payload.telemetryCycleData.measurements[0].dataPoints[1].value = 0.9999;
 
-    const response = await http()
+    const response = await authed
       .post('/api/telemetry-cycles')
       .set('Idempotency-Key', 'e2e-idempotency-key')
       .send(payload)
@@ -254,7 +280,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     const payload = shiftedPayload(30);
     payload.telemetryCycleData.measurements[0].dataPoints[1].value = 0.0777;
 
-    const first = await http()
+    const first = await authed
       .post('/api/telemetry-cycles')
       .set('Idempotency-Key', 'e2e-janela-30')
       .send(payload)
@@ -265,7 +291,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     const variant = shiftedPayload(30);
     variant.telemetryCycleData.measurements[0].dataPoints[1].value = 0.0888;
 
-    const second = await http()
+    const second = await authed
       .post('/api/telemetry-cycles')
       .set('Idempotency-Key', 'e2e-janela-30-variante')
       .send(variant)
@@ -280,7 +306,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
   it('chave diferente com payload idêntico: 200 duplicate:true e nenhum ciclo novo', async () => {
     const before = await counts();
 
-    const response = await http()
+    const response = await authed
       .post('/api/telemetry-cycles')
       .set('Idempotency-Key', 'e2e-outra-chave-mesmo-conteudo')
       .send(buildPayload())
@@ -295,10 +321,10 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     const payload = shiftedPayload(60);
     const before = await counts();
 
-    const first = await http().post('/api/telemetry-cycles').send(payload).expect(201);
+    const first = await authed.post('/api/telemetry-cycles').send(payload).expect(201);
     const afterFirst = await counts();
 
-    const second = await http().post('/api/telemetry-cycles').send(payload).expect(200);
+    const second = await authed.post('/api/telemetry-cycles').send(payload).expect(200);
     const afterSecond = await counts();
 
     expect(first.body.duplicate).toBe(false);
@@ -321,7 +347,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
       }
     }
 
-    const response = await http().post('/api/telemetry-cycles').send(payload).expect(409);
+    const response = await authed.post('/api/telemetry-cycles').send(payload).expect(409);
     expect(response.body.code).toBe('SERIES_UNIT_CONFLICT');
 
     const seriesAfter = await prisma.timeSeries.findUnique({ where: { id: seriesBefore!.id } });
@@ -334,8 +360,8 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     const before = await counts();
 
     const [left, right] = await Promise.all([
-      http().post('/api/telemetry-cycles').send(payload),
-      http().post('/api/telemetry-cycles').send(payload),
+      authed.post('/api/telemetry-cycles').send(payload),
+      authed.post('/api/telemetry-cycles').send(payload),
     ]);
 
     const statuses = [left.status, right.status].sort();
@@ -351,7 +377,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
   });
 
   it('recupera a série persistida, suas amostras e suas métricas', async () => {
-    const list = await http().get('/api/time-series').expect(200);
+    const list = await authed.get('/api/time-series').expect(200);
 
     const series = (list.body as Array<Record<string, unknown>>).find(
       (item) => item.sensorSerialNumber === SENSOR_SERIAL && item.axis === 'y',
@@ -367,14 +393,14 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
       }),
     );
 
-    const samples = await http()
+    const samples = await authed
       .get(`/api/time-series/${series!.id as string}/samples`)
       .expect(200);
 
     expect(samples.body.length).toBe(series!.sampleCount);
     expect(samples.body[0].timestamp < samples.body[samples.body.length - 1].timestamp).toBe(true);
 
-    const metrics = await http()
+    const metrics = await authed
       .get(`/api/time-series/${series!.id as string}/metrics`)
       .expect(200);
 
@@ -382,7 +408,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
   });
 
   it('responde 404 ao consultar série inexistente', async () => {
-    await http()
+    await authed
       .get('/api/time-series/00000000-0000-0000-0000-000000000000/samples')
       .expect(404);
   });

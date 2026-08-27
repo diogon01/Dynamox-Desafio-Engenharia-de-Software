@@ -33,6 +33,8 @@ auditável por hash.
    diverge de si mesma e onde nós divergimos dela de propósito.
 6. [Inventário de endpoints](./dynamox-endpoint-inventory.json) — a evidência bruta,
    gerada por `npm run analysis:inventory`.
+7. [Arquitetura de autenticação](./dynamox-authentication-architecture.md) — login fixo,
+   JWT, guard global, sessão Redux e logout (AUT-01/02/03, implementados e testados).
 
 ## Confirmado × escolha nossa × ainda desconhecido
 
@@ -53,11 +55,23 @@ corrigidas). Decisão técnica: **GO COM RESTRIÇÕES** — o sensor digital pod
 sobre o subconjunto rastreável, com toda hipótese rotulada. O status do cartão no Notion é
 decisão do Diogo; os entregáveis estão prontos para revisão humana.
 
+## Estado da autenticação (AUT-01 · AUT-02 · AUT-03)
+
+**Implementada, revisada e em revisão humana** (27/08/2026). Login fixo com JWT próprio,
+guard global protegendo todas as rotas privadas, sessão Redux com restauração via
+`/auth/me`, logout completo e 401 centralizado. Duas rodadas de revisão externa: a
+primeira apontou 4 achados (enumeração por latência, seed sem reset de senha, corrida na
+restauração, formato de e-mail) e a segunda apontou 3 no ciclo de sessão (falha
+transitória derrubando JWT válido, 401 atrasado apagando login novo, teste declarando
+cobertura maior que a real) — **todos os 7 corrigidos e revalidados** (61 testes de API +
+30 de web verdes). Detalhes em
+[Arquitetura de autenticação](./dynamox-authentication-architecture.md).
+
 ## Próxima task recomendada (após aprovação)
 
-Implementar o **núcleo do sensor digital** (`libs/sensor-sim`): tipos `NormalizedMetric`,
-`NormalizationResult` e `WaveformAcquisitionContext` em `libs/contracts`, gerador
-determinístico por seed com os presets congelados, e testes de reprodutibilidade
-(mesma seed ⇒ mesmos bytes) — alimentando o `POST /api/telemetry-cycles` já existente.
-Pré-requisito de board: fechar os P0 pendentes (autenticação e CRUDs) antes de qualquer
-bônus, conforme o gate já registrado.
+Fechar os **P0 restantes**: `MAC-01` (CRUD de máquinas) e a cadeia `MON-01…06` (pontos,
+sensores, regra `Pump × TcAg/TcAs`, lista paginada e ordenável). Só depois vem o núcleo do
+sensor digital (`libs/sensor-sim`: tipos `NormalizedMetric`, `NormalizationResult` e
+`WaveformAcquisitionContext`, gerador determinístico por seed com os presets congelados),
+alimentando o `POST /api/telemetry-cycles` já existente — conforme o gate registrado no
+board. Prazo do desafio: **31/08/2026**.

@@ -1,6 +1,7 @@
 import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
 import type { Response } from 'express';
 
+import { Public } from '../auth/public.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface HealthResponse {
@@ -10,6 +11,8 @@ export interface HealthResponse {
   timestamp: string;
 }
 
+/** Público de propósito: é o probe de disponibilidade usado antes de qualquer login. */
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}

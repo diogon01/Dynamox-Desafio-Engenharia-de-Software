@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
@@ -14,6 +15,7 @@ import { TelemetryModule } from './telemetry/telemetry.module';
       envFilePath: [join(process.cwd(), '.env'), join(process.cwd(), '..', '..', '.env')],
     }),
     PrismaModule,
+    AuthModule,
     HealthModule,
     TelemetryModule,
   ],

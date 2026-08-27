@@ -47,9 +47,11 @@ function createDeterministicNoise(seed: number): () => number {
 }
 
 async function main(): Promise<void> {
+  // O update também redefine o passwordHash: a credencial fixa anunciada precisa valer
+  // mesmo que o registro já exista com outra senha.
   const user = await prisma.user.upsert({
     where: { email: SEED_USER_EMAIL },
-    update: { name: 'Analista de Manutenção' },
+    update: { name: 'Analista de Manutenção', passwordHash: hashPassword(SEED_USER_PASSWORD) },
     create: {
       email: SEED_USER_EMAIL,
       name: 'Analista de Manutenção',

@@ -1,20 +1,31 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch, useSelector } from 'react-redux';
 
+import { authReducer } from '../features/auth/authSlice';
 import { diagnosticsReducer } from '../features/diagnostics/diagnosticsSlice';
 
-export function createStore() {
-  return configureStore({
-    reducer: {
-      diagnostics: diagnosticsReducer,
-    },
-  });
+const rootReducer = {
+  auth: authReducer,
+  diagnostics: diagnosticsReducer,
+};
+
+export function createStore(preloadedState?: Partial<RootState>) {
+  const store = configureStore({ reducer: rootReducer });
+  if (preloadedState) {
+    return configureStore({
+      reducer: rootReducer,
+      preloadedState: { ...store.getState(), ...preloadedState },
+    });
+  }
+  return store;
 }
 
 export const store = createStore();
 
 export type AppStore = ReturnType<typeof createStore>;
-export type RootState = ReturnType<AppStore['getState']>;
+export type RootState = {
+  [K in keyof typeof rootReducer]: ReturnType<(typeof rootReducer)[K]>;
+};
 export type AppDispatch = AppStore['dispatch'];
 
 export const useAppDispatch = useDispatch.withTypes<AppDispatch>();

@@ -99,13 +99,20 @@ describe('MAC-01 — CRUD autenticado de máquinas', () => {
   });
 
   it('4. lista as máquinas persistidas em ordem determinística', async () => {
+    // Cria as próprias pré-condições, com sub-prefixo exclusivo: o teste não depende
+    // dos casos anteriores nem do que outras suítes tenham deixado na tabela.
+    const listPrefix = name('List-');
+    await authed.post('/api/machines').send({ name: `${listPrefix}B`, type: 'Fan' }).expect(201);
+    await authed.post('/api/machines').send({ name: `${listPrefix}A`, type: 'Pump' }).expect(201);
+
     const response = await authed.get('/api/machines').expect(200);
 
     const ours = (response.body as Array<{ name: string; type: string }>).filter((m) =>
-      m.name.startsWith(PREFIX),
+      m.name.startsWith(listPrefix),
     );
-    expect(ours.map((m) => m.name)).toEqual([name('Bomba'), name('Ventilador')]);
-    expect(ours.every((m) => m.type === 'Pump' || m.type === 'Fan')).toBe(true);
+    // Inseridos fora de ordem de propósito: a listagem precisa devolvê-los ordenados.
+    expect(ours.map((m) => m.name)).toEqual([`${listPrefix}A`, `${listPrefix}B`]);
+    expect(ours.map((m) => m.type)).toEqual(['Pump', 'Fan']);
   });
 
   it('5. tipo inválido retorna 400', async () => {
@@ -127,6 +134,18 @@ describe('MAC-01 — CRUD autenticado de máquinas', () => {
     expect(response.body.code).toBe('INVALID_MACHINE_PAYLOAD');
   });
 
+  it('6b. nome longo demais retorna 400 em vez de estourar o índice único', async () => {
+    // O nome é @unique, ou seja, vive num índice btree cujo limite é 8191 bytes.
+    // Sem recusa na aplicação, um nome incompressível grande produziria erro interno
+    // do PostgreSQL ("index row requires N bytes") e viraria 500 em vez de 400.
+    const response = await authed
+      .post('/api/machines')
+      .send({ name: 'x'.repeat(121), type: 'Pump' })
+      .expect(400);
+
+    expect(response.body.code).toBe('INVALID_MACHINE_PAYLOAD');
+  });
+
   it('7. campo desconhecido no payload retorna 400', async () => {
     const response = await authed
       .post('/api/machines')
@@ -138,9 +157,12 @@ describe('MAC-01 — CRUD autenticado de máquinas', () => {
   });
 
   it('8. nome duplicado no POST retorna 409', async () => {
+    const duplicated = name('DuplicadoPost');
+    await authed.post('/api/machines').send({ name: duplicated, type: 'Pump' }).expect(201);
+
     const response = await authed
       .post('/api/machines')
-      .send({ name: name('Bomba'), type: 'Fan' })
+      .send({ name: duplicated, type: 'Fan' })
       .expect(409);
 
     expect(response.body.code).toBe('MACHINE_NAME_CONFLICT');
@@ -201,6 +223,9 @@ describe('MAC-01 — CRUD autenticado de máquinas', () => {
   });
 
   it('13. nome duplicado no PATCH retorna 409', async () => {
+    const ocupado = name('ConflitoPatchAlvo');
+    await authed.post('/api/machines').send({ name: ocupado, type: 'Fan' }).expect(201);
+
     const created = await authed
       .post('/api/machines')
       .send({ name: name('ConflitoPatch'), type: 'Pump' })
@@ -208,7 +233,7 @@ describe('MAC-01 — CRUD autenticado de máquinas', () => {
 
     const response = await authed
       .patch(`/api/machines/${created.body.id}`)
-      .send({ name: name('Bomba') })
+      .send({ name: ocupado })
       .expect(409);
 
     expect(response.body.code).toBe('MACHINE_NAME_CONFLICT');

@@ -1,8 +1,12 @@
-# Execução local — Fase 0 (fundação)
+# Execução local — estado atual
 
-Estado atual: fundação do monorepo, contrato de telemetria (SCP-04) e primeira versão do
-endpoint de ingestão (TS-06). Autenticação e os CRUDs completos ainda não existem — ver
-"Pendências" no fim deste documento.
+Já funcionam de ponta a ponta: a fundação do monorepo, o contrato de telemetria (SCP-04),
+a **autenticação completa** (login com credencial fixa, JWT, guard global, sessão e
+logout), o **CRUD autenticado de máquinas no backend** e a ingestão e leitura de séries
+temporais.
+
+Ainda faltam partes do fluxo completo — com destaque para o **frontend de máquinas** e a
+gestão de pontos de monitoramento e sensores. Ver "Pendências" no fim deste documento.
 
 > Os dados deste projeto são **sintéticos e didáticos**. A aplicação nunca chama a API
 > produtiva da Dynamox; o frontend recusa qualquer `VITE_API_BASE_URL` apontando para
@@ -59,7 +63,7 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 61 API + 30 web; exige o PostgreSQL no ar (testes de integração)
+npm run test                  # 79 API + 30 web = 109 testes; exige o PostgreSQL no ar
 ```
 
 ## Credenciais de demonstração
@@ -181,7 +185,7 @@ um erro explícito, jamais uma gravação parcial.
 ## Estrutura
 
 ```
-apps/api     backend NestJS (health, ingestão, leitura de séries)
+apps/api     backend NestJS (autenticação, CRUD de máquinas, telemetria, health check)
 apps/web     frontend React + Vite + Material UI 5 + Redux Toolkit
 libs/domain  vocabulário e regras de domínio (isomórfico, sem dependência de Node)
 libs/contracts  validação Ajv do contrato interno e derivação de identificadores
@@ -210,11 +214,15 @@ prisma       schema, migrações e seed
   própria API, guard global, `GET /auth/me`, sessão Redux restaurada após reload, logout e
   proteção das rotas privadas no frontend. Detalhes e decisões em
   [`docs/analysis/dynamox-authentication-architecture.md`](./analysis/dynamox-authentication-architecture.md).
+- **CRUD autenticado de máquinas no backend**: criação e edição aceitando somente `Pump` e
+  `Fan`, listagem determinística (ordenada por nome), exclusão, e os erros `400` (payload
+  ou tipo inválido), `404` (máquina inexistente) e `409` (nome duplicado, garantido pelo
+  índice único do PostgreSQL via Prisma). Coberto por testes e2e contra o banco real.
 - Ingestão idempotente de telemetria e leitura de séries com métricas.
 
 ## Pendências para fechar o P0
 
-- CRUD de máquinas (`Pump` / `Fan`) integrado ponta a ponta.
+- Integrar o CRUD de máquinas já disponível na API ao frontend (MAC-02/03).
 - CRUD de pontos de monitoramento e associação de sensor, aplicando a regra
   `Pump` × (`TcAg`, `TcAs`) na API (a regra já existe e é testada em `libs/domain`).
 - Lista paginada de 5 itens por página com ordenação por coluna.

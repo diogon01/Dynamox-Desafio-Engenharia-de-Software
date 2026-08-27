@@ -135,9 +135,11 @@ describe('MAC-01 — CRUD autenticado de máquinas', () => {
   });
 
   it('6b. nome longo demais retorna 400 em vez de estourar o índice único', async () => {
-    // O nome é @unique, ou seja, vive num índice btree cujo limite é 8191 bytes.
-    // Sem recusa na aplicação, um nome incompressível grande produziria erro interno
-    // do PostgreSQL ("index row requires N bytes") e viraria 500 em vez de 400.
+    // O limite de 120 caracteres é uma decisão defensiva da API, não um número derivado
+    // do PostgreSQL. Como `name` participa de um índice único, entradas de índice B-tree
+    // têm um limite físico que depende do tamanho da página e da representação do valor;
+    // aceitar nomes arbitrariamente grandes transferiria ao banco uma falha que deveria
+    // ser validação. A API responde 400 de forma determinística antes da persistência.
     const response = await authed
       .post('/api/machines')
       .send({ name: 'x'.repeat(121), type: 'Pump' })

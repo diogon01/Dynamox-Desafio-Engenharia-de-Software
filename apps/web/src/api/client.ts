@@ -1,4 +1,17 @@
-import type { SeriesMetrics, TimeSeriesSampleDto, TimeSeriesSummary } from '@dynamox/domain';
+import type {
+  MachineType,
+  SeriesMetrics,
+  TimeSeriesSampleDto,
+  TimeSeriesSummary,
+} from '@dynamox/domain';
+
+export interface MachineDto {
+  id: string;
+  name: string;
+  type: MachineType;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface HealthStatus {
   status: 'ok' | 'degraded';
@@ -118,6 +131,9 @@ export const api = {
       skipUnauthorizedHandler: true,
     }),
   me: () => requestJson<SessionUser>('/auth/me'),
+  machines: () => requestJson<MachineDto[]>('/machines'),
+  createMachine: (name: string, type: MachineType) =>
+    requestJson<MachineDto>('/machines', { method: 'POST', body: { name, type } }),
   timeSeries: () => requestJson<TimeSeriesSummary[]>('/time-series'),
   samples: (id: string) => requestJson<TimeSeriesSampleDto[]>(`/time-series/${id}/samples`),
   metrics: (id: string) => requestJson<SeriesMetrics>(`/time-series/${id}/metrics`),

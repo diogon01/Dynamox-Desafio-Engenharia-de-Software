@@ -1,12 +1,12 @@
 # Execução local — estado atual
 
-Já funcionam de ponta a ponta: a fundação do monorepo, o contrato de telemetria (SCP-04),
-a **autenticação completa** (login com credencial fixa, JWT, guard global, sessão e
-logout), o **CRUD autenticado de máquinas no backend** e a ingestão e leitura de séries
-temporais.
+Já estão operacionais: a fundação do monorepo, o contrato de telemetria (SCP-04), a
+**autenticação completa** (login com credencial fixa, JWT, guard global, sessão e logout),
+o **CRUD autenticado de máquinas no backend**, a **listagem e o cadastro de máquinas no
+frontend** e a ingestão e leitura de séries temporais.
 
-Ainda faltam partes do fluxo completo — com destaque para o **frontend de máquinas** e a
-gestão de pontos de monitoramento e sensores. Ver "Pendências" no fim deste documento.
+Ainda faltam partes do fluxo completo — edição e exclusão de máquinas na interface, e toda
+a gestão de pontos de monitoramento e sensores. Ver "Pendências" no fim deste documento.
 
 > Os dados deste projeto são **sintéticos e didáticos**. A aplicação nunca chama a API
 > produtiva da Dynamox; o frontend recusa qualquer `VITE_API_BASE_URL` apontando para
@@ -63,7 +63,7 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 79 API + 30 web = 109 testes; exige o PostgreSQL no ar
+npm run test                  # 79 API + 50 web = 129 testes; exige o PostgreSQL no ar
 ```
 
 ## Credenciais de demonstração
@@ -218,11 +218,15 @@ prisma       schema, migrações e seed
   `Fan`, listagem determinística (ordenada por nome), exclusão, e os erros `400` (payload
   ou tipo inválido), `404` (máquina inexistente) e `409` (nome duplicado, garantido pelo
   índice único do PostgreSQL via Prisma). Coberto por testes e2e contra o banco real.
+- **Listagem e cadastro de máquinas no frontend** (MAC-02): painel em Material UI 5 que
+  carrega a lista pela API autenticada, com estados de carregamento, erro e lista vazia, e
+  formulário de cadastro com seleção `Pump`/`Fan`, validação de nome antes do envio e
+  exibição da mensagem real da API para nome duplicado.
 - Ingestão idempotente de telemetria e leitura de séries com métricas.
 
 ## Pendências para fechar o P0
 
-- Integrar o CRUD de máquinas já disponível na API ao frontend (MAC-02/03).
+- Edição e exclusão de máquinas na interface (MAC-03) — a API já expõe `PATCH` e `DELETE`.
 - CRUD de pontos de monitoramento e associação de sensor, aplicando a regra
   `Pump` × (`TcAg`, `TcAs`) na API (a regra já existe e é testada em `libs/domain`).
 - Lista paginada de 5 itens por página com ordenação por coluna.

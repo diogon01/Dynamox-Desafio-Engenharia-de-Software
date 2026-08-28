@@ -3,12 +3,13 @@
 Já estão operacionais: a fundação do monorepo, o contrato de telemetria (SCP-04), a
 **autenticação completa** (login com credencial fixa, JWT, guard global, sessão e logout),
 o **CRUD autenticado de máquinas no backend**, a **listagem e o cadastro de máquinas no
-frontend**, a **gestão de pontos de monitoramento e sensores** (criação, associação com a
+frontend** (incluindo **edição e exclusão**, com confirmação que avisa sobre a cascata nos
+pontos), a **gestão de pontos de monitoramento e sensores** (criação, associação com a
 regra Pump × TcAg/TcAs, tabela paginada de 5 e ordenável por qualquer coluna) e a ingestão
 e leitura de séries temporais.
 
-Ainda faltam partes do fluxo completo — edição e exclusão de máquinas na interface e
-exclusão de séries. Ver "Pendências" no fim deste documento.
+Ainda falta a exclusão de séries temporais com recuperação completa paginada. Ver
+"Pendências" no fim deste documento.
 
 > Os dados deste projeto são **sintéticos e didáticos**. A aplicação nunca chama a API
 > produtiva da Dynamox; o frontend recusa qualquer `VITE_API_BASE_URL` apontando para
@@ -65,7 +66,7 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 101 API + 69 web = 170 testes; exige o PostgreSQL no ar
+npm run test                  # 101 API + 81 web = 182 testes; exige o PostgreSQL no ar
 ```
 
 ## Credenciais de demonstração
@@ -251,6 +252,11 @@ prisma       schema, migrações e seed
   carrega a lista pela API autenticada, com estados de carregamento, erro e lista vazia, e
   formulário de cadastro com seleção `Pump`/`Fan`, validação de nome antes do envio e
   exibição da mensagem real da API para nome duplicado.
+- **Edição e exclusão de máquinas no frontend** (MAC-03): edição de nome e tipo com o
+  formulário pré-preenchido e a mensagem real da API em conflito (nome duplicado ou
+  bloqueio `MACHINE_TYPE_SENSOR_CONFLICT` ao virar Pump com sensor proibido); exclusão em
+  duas etapas com aviso sobre a remoção em cascata dos pontos; após editar ou excluir, a
+  tabela de pontos de monitoramento é recarregada para as telas nunca divergirem.
 - **Pontos de monitoramento e sensores** (MON-01…06): criação de pontos por máquina,
   associação de sensor com identificador único e modelo `TcAg`/`TcAs`/`HF+`, regra
   `Pump` × (`TcAg`, `TcAs`) aplicada na associação **e** na troca de tipo da máquina
@@ -261,7 +267,6 @@ prisma       schema, migrações e seed
 
 ## Pendências para fechar o P0
 
-- Edição e exclusão de máquinas na interface (MAC-03) — a API já expõe `PATCH` e `DELETE`.
 - Exclusão de série temporal e das entidades relacionadas, junto com a recuperação
   completa (paginada) de uma série.
 - README de entrega na raiz com decisões, pressupostos e limitações.

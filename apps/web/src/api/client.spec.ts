@@ -18,6 +18,63 @@ describe('assertLocalApiBaseUrl', () => {
   });
 });
 
+describe('api.updateMachine / api.deleteMachine', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setToken(null);
+  });
+
+  it('4. PATCH /machines/:id envia Bearer e somente os campos alterados', async () => {
+    setToken('jwt-abc');
+    const updated = {
+      id: '1',
+      name: 'P-101-B',
+      type: 'Pump',
+      createdAt: 'x',
+      updatedAt: 'x',
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(updated), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await api.updateMachine('1', { name: 'P-101-B' });
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toMatch(/\/machines\/1$/);
+    expect(init.method).toBe('PATCH');
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer jwt-abc');
+    expect(JSON.parse(init.body as string)).toEqual({ name: 'P-101-B' });
+    expect(result).toEqual(updated);
+  });
+
+  it('5. DELETE /machines/:id trata o 204 sem corpo sem estourar', async () => {
+    setToken('jwt-abc');
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(api.deleteMachine('1')).resolves.toBeUndefined();
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toMatch(/\/machines\/1$/);
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('6. erro 404 no DELETE preserva a mensagem da API', async () => {
+    setToken('jwt-abc');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({ code: 'MACHINE_NOT_FOUND', message: 'Máquina "x" não encontrada.' }),
+            { status: 404 },
+          ),
+      ),
+    );
+
+    await expect(api.deleteMachine('x')).rejects.toThrow('Máquina "x" não encontrada.');
+  });
+});
+
 describe('api.machines / api.createMachine', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

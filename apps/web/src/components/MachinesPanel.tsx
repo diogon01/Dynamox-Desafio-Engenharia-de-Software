@@ -20,7 +20,14 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { MACHINE_TYPES, type MachineType } from '@dynamox/domain';
 import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
 
-import { createMachine, fetchMachines } from '../features/machines/machinesSlice';
+import type { MachineDto } from '../api/client';
+import {
+  createMachine,
+  deleteMachine,
+  fetchMachines,
+  updateMachine,
+} from '../features/machines/machinesSlice';
+import { fetchMonitoringPoints } from '../features/monitoringPoints/monitoringPointsSlice';
 import { useAppDispatch, useAppSelector } from '../store';
 
 /** Mesmo teto aplicado pela API; a validação local só antecipa a mensagem. */
@@ -28,13 +35,30 @@ const NAME_MAX_LENGTH = 120;
 
 export function MachinesPanel(): JSX.Element {
   const dispatch = useAppDispatch();
-  const { items, listStatus, listError, createStatus, createError } = useAppSelector(
-    (state) => state.machines,
-  );
+  const {
+    items,
+    listStatus,
+    listError,
+    createStatus,
+    createError,
+    updateStatus,
+    updateError,
+    deleteStatus,
+    deleteError,
+  } = useAppSelector((state) => state.machines);
 
   const [name, setName] = useState('');
   const [type, setType] = useState<MachineType>('Pump');
   const [touched, setTouched] = useState(false);
+
+  /** Máquina em edição; null = formulário de edição oculto. */
+  const [editTarget, setEditTarget] = useState<MachineDto | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editType, setEditType] = useState<MachineType>('Pump');
+  const [editTouched, setEditTouched] = useState(false);
+
+  /** Máquina aguardando confirmação de exclusão; null = nada pendente. */
+  const [deleteTarget, setDeleteTarget] = useState<MachineDto | null>(null);
 
   useEffect(() => {
     void dispatch(fetchMachines());
@@ -42,13 +66,19 @@ export function MachinesPanel(): JSX.Element {
 
   const trimmedName = name.trim();
   const submitting = createStatus === 'loading';
+  const saving = updateStatus === 'loading';
+  const removing = deleteStatus === 'loading';
 
-  const nameError =
-    trimmedName === ''
+  const validateName = (value: string): string | null =>
+    value === ''
       ? 'Informe o nome da máquina.'
-      : trimmedName.length > NAME_MAX_LENGTH
+      : value.length > NAME_MAX_LENGTH
         ? `O nome deve ter no máximo ${NAME_MAX_LENGTH} caracteres.`
         : null;
+
+  const nameError = validateName(trimmedName);
+  const trimmedEditName = editName.trim();
+  const editNameError = validateName(trimmedEditName);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -61,6 +91,40 @@ export function MachinesPanel(): JSX.Element {
       setName('');
       setType('Pump');
       setTouched(false);
+    }
+  };
+
+  const startEdit = (machine: MachineDto) => {
+    setDeleteTarget(null);
+    setEditTarget(machine);
+    setEditName(machine.name);
+    setEditType(machine.type);
+    setEditTouched(false);
+  };
+
+  const handleEditSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setEditTouched(true);
+    if (!editTarget || editNameError || saving) return;
+
+    const result = await dispatch(
+      updateMachine({ id: editTarget.id, changes: { name: trimmedEditName, type: editType } }),
+    );
+    if (updateMachine.fulfilled.match(result)) {
+      setEditTarget(null);
+      // O tipo da máquina aparece também na tabela de pontos: mantém as telas coerentes.
+      void dispatch(fetchMonitoringPoints());
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget || removing) return;
+
+    const result = await dispatch(deleteMachine(deleteTarget.id));
+    if (deleteMachine.fulfilled.match(result)) {
+      setDeleteTarget(null);
+      // A exclusão cascateia os pontos da máquina: a outra tabela precisa refletir isso.
+      void dispatch(fetchMonitoringPoints());
     }
   };
 
@@ -122,6 +186,107 @@ export function MachinesPanel(): JSX.Element {
           </Stack>
         </Box>
 
+        {editTarget ? (
+          <Box
+            component="form"
+            onSubmit={handleEditSubmit}
+            noValidate
+            sx={{ mb: 3, p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}
+          >
+            <Stack spacing={2}>
+              <Typography variant="subtitle2">Editar máquina “{editTarget.name}”</Typography>
+
+              {updateStatus === 'failed' && updateError ? (
+                <Alert severity="error">{updateError}</Alert>
+              ) : null}
+
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={2}
+                alignItems="flex-start"
+              >
+                <TextField
+                  label="Novo nome"
+                  value={editName}
+                  onChange={(event) => setEditName(event.target.value)}
+                  onBlur={() => setEditTouched(true)}
+                  error={editTouched && editNameError !== null}
+                  helperText={editTouched && editNameError ? editNameError : ' '}
+                  disabled={saving}
+                  fullWidth
+                  inputProps={{ 'aria-label': 'Novo nome' }}
+                />
+                <TextField
+                  select
+                  label="Novo tipo"
+                  value={editType}
+                  onChange={(event) => setEditType(event.target.value as MachineType)}
+                  disabled={saving}
+                  helperText=" "
+                  sx={{ minWidth: { sm: 180 }, width: { xs: '100%', sm: 'auto' } }}
+                  inputProps={{ 'aria-label': 'Novo tipo' }}
+                >
+                  {MACHINE_TYPES.map((machineType) => (
+                    <MenuItem key={machineType} value={machineType}>
+                      {machineType}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  disabled={saving}
+                  sx={{ mt: { sm: 1 }, whiteSpace: 'nowrap' }}
+                  startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+                >
+                  {saving ? 'Salvando…' : 'Salvar'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="text"
+                  disabled={saving}
+                  onClick={() => setEditTarget(null)}
+                  sx={{ mt: { sm: 1 } }}
+                >
+                  Cancelar
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+        ) : null}
+
+        {deleteTarget ? (
+          <Box sx={{ mb: 3, p: 2, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+            <Stack spacing={2}>
+              <Typography variant="subtitle2">
+                Excluir a máquina “{deleteTarget.name}”? Os pontos de monitoramento dela
+                também serão removidos.
+              </Typography>
+
+              {deleteStatus === 'failed' && deleteError ? (
+                <Alert severity="error">{deleteError}</Alert>
+              ) : null}
+
+              <Stack direction="row" spacing={2}>
+                <Button
+                  variant="contained"
+                  color="error"
+                  disabled={removing}
+                  onClick={() => void handleDeleteConfirm()}
+                  startIcon={
+                    removing ? <CircularProgress size={16} color="inherit" /> : undefined
+                  }
+                >
+                  {removing ? 'Excluindo…' : 'Confirmar exclusão'}
+                </Button>
+                <Button variant="text" disabled={removing} onClick={() => setDeleteTarget(null)}>
+                  Cancelar
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+        ) : null}
+
         {listStatus === 'loading' || listStatus === 'idle' ? (
           <LoadingState label="Carregando máquinas…" />
         ) : null}
@@ -147,6 +312,7 @@ export function MachinesPanel(): JSX.Element {
                 <TableRow>
                   <TableCell>Nome</TableCell>
                   <TableCell>Tipo</TableCell>
+                  <TableCell aria-label="Ações" />
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -160,6 +326,26 @@ export function MachinesPanel(): JSX.Element {
                         color={machine.type === 'Pump' ? 'primary' : 'secondary'}
                         variant="outlined"
                       />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Button
+                        size="small"
+                        onClick={() => startEdit(machine)}
+                        disabled={saving || removing}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() => {
+                          setEditTarget(null);
+                          setDeleteTarget(machine);
+                        }}
+                        disabled={saving || removing}
+                      >
+                        Excluir
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

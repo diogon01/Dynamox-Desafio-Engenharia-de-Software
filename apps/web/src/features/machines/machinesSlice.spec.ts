@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import type { MachineDto } from '../../api/client';
 import {
   createMachine,
+  deleteMachine,
   fetchMachines,
   initialMachinesState,
   machinesReducer,
+  updateMachine,
 } from './machinesSlice';
 
 const machine = (name: string, type: 'Pump' | 'Fan' = 'Pump'): MachineDto => ({
@@ -117,5 +119,72 @@ describe('machinesSlice — cadastro', () => {
   it('não cria item otimista antes da resposta da API', () => {
     const state = machinesReducer(initialMachinesState, createMachine.pending('r2', arg));
     expect(state.items).toHaveLength(0);
+  });
+});
+
+describe('machinesSlice — edição e exclusão (MAC-03)', () => {
+  const loaded = () =>
+    machinesReducer(
+      initialMachinesState,
+      fetchMachines.fulfilled([machine('A-1'), machine('Z-9', 'Fan')], 'r1', undefined),
+    );
+
+  it('8. edição substitui o item pelo registro da API e reordena', () => {
+    const renamed = { ...machine('A-1'), name: 'X-5' };
+    const state = machinesReducer(
+      loaded(),
+      updateMachine.fulfilled(renamed, 'r2', { id: renamed.id, changes: { name: 'X-5' } }),
+    );
+
+    expect(state.updateStatus).toBe('succeeded');
+    // "A-1" virou "X-5" e a lista foi reordenada por nome.
+    expect(state.items.map((m) => m.name)).toEqual(['X-5', 'Z-9']);
+  });
+
+  it('9. falha na edição preserva a lista e guarda a mensagem', () => {
+    const state = machinesReducer(
+      loaded(),
+      updateMachine.rejected(
+        new Error('A máquina não pode virar Pump: sensor(es) TcAg/TcAs associado(s).'),
+        'r2',
+        { id: 'id-Z-9', changes: { type: 'Pump' } },
+      ),
+    );
+
+    expect(state.updateStatus).toBe('failed');
+    expect(state.updateError).toMatch(/TcAg/);
+    expect(state.items).toHaveLength(2);
+  });
+
+  it('10. exclusão remove somente a máquina confirmada', () => {
+    const state = machinesReducer(loaded(), deleteMachine.fulfilled('id-A-1', 'r2', 'id-A-1'));
+
+    expect(state.deleteStatus).toBe('succeeded');
+    expect(state.items.map((m) => m.name)).toEqual(['Z-9']);
+  });
+
+  it('11. falha na exclusão preserva a lista', () => {
+    const state = machinesReducer(
+      loaded(),
+      deleteMachine.rejected(new Error('Máquina "id-A-1" não encontrada.'), 'r2', 'id-A-1'),
+    );
+
+    expect(state.deleteStatus).toBe('failed');
+    expect(state.deleteError).toMatch(/não encontrada/);
+    expect(state.items).toHaveLength(2);
+  });
+
+  it('12. estados de edição e exclusão são independentes do cadastro', () => {
+    let state = machinesReducer(
+      initialMachinesState,
+      updateMachine.pending('r1', { id: 'x', changes: {} }),
+    );
+    expect(state.updateStatus).toBe('loading');
+    expect(state.createStatus).toBe('idle');
+    expect(state.deleteStatus).toBe('idle');
+
+    state = machinesReducer(state, deleteMachine.pending('r2', 'x'));
+    expect(state.deleteStatus).toBe('loading');
+    expect(state.updateStatus).toBe('loading');
   });
 });

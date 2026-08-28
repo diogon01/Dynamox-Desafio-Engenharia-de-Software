@@ -207,3 +207,138 @@ describe('MachinesPanel', () => {
     );
   });
 });
+
+/**
+ * MAC-03 — edição e exclusão. O mock roteia por método/URL e responde também
+ * /monitoring-points: após editar/excluir, o painel recarrega a outra tabela para
+ * manter as telas coerentes.
+ */
+function stubMac03(options: {
+  machines?: unknown[];
+  patchResponse?: Response;
+  deleteResponse?: Response;
+}) {
+  const machines = options.machines ?? [
+    P101,
+    { ...P101, id: '2', name: 'V-200', type: 'Fan' },
+  ];
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('/monitoring-points')) {
+      return new Response(
+        JSON.stringify({
+          items: [],
+          total: 0,
+          page: 1,
+          pageSize: 5,
+          sortBy: 'machineName',
+          sortDir: 'asc',
+        }),
+        { status: 200 },
+      );
+    }
+    if (init?.method === 'PATCH') {
+      return (
+        options.patchResponse ??
+        new Response(JSON.stringify({ ...P101, name: 'P-101-B' }), { status: 200 })
+      );
+    }
+    if (init?.method === 'DELETE') {
+      return options.deleteResponse ?? new Response(null, { status: 204 });
+    }
+    return new Response(JSON.stringify(machines), { status: 200 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+describe('MachinesPanel — edição e exclusão (MAC-03)', () => {
+  it('11. editar preenche o formulário, envia o PATCH e atualiza a linha', async () => {
+    const fetchMock = stubMac03({});
+
+    renderPanel();
+    const table = await screen.findByRole('table', { name: /Máquinas cadastradas/i });
+    const row = within(table).getByText('P-101').closest('tr') as HTMLElement;
+
+    await userEvent.click(within(row).getByRole('button', { name: /Editar/i }));
+
+    // Formulário pré-preenchido com os dados atuais.
+    const nameField = screen.getByRole('textbox', { name: /Novo nome/i });
+    expect((nameField as HTMLInputElement).value).toBe('P-101');
+
+    await userEvent.clear(nameField);
+    await userEvent.type(nameField, 'P-101-B');
+    await userEvent.click(screen.getByRole('button', { name: /^Salvar$/i }));
+
+    await waitFor(() => {
+      const patch = fetchMock.mock.calls.find((call) => call[1]?.method === 'PATCH');
+      expect(patch).toBeDefined();
+      expect(String(patch?.[0])).toMatch(/\/machines\/1$/);
+      expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ name: 'P-101-B', type: 'Pump' });
+    });
+    // O formulário fecha e a linha reflete o registro devolvido pela API.
+    await waitFor(() => expect(screen.queryByText(/Editar máquina/i)).toBeNull());
+    expect(within(table).getByText('P-101-B')).toBeDefined();
+  });
+
+  it('12. erro da API na edição fica visível e mantém o formulário aberto', async () => {
+    stubMac03({
+      patchResponse: new Response(
+        JSON.stringify({
+          code: 'MACHINE_TYPE_SENSOR_CONFLICT',
+          message: 'A máquina não pode virar Pump: sensor(es) TcAg/TcAs associado(s).',
+        }),
+        { status: 409 },
+      ),
+    });
+
+    renderPanel();
+    const table = await screen.findByRole('table', { name: /Máquinas cadastradas/i });
+    const row = within(table).getByText('V-200').closest('tr') as HTMLElement;
+
+    await userEvent.click(within(row).getByRole('button', { name: /Editar/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^Salvar$/i }));
+
+    expect(await screen.findByText(/não pode virar Pump/i)).toBeDefined();
+    // O formulário continua aberto com o que estava preenchido.
+    expect(screen.getByRole('textbox', { name: /Novo nome/i })).toBeDefined();
+    expect(within(table).getByText('V-200')).toBeDefined();
+  });
+
+  it('13. excluir exige confirmação, envia o DELETE e remove a linha', async () => {
+    const fetchMock = stubMac03({});
+
+    renderPanel();
+    const table = await screen.findByRole('table', { name: /Máquinas cadastradas/i });
+    const row = within(table).getByText('V-200').closest('tr') as HTMLElement;
+
+    await userEvent.click(within(row).getByRole('button', { name: /Excluir/i }));
+
+    // A confirmação avisa sobre a cascata nos pontos de monitoramento.
+    expect(await screen.findByText(/pontos de monitoramento dela/i)).toBeDefined();
+    await userEvent.click(screen.getByRole('button', { name: /Confirmar exclusão/i }));
+
+    await waitFor(() => {
+      const del = fetchMock.mock.calls.find((call) => call[1]?.method === 'DELETE');
+      expect(del).toBeDefined();
+      expect(String(del?.[0])).toMatch(/\/machines\/2$/);
+    });
+    await waitFor(() => expect(within(table).queryByText('V-200')).toBeNull());
+    expect(within(table).getByText('P-101')).toBeDefined();
+  });
+
+  it('14. cancelar a exclusão não dispara nenhum DELETE', async () => {
+    const fetchMock = stubMac03({});
+
+    renderPanel();
+    const table = await screen.findByRole('table', { name: /Máquinas cadastradas/i });
+    const row = within(table).getByText('V-200').closest('tr') as HTMLElement;
+
+    await userEvent.click(within(row).getByRole('button', { name: /Excluir/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^Cancelar$/i }));
+
+    await waitFor(() => expect(screen.queryByText(/Confirmar exclusão/i)).toBeNull());
+    expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'DELETE')).toBe(false);
+    expect(within(table).getByText('V-200')).toBeDefined();
+  });
+});

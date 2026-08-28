@@ -150,6 +150,9 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     throw new Error(payload?.message ?? `Falha ao consultar ${path}: HTTP ${response.status}`);
   }
 
+  // DELETE bem-sucedido responde 204 sem corpo; chamar .json() aqui estouraria.
+  if (response.status === 204) return undefined as T;
+
   return (await response.json()) as T;
 }
 
@@ -165,6 +168,10 @@ export const api = {
   machines: () => requestJson<MachineDto[]>('/machines'),
   createMachine: (name: string, type: MachineType) =>
     requestJson<MachineDto>('/machines', { method: 'POST', body: { name, type } }),
+  updateMachine: (id: string, changes: { name?: string; type?: MachineType }) =>
+    requestJson<MachineDto>(`/machines/${id}`, { method: 'PATCH', body: changes }),
+  deleteMachine: (id: string) =>
+    requestJson<void>(`/machines/${id}`, { method: 'DELETE' }),
   monitoringPoints: (params: MonitoringPointListParams) => {
     const query = new URLSearchParams({
       page: String(params.page),

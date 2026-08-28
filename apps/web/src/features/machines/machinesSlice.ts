@@ -12,6 +12,10 @@ export interface MachinesState {
   listError: string | null;
   createStatus: RequestStatus;
   createError: string | null;
+  updateStatus: RequestStatus;
+  updateError: string | null;
+  deleteStatus: RequestStatus;
+  deleteError: string | null;
 }
 
 export const initialMachinesState: MachinesState = {
@@ -20,6 +24,10 @@ export const initialMachinesState: MachinesState = {
   listError: null,
   createStatus: 'idle',
   createError: null,
+  updateStatus: 'idle',
+  updateError: null,
+  deleteStatus: 'idle',
+  deleteError: null,
 };
 
 /** Mesma ordenação da API (por nome), para a lista local não divergir do servidor. */
@@ -32,6 +40,17 @@ export const createMachine = createAsyncThunk(
   async (input: { name: string; type: MachineType }) =>
     api.createMachine(input.name, input.type),
 );
+
+export const updateMachine = createAsyncThunk(
+  'machines/update',
+  async (input: { id: string; changes: { name?: string; type?: MachineType } }) =>
+    api.updateMachine(input.id, input.changes),
+);
+
+export const deleteMachine = createAsyncThunk('machines/delete', async (id: string) => {
+  await api.deleteMachine(id);
+  return id;
+});
 
 const machinesSlice = createSlice({
   name: 'machines',
@@ -71,6 +90,36 @@ const machinesSlice = createSlice({
         // A lista já carregada é preservada: falhar ao cadastrar não pode esvaziar a tela.
         state.createStatus = 'failed';
         state.createError = action.error.message ?? 'Não foi possível cadastrar a máquina.';
+      })
+
+      .addCase(updateMachine.pending, (state) => {
+        state.updateStatus = 'loading';
+        state.updateError = null;
+      })
+      .addCase(updateMachine.fulfilled, (state, action) => {
+        state.updateStatus = 'succeeded';
+        // Substitui pelo registro devolvido pela API (nunca pelo que foi digitado) e
+        // reordena: a edição de nome pode mudar a posição na lista.
+        state.items = state.items
+          .map((machine) => (machine.id === action.payload.id ? action.payload : machine))
+          .sort(byName);
+      })
+      .addCase(updateMachine.rejected, (state, action) => {
+        state.updateStatus = 'failed';
+        state.updateError = action.error.message ?? 'Não foi possível editar a máquina.';
+      })
+
+      .addCase(deleteMachine.pending, (state) => {
+        state.deleteStatus = 'loading';
+        state.deleteError = null;
+      })
+      .addCase(deleteMachine.fulfilled, (state, action) => {
+        state.deleteStatus = 'succeeded';
+        state.items = state.items.filter((machine) => machine.id !== action.payload);
+      })
+      .addCase(deleteMachine.rejected, (state, action) => {
+        state.deleteStatus = 'failed';
+        state.deleteError = action.error.message ?? 'Não foi possível excluir a máquina.';
       });
   },
 });

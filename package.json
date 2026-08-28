@@ -26,7 +26,8 @@
     "test": "nx run-many -t test",
     "dev:api": "npm run dev -w @dynamox/api",
     "dev:web": "npm run dev -w @dynamox/web",
-    "analysis:inventory": "tsx tools/extract-endpoint-inventory.ts"
+    "analysis:inventory": "tsx tools/extract-endpoint-inventory.ts",
+    "perf:latency": "tsx tools/measure-latency.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

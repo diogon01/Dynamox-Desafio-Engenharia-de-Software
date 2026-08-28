@@ -225,6 +225,38 @@ O enunciado pede que ambiguidades sejam resolvidas com pressupostos explícitos:
 - O gráfico exibe a primeira página de amostras (até 500 pontos); a API entrega a série
   completa por paginação.
 
+## Latência (< 350 ms)
+
+O requisito do enunciado — *"the latency between client and the server side should be
+below 350ms for all requests"* — tem verificação reproduzível:
+
+```bash
+npm run dev:api               # terminal 1: API no ar
+npm run perf:latency          # terminal 2: mede e dá o veredito
+```
+
+O script ([`tools/measure-latency.ts`](./tools/measure-latency.ts)) autentica de verdade,
+descarta 5 requisições de aquecimento por rota, mede 30 amostras sequenciais em 9 rotas
+(login, health, listagens, série/amostras/métricas e um par escrita/exclusão que limpa os
+próprios dados) e **reprova se o máximo observado de qualquer rota atingir 350 ms** —
+"all requests", leitura estrita. Resultado observado em ambiente local
+(node v22, linux x64, Intel i5-13420H):
+
+| rota | média | p95 | max |
+|---|---|---|---|
+| POST /auth/login | 33,9 ms | 35,4 ms | 35,7 ms |
+| GET /health | 3,5 ms | 4,7 ms | 4,9 ms |
+| GET /machines | 4,1 ms | 4,9 ms | 5,3 ms |
+| GET /monitoring-points | 4,3 ms | 5,0 ms | 5,2 ms |
+| GET /time-series | 4,0 ms | 4,7 ms | 4,8 ms |
+| GET /time-series/:id/samples (500 pts) | 5,4 ms | 7,2 ms | 7,4 ms |
+| GET /time-series/:id/metrics | 6,0 ms | 6,6 ms | 7,1 ms |
+| POST /machines | 5,1 ms | 6,0 ms | 6,1 ms |
+| DELETE /machines/:id | 4,2 ms | 5,2 ms | 5,3 ms |
+
+Pior caso: o login (~34 ms), dominado pelo custo **intencional** do scrypt na verificação
+de senha — ainda uma ordem de grandeza abaixo do limite.
+
 ## Testes
 
 ```bash

@@ -11,6 +11,9 @@ const resolveFromRoot = (relativePath: string): string =>
   fileURLToPath(new URL(relativePath, import.meta.url));
 
 export default defineConfig({
+  // O .env do projeto vive na RAIZ do monorepo (documentado no .env.example); sem
+  // envDir o Vite só olharia apps/web e o VITE_API_BASE_URL documentado seria inerte.
+  envDir: resolveFromRoot('../../'),
   plugins: [react()],
   resolve: {
     alias: {

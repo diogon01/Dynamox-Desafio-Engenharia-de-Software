@@ -2,7 +2,7 @@ import type {
   MachineType,
   SensorModel,
   SeriesMetrics,
-  TimeSeriesSampleDto,
+  TimeSeriesSamplePage,
   TimeSeriesSummary,
 } from '@dynamox/domain';
 
@@ -191,6 +191,14 @@ export const api = {
       body: { serialNumber, model },
     }),
   timeSeries: () => requestJson<TimeSeriesSummary[]>('/time-series'),
-  samples: (id: string) => requestJson<TimeSeriesSampleDto[]>(`/time-series/${id}/samples`),
+  samples: (id: string, options: { limit?: number; offset?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (options.limit !== undefined) query.set('limit', String(options.limit));
+    if (options.offset !== undefined) query.set('offset', String(options.offset));
+    const suffix = query.size > 0 ? `?${query.toString()}` : '';
+    return requestJson<TimeSeriesSamplePage>(`/time-series/${id}/samples${suffix}`);
+  },
+  deleteTimeSeries: (id: string) =>
+    requestJson<void>(`/time-series/${id}`, { method: 'DELETE' }),
   metrics: (id: string) => requestJson<SeriesMetrics>(`/time-series/${id}/metrics`),
 };

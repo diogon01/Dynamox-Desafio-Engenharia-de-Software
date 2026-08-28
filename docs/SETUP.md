@@ -8,8 +8,8 @@ pontos), a **gestão de pontos de monitoramento e sensores** (criação, associa
 regra Pump × TcAg/TcAs, tabela paginada de 5 e ordenável por qualquer coluna) e a ingestão
 e leitura de séries temporais.
 
-Ainda falta a exclusão de séries temporais com recuperação completa paginada. Ver
-"Pendências" no fim deste documento.
+O backend do P0 está completo — incluindo exclusão de séries com recuperação paginada e
+documentação viva em Swagger (`/api/docs`). Ver "Pendências" no fim deste documento.
 
 > Os dados deste projeto são **sintéticos e didáticos**. A aplicação nunca chama a API
 > produtiva da Dynamox; o frontend recusa qualquer `VITE_API_BASE_URL` apontando para
@@ -66,7 +66,7 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 101 API + 81 web = 182 testes; exige o PostgreSQL no ar
+npm run test                  # 105 API + 81 web = 186 testes; exige o PostgreSQL no ar
 ```
 
 ## Credenciais de demonstração
@@ -110,8 +110,12 @@ proteção (o frontend apenas espelha):
 | `POST` | `/api/monitoring-points/:id/sensor` | Associa um sensor (`serialNumber` + `model`) ao ponto |
 | `POST` | `/api/telemetry-cycles` | Ingestão idempotente de um ciclo de telemetria |
 | `GET` | `/api/time-series` | Séries persistidas com máquina, ponto, sensor e contagem |
-| `GET` | `/api/time-series/:id/samples` | Amostras ordenadas por instante (`?limit=`, padrão 500) |
+| `GET` | `/api/time-series/:id/samples` | Amostras paginadas por `?limit=` (padrão 500, máx. 5000) e `?offset=`; resposta `{ items, total, limit, offset }` — a série inteira é recuperável |
 | `GET` | `/api/time-series/:id/metrics` | `count`, mínimo, máximo, média, último valor e janela |
+| `DELETE` | `/api/time-series/:id` | Exclui a série e todas as amostras em cascata (`204`); `404` se não existir |
+
+A documentação interativa (Swagger UI) fica em <http://localhost:3000/api/docs>, com o
+documento OpenAPI 3 em `/api/docs-json`. Use o botão **Authorize** com o token do login.
 
 ### Autenticando pelo terminal
 
@@ -267,8 +271,6 @@ prisma       schema, migrações e seed
 
 ## Pendências para fechar o P0
 
-- Exclusão de série temporal e das entidades relacionadas, junto com a recuperação
-  completa (paginada) de uma série.
 - README de entrega na raiz com decisões, pressupostos e limitações.
 - Medição reproduzível de latência abaixo de 350 ms.
 

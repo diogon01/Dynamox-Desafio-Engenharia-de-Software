@@ -95,6 +95,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
   const authed = {
     get: (url: string) => http().get(url).set('Authorization', bearer),
     post: (url: string) => http().post(url).set('Authorization', bearer),
+    delete: (url: string) => http().delete(url).set('Authorization', bearer),
   };
 
   async function counts(): Promise<{ cycles: number; samples: number; series: number }> {
@@ -397,8 +398,13 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
       .get(`/api/time-series/${series!.id as string}/samples`)
       .expect(200);
 
-    expect(samples.body.length).toBe(series!.sampleCount);
-    expect(samples.body[0].timestamp < samples.body[samples.body.length - 1].timestamp).toBe(true);
+    // TS-03: envelope com total — nada de truncamento silencioso.
+    expect(samples.body.total).toBe(series!.sampleCount);
+    expect(samples.body.items.length).toBe(series!.sampleCount);
+    expect(samples.body.limit).toBe(500);
+    expect(samples.body.offset).toBe(0);
+    const items = samples.body.items as Array<{ timestamp: string }>;
+    expect(items[0].timestamp < items[items.length - 1].timestamp).toBe(true);
 
     const metrics = await authed
       .get(`/api/time-series/${series!.id as string}/metrics`)
@@ -411,5 +417,79 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     await authed
       .get('/api/time-series/00000000-0000-0000-0000-000000000000/samples')
       .expect(404);
+  });
+
+  it('TS-03: pagina as amostras por offset e a união das páginas é a série inteira', async () => {
+    const list = await authed.get('/api/time-series').expect(200);
+    const series = (list.body as Array<Record<string, unknown>>).find(
+      (item) => item.sensorSerialNumber === SENSOR_SERIAL && item.axis === 'y',
+    );
+    const id = series!.id as string;
+
+    const full = await authed.get(`/api/time-series/${id}/samples`).expect(200);
+    const total = full.body.total as number;
+    expect(total).toBeGreaterThan(2);
+    expect(full.body.items).toHaveLength(total);
+
+    // Varre a série em páginas de 5 e reconstrói o conjunto completo, na ordem.
+    const pageSize = 5;
+    const collected: unknown[] = [];
+    for (let offset = 0; offset < total; offset += pageSize) {
+      const page = await authed
+        .get(`/api/time-series/${id}/samples?limit=${pageSize}&offset=${offset}`)
+        .expect(200);
+      expect(page.body.total).toBe(total);
+      expect(page.body.limit).toBe(pageSize);
+      expect(page.body.offset).toBe(offset);
+      expect(page.body.items.length).toBeLessThanOrEqual(pageSize);
+      collected.push(...page.body.items);
+    }
+    expect(collected).toEqual(full.body.items);
+  });
+
+  it('TS-03: parâmetros inválidos ou desconhecidos retornam 400, nunca 500', async () => {
+    const list = await authed.get('/api/time-series').expect(200);
+    const id = (list.body as Array<Record<string, unknown>>).find(
+      (item) => item.sensorSerialNumber === SENSOR_SERIAL,
+    )!.id as string;
+
+    for (const query of [
+      'limit=0',
+      'limit=5001',
+      'limit=abc',
+      'offset=-1',
+      `offset=${'9'.repeat(400)}`,
+      'foo=1',
+    ]) {
+      const response = await authed.get(`/api/time-series/${id}/samples?${query}`).expect(400);
+      expect(response.body.code).toBe('INVALID_SAMPLES_QUERY');
+    }
+  });
+
+  it('TS-05: DELETE remove a série e as amostras em cascata; repetir é 404', async () => {
+    const list = await authed.get('/api/time-series').expect(200);
+    const series = (list.body as Array<Record<string, unknown>>).find(
+      (item) => item.sensorSerialNumber === SENSOR_SERIAL && item.axis === 'y',
+    );
+    const id = series!.id as string;
+
+    await authed.delete(`/api/time-series/${id}`).expect(204);
+
+    // A série sumiu das rotas de leitura e nenhuma amostra órfã ficou no banco.
+    await authed.get(`/api/time-series/${id}/samples`).expect(404);
+    const orphans = await prisma.timeSeriesSample.count({ where: { timeSeriesId: id } });
+    expect(orphans).toBe(0);
+
+    const after = await authed.get('/api/time-series').expect(200);
+    expect((after.body as Array<Record<string, unknown>>).some((item) => item.id === id)).toBe(
+      false,
+    );
+
+    const repeat = await authed.delete(`/api/time-series/${id}`).expect(404);
+    expect(repeat.body.code).toBe('TIME_SERIES_NOT_FOUND');
+  });
+
+  it('TS-05: exclusão sem token é 401', async () => {
+    await http().delete('/api/time-series/qualquer').expect(401);
   });
 });

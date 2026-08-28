@@ -142,3 +142,11 @@ export interface TimeSeriesSampleDto {
   timestamp: string;
   value: number;
 }
+
+/** Página de amostras: recuperação completa por offset, nunca truncamento silencioso. */
+export interface TimeSeriesSamplePage {
+  items: TimeSeriesSampleDto[];
+  total: number;
+  limit: number;
+  offset: number;
+}

@@ -69,8 +69,11 @@ export const fetchTimeSeries = createAsyncThunk('diagnostics/fetchTimeSeries', a
 export const fetchSeriesDetail = createAsyncThunk(
   'diagnostics/fetchSeriesDetail',
   async (seriesId: string) => {
-    const [samples, metrics] = await Promise.all([api.samples(seriesId), api.metrics(seriesId)]);
-    return { seriesId, samples, metrics };
+    const [samplesPage, metrics] = await Promise.all([
+      api.samples(seriesId),
+      api.metrics(seriesId),
+    ]);
+    return { seriesId, samples: samplesPage.items, metrics };
   },
 );
 

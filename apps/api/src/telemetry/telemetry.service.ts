@@ -20,7 +20,7 @@ import {
   QuantityAxisMismatchError,
   assertAxisValidForQuantity,
   type SeriesMetrics,
-  type TimeSeriesSampleDto,
+  type TimeSeriesSamplePage,
   type TimeSeriesSummary,
 } from '@dynamox/domain';
 
@@ -460,20 +460,59 @@ export class TelemetryService {
     });
   }
 
-  async getSamples(timeSeriesId: string, limit = 500): Promise<TimeSeriesSampleDto[]> {
+  /**
+   * TS-03: recuperação completa por paginação offset/limit com `total` — o cliente
+   * sempre sabe quantas amostras existem e consegue varrer a série inteira; nada é
+   * truncado em silêncio. Página e contagem saem do MESMO snapshot (Repeatable Read).
+   */
+  async getSamplesPage(
+    timeSeriesId: string,
+    options: { limit: number; offset: number },
+  ): Promise<TimeSeriesSamplePage> {
     await this.assertTimeSeriesExists(timeSeriesId);
 
-    const samples = await this.prisma.timeSeriesSample.findMany({
-      where: { timeSeriesId },
-      orderBy: { timestamp: 'asc' },
-      take: Math.min(Math.max(limit, 1), 5000),
-      select: { timestamp: true, value: true },
-    });
+    const [samples, total] = await this.prisma.$transaction(
+      [
+        this.prisma.timeSeriesSample.findMany({
+          where: { timeSeriesId },
+          orderBy: { timestamp: 'asc' },
+          skip: options.offset,
+          take: options.limit,
+          select: { timestamp: true, value: true },
+        }),
+        this.prisma.timeSeriesSample.count({ where: { timeSeriesId } }),
+      ],
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
 
-    return samples.map((sample) => ({
-      timestamp: sample.timestamp.toISOString(),
-      value: sample.value,
-    }));
+    return {
+      items: samples.map((sample) => ({
+        timestamp: sample.timestamp.toISOString(),
+        value: sample.value,
+      })),
+      total,
+      limit: options.limit,
+      offset: options.offset,
+    };
+  }
+
+  /**
+   * TS-05: excluir a série remove as amostras em cascata (política do schema). O
+   * registro de auditoria em IngestionCycle é preservado de propósito: ele documenta
+   * que a ingestão aconteceu, mesmo que a série tenha sido apagada depois.
+   */
+  async removeTimeSeries(timeSeriesId: string): Promise<void> {
+    try {
+      await this.prisma.timeSeries.delete({ where: { id: timeSeriesId } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new NotFoundException({
+          code: 'TIME_SERIES_NOT_FOUND',
+          message: `Série temporal "${timeSeriesId}" não encontrada.`,
+        });
+      }
+      throw error;
+    }
   }
 
   async getMetrics(timeSeriesId: string): Promise<SeriesMetrics> {

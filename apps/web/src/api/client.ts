@@ -1,5 +1,6 @@
 import type {
   MachineType,
+  SensorModel,
   SeriesMetrics,
   TimeSeriesSampleDto,
   TimeSeriesSummary,
@@ -11,6 +12,36 @@ export interface MachineDto {
   type: MachineType;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MonitoringPointDto {
+  id: string;
+  name: string;
+  machine: { id: string; name: string; type: MachineType };
+  sensor: { id: string; serialNumber: string; model: SensorModel } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MonitoringPointSortColumn =
+  | 'machineName'
+  | 'machineType'
+  | 'pointName'
+  | 'sensorModel';
+
+export interface MonitoringPointPageDto {
+  items: MonitoringPointDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+  sortBy: MonitoringPointSortColumn;
+  sortDir: 'asc' | 'desc';
+}
+
+export interface MonitoringPointListParams {
+  page: number;
+  sortBy: MonitoringPointSortColumn;
+  sortDir: 'asc' | 'desc';
 }
 
 export interface HealthStatus {
@@ -134,6 +165,24 @@ export const api = {
   machines: () => requestJson<MachineDto[]>('/machines'),
   createMachine: (name: string, type: MachineType) =>
     requestJson<MachineDto>('/machines', { method: 'POST', body: { name, type } }),
+  monitoringPoints: (params: MonitoringPointListParams) => {
+    const query = new URLSearchParams({
+      page: String(params.page),
+      sortBy: params.sortBy,
+      sortDir: params.sortDir,
+    });
+    return requestJson<MonitoringPointPageDto>(`/monitoring-points?${query.toString()}`);
+  },
+  createMonitoringPoint: (machineId: string, name: string) =>
+    requestJson<MonitoringPointDto>('/monitoring-points', {
+      method: 'POST',
+      body: { machineId, name },
+    }),
+  assignSensor: (pointId: string, serialNumber: string, model: SensorModel) =>
+    requestJson<MonitoringPointDto>(`/monitoring-points/${pointId}/sensor`, {
+      method: 'POST',
+      body: { serialNumber, model },
+    }),
   timeSeries: () => requestJson<TimeSeriesSummary[]>('/time-series'),
   samples: (id: string) => requestJson<TimeSeriesSampleDto[]>(`/time-series/${id}/samples`),
   metrics: (id: string) => requestJson<SeriesMetrics>(`/time-series/${id}/metrics`),

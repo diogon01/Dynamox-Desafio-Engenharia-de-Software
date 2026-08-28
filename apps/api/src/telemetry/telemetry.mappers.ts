@@ -1,5 +1,9 @@
-import type { Axis as DomainAxis, PhysicalQuantity, SensorModel } from '@dynamox/domain';
-import { Axis, PhysicalQuantity as PrismaPhysicalQuantity, SensorModel as PrismaSensorModel } from '@prisma/client';
+import type { Axis as DomainAxis, PhysicalQuantity } from '@dynamox/domain';
+import { Axis, PhysicalQuantity as PrismaPhysicalQuantity } from '@prisma/client';
+
+// Reexportado de common/: a conversão de modelo de sensor passou a ser compartilhada
+// com o módulo de pontos de monitoramento.
+export { toDomainSensorModel, toPrismaSensorModel } from '../common/sensor-model.mapper';
 
 const PHYSICAL_QUANTITY_TO_PRISMA: Record<PhysicalQuantity, PrismaPhysicalQuantity> = {
   acceleration: PrismaPhysicalQuantity.ACCELERATION,
@@ -21,12 +25,6 @@ const AXIS_TO_PRISMA: Record<DomainAxis, Axis> = {
   z: Axis.Z,
 };
 
-const PRISMA_TO_SENSOR_MODEL: Record<PrismaSensorModel, SensorModel> = {
-  TC_AG: 'TcAg',
-  TC_AS: 'TcAs',
-  HF_PLUS: 'HF+',
-};
-
 export function toPrismaPhysicalQuantity(value: PhysicalQuantity): PrismaPhysicalQuantity {
   return PHYSICAL_QUANTITY_TO_PRISMA[value];
 }
@@ -42,8 +40,4 @@ export function toPrismaAxis(value: DomainAxis | undefined): Axis {
 
 export function toDomainAxis(value: Axis): DomainAxis | null {
   return value === Axis.NONE ? null : (value.toLowerCase() as DomainAxis);
-}
-
-export function toDomainSensorModel(value: PrismaSensorModel): SensorModel {
-  return PRISMA_TO_SENSOR_MODEL[value];
 }

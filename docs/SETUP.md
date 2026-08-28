@@ -3,10 +3,12 @@
 Já estão operacionais: a fundação do monorepo, o contrato de telemetria (SCP-04), a
 **autenticação completa** (login com credencial fixa, JWT, guard global, sessão e logout),
 o **CRUD autenticado de máquinas no backend**, a **listagem e o cadastro de máquinas no
-frontend** e a ingestão e leitura de séries temporais.
+frontend**, a **gestão de pontos de monitoramento e sensores** (criação, associação com a
+regra Pump × TcAg/TcAs, tabela paginada de 5 e ordenável por qualquer coluna) e a ingestão
+e leitura de séries temporais.
 
-Ainda faltam partes do fluxo completo — edição e exclusão de máquinas na interface, e toda
-a gestão de pontos de monitoramento e sensores. Ver "Pendências" no fim deste documento.
+Ainda faltam partes do fluxo completo — edição e exclusão de máquinas na interface e
+exclusão de séries. Ver "Pendências" no fim deste documento.
 
 > Os dados deste projeto são **sintéticos e didáticos**. A aplicação nunca chama a API
 > produtiva da Dynamox; o frontend recusa qualquer `VITE_API_BASE_URL` apontando para
@@ -63,7 +65,7 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 79 API + 50 web = 129 testes; exige o PostgreSQL no ar
+npm run test                  # 101 API + 69 web = 170 testes; exige o PostgreSQL no ar
 ```
 
 ## Credenciais de demonstração
@@ -102,6 +104,9 @@ proteção (o frontend apenas espelha):
 | `GET` | `/api/machines/:id` | Uma máquina; `404` se não existir |
 | `PATCH` | `/api/machines/:id` | Altera `name` e/ou `type`; corpo vazio é `400` |
 | `DELETE` | `/api/machines/:id` | Remove a máquina (`204`); `404` se não existir |
+| `POST` | `/api/monitoring-points` | Cria ponto de monitoramento (`machineId` + `name`) |
+| `GET` | `/api/monitoring-points` | Lista paginada (5 por página) e ordenável por qualquer coluna |
+| `POST` | `/api/monitoring-points/:id/sensor` | Associa um sensor (`serialNumber` + `model`) ao ponto |
 | `POST` | `/api/telemetry-cycles` | Ingestão idempotente de um ciclo de telemetria |
 | `GET` | `/api/time-series` | Séries persistidas com máquina, ponto, sensor e contagem |
 | `GET` | `/api/time-series/:id/samples` | Amostras ordenadas por instante (`?limit=`, padrão 500) |
@@ -134,10 +139,34 @@ Sem o header, qualquer rota privada responde `401`.
   (política já declarada no schema); sensores associados são apenas desassociados, não
   apagados.
 
+### Convenções de pontos de monitoramento e sensores
+
+- **Ponto**: pertence a uma máquina; o nome (trim, máx. 120) é único **por máquina**
+  (`409 MONITORING_POINT_NAME_CONFLICT`); máquina inexistente é `404`.
+- **Sensor**: identificador (`serialNumber`) único global (`409 SENSOR_SERIAL_CONFLICT`);
+  modelo em `TcAg`/`TcAs`/`HF+` (`400 INVALID_SENSOR_MODEL`); cada ponto aceita no máximo
+  um sensor (`409 MONITORING_POINT_SENSOR_CONFLICT`).
+- **Regra Pump**: máquinas `Pump` recusam `TcAg`/`TcAs` na associação
+  (`409 SENSOR_MODEL_NOT_ALLOWED`) **e** na transição de tipo: um `PATCH /machines/:id`
+  que tornaria a máquina `Pump` com sensores proibidos é revertido com
+  `409 MACHINE_TYPE_SENSOR_CONFLICT`. Os dois fluxos são serializados por lock na linha
+  da máquina, então a regra vale mesmo sob concorrência.
+- **Listagem**: `GET /api/monitoring-points?page=1&pageSize=5&sortBy=machineName&sortDir=asc`.
+  A **interface usa sempre 5 por página**, como pede o enunciado; na API o `pageSize` é um
+  parâmetro opcional (padrão 5, máximo 50) para testes e consumidores programáticos.
+  Parâmetros desconhecidos na query são rejeitados com `400`, como no corpo.
+  `sortBy` aceita `machineName`, `machineType`, `pointName` e `sensorModel`; a ordenação
+  usa o vocabulário público exibido na tabela (ex.: `HF+` < `TcAg` < `TcAs`), com pontos
+  sem sensor sempre ao final, e desempate determinístico por nome e id. A resposta traz
+  `items`, `total`, `page`, `pageSize`, `sortBy` e `sortDir`.
+
 ### Ingestão de um ciclo
+
+A rota é privada: reutilize o `TOKEN` obtido na seção **Autenticando pelo terminal**.
 
 ```bash
 curl -X POST http://localhost:3000/api/telemetry-cycles \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -H 'Idempotency-Key: minha-chave-001' \
   --data @contracts/dynamox/examples/telemetry-cycle.example.json
@@ -222,16 +251,19 @@ prisma       schema, migrações e seed
   carrega a lista pela API autenticada, com estados de carregamento, erro e lista vazia, e
   formulário de cadastro com seleção `Pump`/`Fan`, validação de nome antes do envio e
   exibição da mensagem real da API para nome duplicado.
+- **Pontos de monitoramento e sensores** (MON-01…06): criação de pontos por máquina,
+  associação de sensor com identificador único e modelo `TcAg`/`TcAs`/`HF+`, regra
+  `Pump` × (`TcAg`, `TcAs`) aplicada na associação **e** na troca de tipo da máquina
+  (com lock de linha contra corridas), tabela paginada de 5 em 5 e ordenável pelas quatro
+  colunas do enunciado — tudo no backend e no frontend, coberto por e2e contra o banco
+  real e testes de componente.
 - Ingestão idempotente de telemetria e leitura de séries com métricas.
 
 ## Pendências para fechar o P0
 
 - Edição e exclusão de máquinas na interface (MAC-03) — a API já expõe `PATCH` e `DELETE`.
-- CRUD de pontos de monitoramento e associação de sensor, aplicando a regra
-  `Pump` × (`TcAg`, `TcAs`) na API (a regra já existe e é testada em `libs/domain`).
-- Lista paginada de 5 itens por página com ordenação por coluna.
-- Exclusão de série temporal e das entidades relacionadas.
-- Telas de gestão no frontend (hoje há apenas o painel de diagnóstico).
+- Exclusão de série temporal e das entidades relacionadas, junto com a recuperação
+  completa (paginada) de uma série.
 - README de entrega na raiz com decisões, pressupostos e limitações.
 - Medição reproduzível de latência abaixo de 350 ms.
 

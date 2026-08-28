@@ -66,12 +66,40 @@ export class MachinesService {
 
   async update(id: string, dto: UpdateMachineDto): Promise<MachineDto> {
     try {
-      const machine = await this.prisma.machine.update({
-        where: { id },
-        data: {
-          ...(dto.name !== undefined ? { name: dto.name } : {}),
-          ...(dto.type !== undefined ? { type: toPrismaMachineType(dto.type) } : {}),
-        },
+      const machine = await this.prisma.$transaction(async (tx) => {
+        // O update toma o lock da linha da máquina; a verificação de sensores abaixo
+        // roda com esse lock, serializando este PATCH contra associações concorrentes
+        // de sensor (que também travam a linha da máquina antes de decidir a regra).
+        const updated = await tx.machine.update({
+          where: { id },
+          data: {
+            ...(dto.name !== undefined ? { name: dto.name } : {}),
+            ...(dto.type !== undefined ? { type: toPrismaMachineType(dto.type) } : {}),
+          },
+        });
+
+        // Regra do enunciado em toda transição relevante: uma máquina não pode virar
+        // Pump se algum dos seus pontos tiver sensor TcAg ou TcAs. O throw desfaz o
+        // update — a transação garante que a violação nunca chega ao banco.
+        if (dto.type === 'Pump') {
+          const blocked = await tx.sensor.findMany({
+            where: {
+              monitoringPoint: { machineId: id },
+              model: { in: ['TC_AG', 'TC_AS'] },
+            },
+            select: { serialNumber: true, model: true },
+            orderBy: { serialNumber: 'asc' },
+          });
+          if (blocked.length > 0) {
+            const serials = blocked.map((sensor) => sensor.serialNumber).join(', ');
+            throw new ConflictException({
+              code: 'MACHINE_TYPE_SENSOR_CONFLICT',
+              message: `A máquina não pode virar Pump: sensor(es) TcAg/TcAs associado(s) (${serials}).`,
+            });
+          }
+        }
+
+        return updated;
       });
       return toDto(machine);
     } catch (error) {

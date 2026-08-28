@@ -4,11 +4,13 @@ import { useDispatch, useSelector } from 'react-redux';
 import { authReducer } from '../features/auth/authSlice';
 import { diagnosticsReducer } from '../features/diagnostics/diagnosticsSlice';
 import { machinesReducer } from '../features/machines/machinesSlice';
+import { monitoringPointsReducer } from '../features/monitoringPoints/monitoringPointsSlice';
 
 const rootReducer = {
   auth: authReducer,
   diagnostics: diagnosticsReducer,
   machines: machinesReducer,
+  monitoringPoints: monitoringPointsReducer,
 };
 
 export function createStore(preloadedState?: Partial<RootState>) {

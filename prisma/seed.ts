@@ -14,8 +14,16 @@ const SEED_USER_EMAIL = process.env.SEED_USER_EMAIL ?? 'analista@dynamox.local';
 const SEED_USER_PASSWORD = process.env.SEED_USER_PASSWORD ?? 'Dynamox@2026';
 
 const MACHINE_NAME = 'P-101';
-const MONITORING_POINT_NAME = 'Mancal lado acoplamento';
-const SENSOR_SERIAL = 'SIM-HF-001';
+
+/**
+ * O enunciado pede pelo menos dois pontos de monitoramento. Ambos ficam na P-101
+ * (mancais dos dois lados do eixo), cada um com seu sensor HF+ — único modelo
+ * permitido em uma Pump.
+ */
+const MONITORING_POINTS = [
+  { name: 'Mancal lado acoplamento', sensorSerial: 'SIM-HF-001' },
+  { name: 'Mancal lado oposto ao acoplamento', sensorSerial: 'SIM-HF-002' },
+] as const;
 
 /**
  * Amostras da demonstração: 30 pontos a cada 10 s, terminando em um instante fixo.
@@ -65,34 +73,42 @@ async function main(): Promise<void> {
     create: { name: MACHINE_NAME, type: 'PUMP' },
   });
 
-  const externalResourceId = deterministicResourceId(
-    'dynamox-challenge',
-    'monitoring-point',
-    MACHINE_NAME,
-    MONITORING_POINT_NAME,
-  );
+  const points = [];
+  for (const { name, sensorSerial } of MONITORING_POINTS) {
+    // Derivação INTENCIONALMENTE pelo NOME da máquina (e não pelo id, como faz a API):
+    // o id é um UUID gerado pelo banco e mudaria a cada ambiente, destruindo o
+    // determinismo do seed e quebrando o resourceId 42d726ba... referenciado pelo
+    // exemplo de ingestão em contracts/dynamox/examples.
+    const externalResourceId = deterministicResourceId(
+      'dynamox-challenge',
+      'monitoring-point',
+      MACHINE_NAME,
+      name,
+    );
 
-  const monitoringPoint = await prisma.monitoringPoint.upsert({
-    where: { machineId_name: { machineId: machine.id, name: MONITORING_POINT_NAME } },
-    update: { externalResourceId },
-    create: {
-      name: MONITORING_POINT_NAME,
-      machineId: machine.id,
-      externalResourceId,
-    },
-  });
+    const monitoringPoint = await prisma.monitoringPoint.upsert({
+      where: { machineId_name: { machineId: machine.id, name } },
+      update: { externalResourceId },
+      create: { name, machineId: machine.id, externalResourceId },
+    });
 
-  // HF+ é o único modelo compatível com uma máquina Pump (TcAg e TcAs são proibidos
-  // pelo enunciado). A regra é aplicada em @dynamox/domain e validada nos testes.
-  const sensor = await prisma.sensor.upsert({
-    where: { serialNumber: SENSOR_SERIAL },
-    update: { model: 'HF_PLUS', monitoringPointId: monitoringPoint.id },
-    create: {
-      serialNumber: SENSOR_SERIAL,
-      model: 'HF_PLUS',
-      monitoringPointId: monitoringPoint.id,
-    },
-  });
+    // HF+ é o único modelo compatível com uma máquina Pump (TcAg e TcAs são proibidos
+    // pelo enunciado). A regra é aplicada em @dynamox/domain e validada nos testes.
+    const sensor = await prisma.sensor.upsert({
+      where: { serialNumber: sensorSerial },
+      update: { model: 'HF_PLUS', monitoringPointId: monitoringPoint.id },
+      create: {
+        serialNumber: sensorSerial,
+        model: 'HF_PLUS',
+        monitoringPointId: monitoringPoint.id,
+      },
+    });
+
+    points.push({ monitoringPoint, sensor });
+  }
+
+  // A série temporal de demonstração fica no sensor do primeiro ponto (lado acoplamento).
+  const [{ sensor }] = points;
 
   const timeSeries = await prisma.timeSeries.upsert({
     where: {
@@ -132,9 +148,13 @@ async function main(): Promise<void> {
   console.log('Seed concluído (dados sintéticos de demonstração):');
   console.log(`  usuário............: ${user.email}`);
   console.log(`  máquina............: ${machine.name} (${machine.type})`);
-  console.log(`  ponto de monitor...: ${monitoringPoint.name}`);
-  console.log(`  resourceId.........: ${monitoringPoint.externalResourceId}`);
-  console.log(`  sensor.............: ${sensor.serialNumber} (${sensor.model})`);
+  for (const point of points) {
+    console.log(
+      `  ponto de monitor...: ${point.monitoringPoint.name} — sensor ` +
+        `${point.sensor.serialNumber} (${point.sensor.model}) — ` +
+        `resourceId ${point.monitoringPoint.externalResourceId}`,
+    );
+  }
   console.log(`  série temporal.....: ${timeSeries.id} — ${sampleCount} amostras`);
 }
 

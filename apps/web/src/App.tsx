@@ -10,6 +10,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { registerUnauthorizedHandler } from './api/client';
 import { HealthPanel } from './components/HealthPanel';
 import { MachinesPanel } from './components/MachinesPanel';
+import { MonitoringPointsPanel } from './components/MonitoringPointsPanel';
 import { RequireAuth } from './components/RequireAuth';
 import { SeriesPanel } from './components/SeriesPanel';
 import { logout, restoreSession, sessionExpired } from './features/auth/authSlice';
@@ -47,6 +48,7 @@ function Dashboard(): JSX.Element {
       <Container maxWidth="lg" sx={{ py: 4, display: 'grid', gap: 3 }}>
         <HealthPanel />
         <MachinesPanel />
+        <MonitoringPointsPanel />
         <SeriesPanel />
 
         <Typography variant="caption" color="text.secondary">

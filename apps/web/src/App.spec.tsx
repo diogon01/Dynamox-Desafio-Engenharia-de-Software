@@ -54,6 +54,18 @@ describe('App — autenticação e proteção de rotas', () => {
             JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: 't' }),
             { status: 200 },
           );
+        if (url.includes('/monitoring-points'))
+          return new Response(
+            JSON.stringify({
+              items: [],
+              total: 0,
+              page: 1,
+              pageSize: 5,
+              sortBy: 'machineName',
+              sortDir: 'asc',
+            }),
+            { status: 200 },
+          );
         return new Response('[]', { status: 200 });
       }),
     );
@@ -81,6 +93,18 @@ describe('App — autenticação e proteção de rotas', () => {
         if (url.endsWith('/health'))
           return new Response(
             JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: 't' }),
+            { status: 200 },
+          );
+        if (url.includes('/monitoring-points'))
+          return new Response(
+            JSON.stringify({
+              items: [],
+              total: 0,
+              page: 1,
+              pageSize: 5,
+              sortBy: 'machineName',
+              sortDir: 'asc',
+            }),
             { status: 200 },
           );
         return new Response('[]', { status: 200 });
@@ -116,6 +140,18 @@ describe('App — autenticação e proteção de rotas', () => {
         if (url.endsWith('/health'))
           return new Response(
             JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: 't' }),
+            { status: 200 },
+          );
+        if (url.includes('/monitoring-points'))
+          return new Response(
+            JSON.stringify({
+              items: [],
+              total: 0,
+              page: 1,
+              pageSize: 5,
+              sortBy: 'machineName',
+              sortDir: 'asc',
+            }),
             { status: 200 },
           );
         return new Response('[]', { status: 200 });

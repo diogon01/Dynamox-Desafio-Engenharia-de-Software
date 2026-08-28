@@ -39,8 +39,10 @@ npm run dev:api               # http://localhost:3000/api
 npm run dev:web               # http://localhost:5173
 ```
 
-Abra <http://localhost:5173>, faça login com as credenciais da seção seguinte e o painel
-de diagnóstico carrega a série temporal do seed.
+Abra <http://localhost:5173> e faça login com as credenciais da seção seguinte. A
+interface segue Material Design com menu lateral: **Visão geral** (estado da API e série
+temporal), **Máquinas** (CRUD completo) e **Pontos e sensores** (criação, associação e
+tabela paginada), além do atalho para o Swagger.
 
 ### Variáveis de ambiente
 
@@ -66,7 +68,7 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 105 API + 81 web = 186 testes; exige o PostgreSQL no ar
+npm run test                  # 105 API + 82 web = 187 testes; exige o PostgreSQL no ar
 ```
 
 ## Credenciais de demonstração

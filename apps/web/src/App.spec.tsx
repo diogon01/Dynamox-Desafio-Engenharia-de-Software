@@ -1,6 +1,6 @@
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider } from '@mui/material/styles';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
@@ -185,5 +185,60 @@ describe('App — autenticação e proteção de rotas', () => {
     await userEvent.click(screen.getByRole('button', { name: /^Entrar$/i }));
 
     expect(await screen.findByText(/Credenciais inválidas/i)).toBeDefined();
+  });
+});
+
+describe('AppShell — navegação lateral', () => {
+  it('menu lateral navega entre visão geral, máquinas e pontos', async () => {
+    setToken('jwt-valido');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/auth/me')) return new Response(JSON.stringify(USER), { status: 200 });
+        if (url.endsWith('/health'))
+          return new Response(
+            JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: 't' }),
+            { status: 200 },
+          );
+        if (url.includes('/monitoring-points'))
+          return new Response(
+            JSON.stringify({
+              items: [],
+              total: 0,
+              page: 1,
+              pageSize: 5,
+              sortBy: 'machineName',
+              sortDir: 'asc',
+            }),
+            { status: 200 },
+          );
+        return new Response('[]', { status: 200 });
+      }),
+    );
+
+    renderApp();
+
+    // Visão geral carregada. No viewport de teste (mobile) o menu abre pelo botão.
+    expect(await screen.findByRole('heading', { name: /Estado da API/i })).toBeDefined();
+
+    const openNav = async () => {
+      await userEvent.click(screen.getByRole('button', { name: /Abrir menu de navegação/i }));
+      return screen.getByRole('navigation', { name: /Navegação principal/i });
+    };
+
+    // Máquinas.
+    let nav = await openNav();
+    await userEvent.click(within(nav).getByText('Máquinas'));
+    // Título da página (toolbar) e título do painel: os dois exibem 'Máquinas'.
+    expect(await screen.findAllByRole('heading', { name: /^Máquinas$/i })).toHaveLength(2);
+    expect(screen.queryByRole('heading', { name: /Estado da API/i })).toBeNull();
+
+    // Pontos e sensores.
+    nav = await openNav();
+    await userEvent.click(within(nav).getByText('Pontos e sensores'));
+    expect(
+      await screen.findByRole('heading', { name: /Pontos de monitoramento/i }),
+    ).toBeDefined();
   });
 });

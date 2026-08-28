@@ -17,6 +17,7 @@
     "@dynamox/ui": "0.1.0",
     "@emotion/react": "^11.13.3",
     "@emotion/styled": "^11.13.0",
+    "@mui/icons-material": "^5.18.0",
     "@mui/material": "^5.16.7",
     "@reduxjs/toolkit": "^2.3.0",
     "react": "^18.3.1",

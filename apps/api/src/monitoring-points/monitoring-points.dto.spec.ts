@@ -1,0 +1,143 @@
+/**
+ * Unitários puros dos parsers de pontos de monitoramento: corpo e query string.
+ * Sem Nest, Prisma ou banco.
+ */
+import { BadRequestException } from '@nestjs/common';
+
+import {
+  MAX_PAGE,
+  MAX_PAGE_SIZE,
+  parseAssignSensorDto,
+  parseCreateMonitoringPointDto,
+  parseListMonitoringPointsQuery,
+} from './monitoring-points.dto';
+
+function errorCode(fn: () => unknown): string {
+  try {
+    fn();
+  } catch (error) {
+    if (error instanceof BadRequestException) {
+      return (error.getResponse() as { code: string }).code;
+    }
+    throw error;
+  }
+  throw new Error('esperava BadRequestException');
+}
+
+describe('parseCreateMonitoringPointDto', () => {
+  it('aceita machineId e nome válidos, com trim no nome', () => {
+    expect(parseCreateMonitoringPointDto({ machineId: 'm-1', name: ' Mancal LA ' })).toEqual({
+      machineId: 'm-1',
+      name: 'Mancal LA',
+    });
+  });
+
+  it('recusa nome vazio, nome longo e propriedade desconhecida', () => {
+    expect(
+      errorCode(() => parseCreateMonitoringPointDto({ machineId: 'm-1', name: '  ' })),
+    ).toBe('INVALID_MONITORING_POINT_PAYLOAD');
+    expect(
+      errorCode(() =>
+        parseCreateMonitoringPointDto({ machineId: 'm-1', name: 'x'.repeat(121) }),
+      ),
+    ).toBe('INVALID_MONITORING_POINT_PAYLOAD');
+    expect(
+      errorCode(() =>
+        parseCreateMonitoringPointDto({ machineId: 'm-1', name: 'P', extra: 1 }),
+      ),
+    ).toBe('INVALID_MONITORING_POINT_PAYLOAD');
+  });
+});
+
+describe('parseAssignSensorDto — modelos permitidos', () => {
+  it('aceita exatamente TcAg, TcAs e HF+', () => {
+    for (const model of ['TcAg', 'TcAs', 'HF+'] as const) {
+      expect(parseAssignSensorDto({ serialNumber: 'S-1', model })).toEqual({
+        serialNumber: 'S-1',
+        model,
+      });
+    }
+  });
+
+  it('recusa modelo fora do vocabulário com código próprio', () => {
+    for (const model of ['HF', 'tcag', 'TCAG', '']) {
+      expect(errorCode(() => parseAssignSensorDto({ serialNumber: 'S-1', model }))).toBe(
+        'INVALID_SENSOR_MODEL',
+      );
+    }
+  });
+
+  it('recusa identificador vazio ou acima do limite', () => {
+    expect(errorCode(() => parseAssignSensorDto({ serialNumber: '  ', model: 'HF+' }))).toBe(
+      'INVALID_MONITORING_POINT_PAYLOAD',
+    );
+    expect(
+      errorCode(() =>
+        parseAssignSensorDto({ serialNumber: 'x'.repeat(61), model: 'HF+' }),
+      ),
+    ).toBe('INVALID_MONITORING_POINT_PAYLOAD');
+  });
+});
+
+describe('parseListMonitoringPointsQuery — contrato rígido da listagem', () => {
+  it('sem parâmetros, usa os padrões do enunciado (página 1, 5 por página)', () => {
+    expect(parseListMonitoringPointsQuery({})).toEqual({
+      page: 1,
+      pageSize: 5,
+      sortBy: 'machineName',
+      sortDir: 'asc',
+    });
+  });
+
+  it('aceita ordenação por qualquer uma das quatro colunas, nos dois sentidos', () => {
+    for (const sortBy of ['machineName', 'machineType', 'pointName', 'sensorModel']) {
+      for (const sortDir of ['asc', 'desc']) {
+        expect(parseListMonitoringPointsQuery({ sortBy, sortDir })).toMatchObject({
+          sortBy,
+          sortDir,
+        });
+      }
+    }
+  });
+
+  it('recusa parâmetro desconhecido em vez de ignorá-lo', () => {
+    expect(errorCode(() => parseListMonitoringPointsQuery({ injetado: 'x' }))).toBe(
+      'INVALID_MONITORING_POINT_QUERY',
+    );
+  });
+
+  it('recusa page/pageSize não inteiros ou fora dos limites', () => {
+    for (const query of [
+      { page: '0' },
+      { page: 'abc' },
+      { page: '1.5' },
+      { page: String(MAX_PAGE + 1) },
+      { pageSize: '0' },
+      { pageSize: String(MAX_PAGE_SIZE + 1) },
+    ]) {
+      expect(errorCode(() => parseListMonitoringPointsQuery(query))).toBe(
+        'INVALID_MONITORING_POINT_QUERY',
+      );
+    }
+  });
+
+  it('recusa inteiros gigantes que virariam Infinity no offset (400, nunca 500)', () => {
+    expect(errorCode(() => parseListMonitoringPointsQuery({ page: '9'.repeat(400) }))).toBe(
+      'INVALID_MONITORING_POINT_QUERY',
+    );
+    expect(
+      errorCode(() =>
+        parseListMonitoringPointsQuery({ page: String(Number.MAX_SAFE_INTEGER + 2) }),
+      ),
+    ).toBe('INVALID_MONITORING_POINT_QUERY');
+  });
+
+  it('recusa sortBy e sortDir fora do vocabulário', () => {
+    expect(errorCode(() => parseListMonitoringPointsQuery({ sortBy: 'id' }))).toBe(
+      'INVALID_MONITORING_POINT_QUERY',
+    );
+    expect(errorCode(() => parseListMonitoringPointsQuery({ sortDir: 'up' }))).toBe(
+      'INVALID_MONITORING_POINT_QUERY',
+    );
+  });
+});

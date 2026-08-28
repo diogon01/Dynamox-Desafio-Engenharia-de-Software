@@ -11,7 +11,9 @@
     "lint": "eslint src test --max-warnings 0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "jest --runInBand",
-    "test:contract": "jest --runInBand --testPathPattern=contract"
+    "test:contract": "jest --runInBand --testPathPattern=contract",
+    "test:unit": "jest --runInBand --testPathPattern=src",
+    "test:e2e": "jest --runInBand --testPathPattern=test"
   },
   "dependencies": {
     "@dynamox/contracts": "0.1.0",

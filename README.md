@@ -229,9 +229,15 @@ O enunciado pede que ambiguidades sejam resolvidas com pressupostos explícitos:
 
 ```bash
 npm run test                        # tudo: API + web
-npm run test -w @dynamox/api        # Jest: e2e contra PostgreSQL real + contrato SCP-04
+npm run test -w @dynamox/api        # Jest: unitários + e2e (PostgreSQL real) + contrato
+npm run test:unit -w @dynamox/api   # somente unitários isolados (mocks, sem banco, < 2 s)
 npm run test -w @dynamox/web        # Vitest: componentes, slices Redux e cliente HTTP
 ```
+
+Os **unitários isolados** cobrem as regras de negócio sem infraestrutura: parsers de
+corpo e query (contratos rígidos), regra Pump × TcAg/TcAs na associação e na troca de
+tipo, tradução dos erros do banco em códigos HTTP estáveis, bijeção do vocabulário
+público ↔ enums internos e o envelope de paginação de amostras.
 
 As suítes de API exigem o PostgreSQL do compose no ar (`npm run db:up`). Os testes e2e
 criam e removem as próprias fixtures (prefixos dedicados) e não destroem o seed. Entre os

@@ -61,7 +61,7 @@ function parseBoundedInt(
 }
 
 /** Mesma filosofia dos outros módulos: parâmetro desconhecido é erro, não silêncio. */
-function parseSamplesQuery(query: Record<string, unknown>): { limit: number; offset: number } {
+export function parseSamplesQuery(query: Record<string, unknown>): { limit: number; offset: number } {
   const unknown = Object.keys(query).filter(
     (key) => !(SAMPLES_QUERY_KEYS as readonly string[]).includes(key),
   );

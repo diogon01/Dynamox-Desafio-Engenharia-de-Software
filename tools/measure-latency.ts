@@ -65,7 +65,9 @@ async function measureRoute(spec: RouteSpec): Promise<RouteResult> {
 
     const measured = i >= WARMUP_COUNT;
     if (!response.ok) {
-      if (measured) result.failures += 1;
+      // Leitura estrita de "all requests": resposta inválida reprova a rota mesmo no
+      // aquecimento — aquecer com erro não é aquecer, é mascarar defeito.
+      result.failures += 1;
     } else if (measured) {
       result.samples.push(elapsed);
     }
@@ -96,9 +98,12 @@ async function main(): Promise<void> {
   const AUTH = { Authorization: `Bearer ${token}` };
   const JSON_AUTH = { ...AUTH, 'Content-Type': 'application/json' };
 
-  const series = (await (
-    await fetch(`${BASE_URL}/time-series`, { headers: AUTH })
-  ).json()) as Array<{ id: string }>;
+  const seriesResponse = await fetch(`${BASE_URL}/time-series`, { headers: AUTH });
+  if (!seriesResponse.ok) {
+    console.error(`Pré-condição falhou: GET /time-series respondeu ${seriesResponse.status}.`);
+    process.exit(1);
+  }
+  const series = (await seriesResponse.json()) as Array<{ id: string }>;
   if (series.length === 0) {
     console.error('Nenhuma série no banco. Rode o seed primeiro: npm run seed');
     process.exit(1);
@@ -170,14 +175,25 @@ async function main(): Promise<void> {
     `amostras: ${SAMPLE_COUNT} por rota (após ${WARMUP_COUNT} de aquecimento descartadas), sequenciais\n`,
   );
 
+  // A limpeza roda SEMPRE, mesmo se a medição estourar no meio: nenhuma máquina LAT-*
+  // pode sobrar no banco (aconteceu numa versão anterior deste script; nunca mais).
   const results: RouteResult[] = [];
-  for (const route of routes) {
-    results.push(await measureRoute(route));
-  }
-
-  // Limpeza defensiva: se alguma criação sobrou (falha no DELETE), remove agora.
-  for (const id of createdIds) {
-    await fetch(`${BASE_URL}/machines/${id}`, { method: 'DELETE', headers: AUTH }).catch(() => {});
+  try {
+    for (const route of routes) {
+      results.push(await measureRoute(route));
+    }
+  } finally {
+    let leftovers = 0;
+    for (const id of createdIds) {
+      const removed = await fetch(`${BASE_URL}/machines/${id}`, {
+        method: 'DELETE',
+        headers: AUTH,
+      }).catch(() => null);
+      if (!removed || (!removed.ok && removed.status !== 404)) leftovers += 1;
+    }
+    if (leftovers > 0) {
+      console.error(`ATENÇÃO: ${leftovers} máquina(s) LAT-* não puderam ser removidas.`);
+    }
   }
 
   const header = '| rota | n | min | média | p50 | p95 | max | veredito |';

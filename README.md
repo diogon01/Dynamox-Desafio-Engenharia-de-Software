@@ -106,7 +106,7 @@ curl -s http://localhost:3000/api/machines -H "Authorization: Bearer $TOKEN"
 ### Verificações
 
 ```bash
-npm run lint                  # ESLint nos 5 projetos, zero warnings tolerados
+npm run lint                  # ESLint nos 6 projetos, zero warnings tolerados
 npm run typecheck             # tsc estrito em todos os projetos
 npm run test                  # suítes API (Jest, contra PostgreSQL real) + web (Vitest)
 npm run build                 # Nx: libs -> api -> web

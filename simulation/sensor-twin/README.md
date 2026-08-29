@@ -12,10 +12,17 @@ com o mesmo validador Ajv e o mesmo fingerprint do backend.
 
 Plano completo e decisões: [`docs/planning/BON-06_EXECUTION_PLAN_V2.md`](../../docs/planning/BON-06_EXECUTION_PLAN_V2.md).
 
-Estado atual: **B1/B2** — parâmetros de cenário e síntese determinística do sinal.
-Contrato/ingestão (B3/B4) e a camada ROS opcional (B5) chegam nos próximos blocos;
-este guia será completado junto (B6).
+Estado atual: **B1–B4** — síntese determinística, janelamento RMS, mapeamento para o
+contrato real e ingestão end-to-end pela API existente. Camada ROS opcional (B5) e o
+guia completo (B6) chegam nos próximos blocos.
+
+Testes: **276 na suíte convencional** (152 API, 82 web, 42 sensor twin) **+ 6 testes de
+integração do twin executados separadamente** — a integração exige a API local no ar e
+nunca roda no `npm run test`.
 
 ```bash
-npm run test -w @dynamox/sensor-twin    # unitários puros (sem rede, banco ou ROS)
+npm run test -w @dynamox/sensor-twin    # 42 unitários puros (sem rede, banco ou ROS)
+npm run twin:cycle -- --scenario normal # gera e valida um ciclo localmente
+npm run twin:ingest -- --scenario imbalance  # gera, autentica e envia à API local
+npm run twin:integration                # prova end-to-end (exige db:up + dev:api)
 ```

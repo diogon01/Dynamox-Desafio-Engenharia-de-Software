@@ -12,7 +12,7 @@
  * o seed; apagá-las destruiria dados que não pertencem ao teste).
  */
 import {
-  fetchSamples,
+  fetchAllSamples,
   fetchSeries,
   ingestCycle,
   loadTwinConfig,
@@ -62,13 +62,13 @@ describe('BON-06 — vertical slice real: sensor sintético → API → PostgreS
     expect(rotational!.unit).toBe('rpm');
 
     const windowStart = normal.payload.telemetryCycleData.measurements[1].dataPoints[0];
-    const samples = await fetchSamples(config, token, accelerationY!.id, { limit: 5000 });
-    const persisted = samples.items.find((s) => s.timestamp === windowStart.timestamp);
+    const samples = await fetchAllSamples(config, token, accelerationY!.id);
+    const persisted = samples.find((s) => s.timestamp === windowStart.timestamp);
     expect(persisted).toBeDefined();
     // O valor lido de volta é EXATAMENTE o RMS de 6 casas enviado.
     expect(persisted!.value).toBe(windowStart.value);
 
-    const inCycle = samples.items.filter(
+    const inCycle = samples.filter(
       (s) =>
         s.timestamp >= windowStart.timestamp &&
         s.timestamp <= normal.payload.telemetryCycleData.measurements[1].dataPoints[59].timestamp,
@@ -105,13 +105,13 @@ describe('BON-06 — vertical slice real: sensor sintético → API → PostgreS
     // Os dois períodos são recuperáveis e carregam assinaturas diferentes (≥ 2× no RMS).
     const series = await twinSeries();
     const accelerationY = series.find((s) => s.physicalQuantity === 'acceleration' && s.axis === 'y')!;
-    const samples = await fetchSamples(config, token, accelerationY.id, { limit: 5000 });
+    const samples = await fetchAllSamples(config, token, accelerationY.id);
 
     const meanIn = (cycle: BuiltCycle) => {
       const points = cycle.payload.telemetryCycleData.measurements[1].dataPoints;
       const start = points[0].timestamp;
       const end = points[points.length - 1].timestamp;
-      const values = samples.items
+      const values = samples
         .filter((s) => s.timestamp >= start && s.timestamp <= end)
         .map((s) => s.value);
       expect(values).toHaveLength(60);

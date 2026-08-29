@@ -20,6 +20,13 @@ export interface TwinApiConfig {
   password: string;
 }
 
+/** Toda chamada tem prazo: servidor que aceita e trava não pendura a CLI. */
+const HTTP_TIMEOUT_MS = Number(process.env.TWIN_HTTP_TIMEOUT_MS ?? 15_000);
+
+function httpSignal(): AbortSignal {
+  return AbortSignal.timeout(HTTP_TIMEOUT_MS);
+}
+
 /** Parser mínimo de .env (KEY=VALUE, sem interpolação) — só para ler a credencial demo. */
 function readRootDotEnv(): Record<string, string> {
   try {
@@ -84,6 +91,7 @@ export async function login(config: TwinApiConfig): Promise<string> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: config.email, password: config.password }),
+      signal: httpSignal(),
     });
   } catch {
     throw new Error(
@@ -127,6 +135,7 @@ export async function ingestCycle(
       'Idempotency-Key': cycle.idempotencyKey,
     },
     body: JSON.stringify(cycle.payload),
+    signal: httpSignal(),
   });
 
   // 201 = aquisição nova; 200 = repetição legítima. Qualquer outro status interrompe.
@@ -150,6 +159,7 @@ export interface SeriesSummary {
 export async function fetchSeries(config: TwinApiConfig, token: string): Promise<SeriesSummary[]> {
   const response = await fetch(`${config.baseUrl}/time-series`, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: httpSignal(),
   });
   if (!response.ok) throw new Error(`GET /time-series falhou: HTTP ${response.status}.`);
   return (await parseJson(response, 'Séries')) as SeriesSummary[];
@@ -174,7 +184,23 @@ export async function fetchSamples(
   const suffix = query.size > 0 ? `?${query.toString()}` : '';
   const response = await fetch(`${config.baseUrl}/time-series/${seriesId}/samples${suffix}`, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: httpSignal(),
   });
   if (!response.ok) throw new Error(`GET samples falhou: HTTP ${response.status}.`);
   return (await parseJson(response, 'Amostras')) as SamplesPage;
+}
+
+/** Varre TODAS as páginas: a prova de persistência nunca depende de caber em uma. */
+export async function fetchAllSamples(
+  config: TwinApiConfig,
+  token: string,
+  seriesId: string,
+): Promise<Array<{ timestamp: string; value: number }>> {
+  const pageSize = 5000;
+  const all: Array<{ timestamp: string; value: number }> = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const page = await fetchSamples(config, token, seriesId, { limit: pageSize, offset });
+    all.push(...page.items);
+    if (offset + pageSize >= page.total || page.items.length === 0) return all;
+  }
 }

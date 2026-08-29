@@ -68,7 +68,8 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 152 API (47 unit + 105 e2e/contrato) + 82 web = 234 testes
+npm run test                  # 276 na suíte convencional: 152 API (47 unit + 105 e2e/contrato),
+                              # 82 web e 42 do sensor twin (bônus, puro — sem API/ROS/banco)
 npm run test:unit -w @dynamox/api   # somente unitários isolados (sem banco, < 2 s)
 npm run perf:latency          # TS-07: latência < 350 ms (exige a API no ar)
 ```

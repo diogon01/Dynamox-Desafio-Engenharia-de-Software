@@ -9,7 +9,7 @@
  *     as séries e amostras pelos endpoints reais.
  */
 import { buildCycle } from './payload';
-import { fetchSamples, fetchSeries, ingestCycle, loadTwinConfig, login } from './ingest';
+import { fetchAllSamples, fetchSeries, ingestCycle, loadTwinConfig, login } from './ingest';
 import { TWIN_IDENTITY } from './scenarios';
 
 interface CliArgs {
@@ -82,10 +82,10 @@ async function main(): Promise<void> {
     const accelerationY = series.find((s) => s.physicalQuantity === 'acceleration' && s.axis === 'y');
     if (!accelerationY) throw new Error('série acceleration/y não encontrada após a ingestão.');
     const windowStart = cycle.payload.telemetryCycleData.measurements[1].dataPoints[0].timestamp;
-    const samples = await fetchSamples(config, token, accelerationY.id, { limit: 5000 });
-    const inWindow = samples.items.filter((s) => s.timestamp >= windowStart);
+    const samples = await fetchAllSamples(config, token, accelerationY.id);
+    const inWindow = samples.filter((s) => s.timestamp >= windowStart);
     console.log(
-      `persistência.......: acceleration/y total=${samples.total}; ≥${windowStart}: ${inWindow.length} amostras`,
+      `persistência.......: acceleration/y total=${samples.length}; ≥${windowStart}: ${inWindow.length} amostras`,
     );
     return;
   }

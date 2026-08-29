@@ -102,7 +102,9 @@ const DEFAULTS: Record<ScenarioName, ScenarioConfig> = {
     scenario: 'imbalance',
     baseTimestamp: '2026-08-30T10:00:00.000Z',
     // k = 4 sobre o 1× radial: RMS ≈ 3,5× o do normal, visível a olho nu no gráfico.
-    amplitudes: { radial1xG: 0.08, radial2xG: 0.008, axialFactor: 0.1, noiseSigmaG: 0.006 },
+    // axialFactor idêntico ao normal DE PROPÓSITO: o desbalanceamento puro é força
+    // radial girante — o eixo axial não acompanha o cenário (claim validado por teste).
+    amplitudes: { radial1xG: 0.08, radial2xG: 0.008, axialFactor: 0.4, noiseSigmaG: 0.006 },
     // Força centrífuga rotativa: radiais em quadratura (Z adiantado 90°).
     radialPhaseZRad: Math.PI / 2,
     temperature: { ...TEMPERATURE_BASE, scenarioOffsetC: 3 },

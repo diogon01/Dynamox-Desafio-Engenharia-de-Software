@@ -9,8 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --max-warnings 0",
-    "test": "jest --runInBand --testPathPattern=src",
-    "test:integration": "jest --runInBand --testPathPattern=test/"
+    "test": "jest --runInBand",
+    "test:integration": "jest --runInBand --config jest.integration.config.js"
   },
   "dependencies": {
     "@dynamox/contracts": "0.1.0",

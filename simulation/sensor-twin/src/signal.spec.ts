@@ -62,11 +62,12 @@ describe('assinatura dos cenários', () => {
     expect(Math.abs(phaseDiffNormal)).toBeLessThan(0.15);
   });
 
-  it('o eixo axial é deliberadamente pouco sensível ao cenário', () => {
+  it('o eixo axial é invariável entre cenários, por construção', () => {
     const rmsNormalX = rmsOf(normal.frames.map((f) => f.axG));
     const rmsImbalanceX = rmsOf(imbalance.frames.map((f) => f.axG));
-    // A razão axial fica perto de 1, enquanto a radial salta ≥ 2×.
-    expect(rmsImbalanceX / rmsNormalX).toBeLessThan(1.5);
+    // Mesma amplitude axial e mesma sub-seed de ruído nos dois cenários: a razão é ~1
+    // exata — se alguém tornar o axial sensível de novo, este assert grita.
+    expect(Math.abs(rmsImbalanceX / rmsNormalX - 1)).toBeLessThan(0.01);
   });
 
   it('a temperatura do imbalance termina mais quente (deriva assintótica declarada)', () => {

@@ -7,6 +7,9 @@ module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
   testRegex: '.*\\.spec\\.ts$',
+  // Ancorado no rootDir do pacote, NUNCA em substring do caminho absoluto do clone:
+  // um repositório clonado sob ~/src/... não pode arrastar a integração para cá.
+  testPathIgnorePatterns: ['<rootDir>/test/', '/node_modules/'],
   transform: {
     '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json' }],
   },

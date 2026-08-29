@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src --max-warnings 0",
     "test": "jest --runInBand",
-    "test:integration": "jest --runInBand --config jest.integration.config.js"
+    "test:integration": "jest --runInBand --config jest.integration.config.js",
+    "test:ros": "jest --runInBand --config jest.ros.config.js"
   },
   "dependencies": {
     "@dynamox/contracts": "0.1.0",

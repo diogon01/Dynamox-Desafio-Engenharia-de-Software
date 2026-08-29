@@ -8,16 +8,29 @@
  *     gera, autentica na API local e envia; depois PROVA a persistência lendo de volta
  *     as séries e amostras pelos endpoints reais.
  */
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { canonicalJson, computePayloadFingerprint } from '@dynamox/contracts';
+
 import { buildCycle } from './payload';
 import { assessFleet, type FleetAssessment } from './assess';
-import { ensurePlant, type PlantBootstrapResult } from './bootstrap';
+import { ensurePlant, resolveResourceIds, type PlantBootstrapResult } from './bootstrap';
 import { deliberate } from './deliberate';
-import { identityFor, runFleetPhase, type PlantPhase } from './fleet';
+import { buildConfirmatoryCycle, identityFor, runFleetPhase, type PlantPhase } from './fleet';
 import { PLANT, plantSensors, validatePlantManifest } from './plant';
+import {
+  acquisitionRecords,
+  parseProvenance,
+  payloadFromRecords,
+  serializeProvenance,
+} from './provenance';
+import { ROS_REQUIREMENTS, rosAvailable, runRosBridge } from './rosbridge';
 import {
   fetchAllSamples,
   fetchSeries,
   ingestCycle,
+  ingestPayload,
   loadTwinConfig,
   login,
 } from './ingest';
@@ -167,6 +180,96 @@ async function runPlantDeliberate(): Promise<void> {
   if (result.recommendation) console.log(`recomendação.......: ${result.recommendation}`);
 }
 
+/**
+ * F8 — proveniência ROS da aquisição confirmatória: a origem é o resultado REAL do
+ * ciclo deliberativo (o sensor selecionado pelo assessment observacional), nunca um
+ * alvo hardcoded. Fluxo: observar → reconstruir o artefato confirmatório canônico →
+ * JSONL → rosbag → JSONL reconstruído → payload → fingerprint idêntico → replay na API
+ * (duplicate:true) → prova de que nenhuma amostra nova nasceu.
+ */
+async function runPlantRosbag(): Promise<void> {
+  if (!rosAvailable()) {
+    throw new Error(`Runtime ROS indisponível. ${ROS_REQUIREMENTS}`);
+  }
+  validatePlantManifest(PLANT);
+  const config = loadTwinConfig();
+  const token = await login(config);
+
+  // OBSERVE: quem define o alvo é o supervisor, pelos dados persistidos.
+  const assessment = await assessFleet(config, token, PLANT);
+  if (!assessment.selected) {
+    console.log('nenhum sensor acima do limiar — não há aquisição confirmatória para preservar.');
+    return;
+  }
+  const serial = assessment.selected.sensorSerial;
+  const sensor = plantSensors(PLANT).find((s) => s.sensorSerial === serial)!;
+  console.log(`alvo (supervisor)..: ${assessment.selected.machineName} / ${assessment.selected.shortLabel} / ${serial} (${assessment.selected.deviationRatio.toFixed(2)}x)`);
+
+  // Reconstrução determinística do MESMO artefato confirmatório ingerido no deliberate.
+  const resourceIds = await resolveResourceIds(config, token, PLANT);
+  const cycle = buildConfirmatoryCycle(PLANT, resourceIds, serial);
+  console.log(`artefato...........: ${cycle.idempotencyKey}`);
+  console.log(`fingerprint........: ${cycle.fingerprint}`);
+
+  const dir = join(__dirname, '..', 'artifacts');
+  mkdirSync(dir, { recursive: true });
+  const slug = serial.toLowerCase();
+  const jsonlPath = join(dir, `${slug}-confirm.jsonl`);
+  const bagPath = join(dir, `${slug}-confirm.bag`);
+  const reconstructedPath = join(dir, `${slug}-confirm.reconstructed.jsonl`);
+
+  const records = acquisitionRecords(cycle, sensor.machineType);
+  writeFileSync(jsonlPath, serializeProvenance(records), 'utf8');
+  console.log(`JSONL canônico.....: ${jsonlPath} (${records.length} registros)`);
+
+  const toBag = runRosBridge('to-bag', jsonlPath, bagPath);
+  console.log(`rosbag.............: ${bagPath} (${statSync(bagPath).size} bytes, ${toBag.messages} mensagens)`);
+  console.log(`tópicos............: ${toBag.topics.join(' · ')}`);
+
+  const fromBag = runRosBridge('from-bag', bagPath, reconstructedPath);
+  const reconstructedRecords = parseProvenance(readFileSync(reconstructedPath, 'utf8'));
+  const { payload, acquisition } = payloadFromRecords(reconstructedRecords);
+  const reconstructedFingerprint = computePayloadFingerprint(payload);
+
+  const identical = reconstructedFingerprint === cycle.fingerprint;
+  console.log(`reconstrução.......: ${fromBag.messages} mensagens lidas → ${reconstructedRecords.length} registros`);
+  console.log(`fingerprint (bag)..: ${reconstructedFingerprint}`);
+  console.log(`identidade.........: ${identical ? 'IDÊNTICA (mesmo payloadFingerprint)' : 'DIVERGENTE'}`);
+  if (!identical) {
+    throw new Error('fingerprint reconstruído difere do original — round-trip ROS quebrou a identidade.');
+  }
+
+  // Evidência secundária: registros canônicos byte-idênticos após re-serialização.
+  const canonicalOriginal = records.map((r) => canonicalJson(r));
+  const canonicalReconstructed = reconstructedRecords.map((r) => canonicalJson(r));
+  const byteIdentical =
+    canonicalOriginal.length === canonicalReconstructed.length &&
+    canonicalOriginal.every((line, i) => line === canonicalReconstructed[i]);
+  console.log(`JSONL canônico.....: ${byteIdentical ? 'byte-idêntico após round-trip (evidência secundária)' : 'semanticamente equivalente (formatação difere)'}`);
+
+  // Replay pela API com a identidade da aquisição confirmatória: duplicate esperado.
+  const fleetSerials = new Set(plantSensors(PLANT).map((s) => s.sensorSerial));
+  const seriesBefore = (await fetchSeries(config, token)).filter((s) => fleetSerials.has(s.sensorSerialNumber));
+
+  const key = acquisition.telemetry.metadata.cycleId as string;
+  if (key !== cycle.idempotencyKey) {
+    throw new Error('cycleId reconstruído difere da Idempotency-Key original — artefato corrompido.');
+  }
+  const replay = await ingestPayload(config, token, payload, key);
+  console.log(`replay API.........: HTTP ${replay.status} duplicate=${replay.body.duplicate} fp=${replay.body.payloadFingerprint.slice(0, 12)}…`);
+  if (!replay.body.duplicate || replay.body.payloadFingerprint !== cycle.fingerprint) {
+    throw new Error('replay do bag deveria ser duplicate:true com o MESMO fingerprint — investigar.');
+  }
+
+  const seriesAfter = (await fetchSeries(config, token)).filter((s) => fleetSerials.has(s.sensorSerialNumber));
+  const grewNot =
+    seriesAfter.length === seriesBefore.length &&
+    seriesAfter.every((s) => seriesBefore.find((b) => b.id === s.id)?.sampleCount === s.sampleCount);
+  console.log(`amostras novas.....: ${grewNot ? 'ZERO (todas as séries com contagem idêntica)' : 'CRESCERAM — replay violou a idempotência!'}`);
+  if (!grewNot) throw new Error('replay criou amostras novas — idempotência violada.');
+  console.log('proveniência ROS...: OK — mesma aquisição semântica, mesmo fingerprint, replay duplicate.');
+}
+
 async function main(): Promise<void> {
   if (process.argv[2] === 'plant') {
     const sub = process.argv[3];
@@ -186,7 +289,11 @@ async function main(): Promise<void> {
       await runPlantDeliberate();
       return;
     }
-    console.error('Uso: plant bootstrap|baseline|condition|assess|deliberate');
+    if (sub === 'rosbag') {
+      await runPlantRosbag();
+      return;
+    }
+    console.error('Uso: plant bootstrap|baseline|condition|assess|deliberate|rosbag');
     process.exit(2);
   }
 

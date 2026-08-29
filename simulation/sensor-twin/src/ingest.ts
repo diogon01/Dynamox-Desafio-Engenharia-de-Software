@@ -127,14 +127,24 @@ export async function ingestCycle(
   token: string,
   cycle: BuiltCycle,
 ): Promise<{ status: number; body: IngestionResponse }> {
+  return ingestPayload(config, token, cycle.payload, cycle.idempotencyKey);
+}
+
+/** POST de um payload arbitrário (ex.: reconstruído do bag ROS) com a chave dada. */
+export async function ingestPayload(
+  config: TwinApiConfig,
+  token: string,
+  payload: unknown,
+  idempotencyKey: string,
+): Promise<{ status: number; body: IngestionResponse }> {
   const response = await fetch(`${config.baseUrl}/telemetry-cycles`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': cycle.idempotencyKey,
+      'Idempotency-Key': idempotencyKey,
     },
-    body: JSON.stringify(cycle.payload),
+    body: JSON.stringify(payload),
     signal: httpSignal(),
   });
 

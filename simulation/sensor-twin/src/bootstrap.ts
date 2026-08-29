@@ -41,6 +41,38 @@ function drift(message: string): Error {
   return new Error(`Bootstrap da planta: divergência de ambiente — ${message}`);
 }
 
+/**
+ * Resolução READ-ONLY dos resourceIds (F8): descobre machine.id por GET e recomputa os
+ * resourceIds derivados — sem criar nada. Falha alto se a planta ainda não existe;
+ * quem cria entidades é somente o ensurePlant dos comandos que agem.
+ */
+export async function resolveResourceIds(
+  config: TwinApiConfig,
+  token: string,
+  plant: PlantManifest = PLANT,
+): Promise<Map<string, string>> {
+  validatePlantManifest(plant);
+  const machines = await listMachines(config, token);
+  const byName = new Map(machines.map((m) => [m.name, m]));
+
+  const resourceIds = new Map<string, string>();
+  for (const sensor of plantSensors(plant)) {
+    if (sensor.fixedResourceId) {
+      resourceIds.set(sensor.sensorSerial, sensor.fixedResourceId);
+      continue;
+    }
+    const machine = byName.get(sensor.machineName);
+    if (!machine) {
+      throw drift(`máquina "${sensor.machineName}" não existe — rode npm run plant -- bootstrap`);
+    }
+    resourceIds.set(
+      sensor.sensorSerial,
+      deterministicResourceId('dynamox-challenge', 'monitoring-point', machine.id, sensor.pointName),
+    );
+  }
+  return resourceIds;
+}
+
 export async function ensurePlant(
   config: TwinApiConfig,
   token: string,

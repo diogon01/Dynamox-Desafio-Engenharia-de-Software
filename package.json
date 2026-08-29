@@ -32,6 +32,7 @@
     "twin:cycle": "tsx simulation/sensor-twin/src/cli.ts generate",
     "twin:ingest": "tsx simulation/sensor-twin/src/cli.ts ingest",
     "twin:integration": "npm run test:integration -w @dynamox/sensor-twin",
+    "twin:ros": "npm run test:ros -w @dynamox/sensor-twin",
     "plant": "tsx simulation/sensor-twin/src/cli.ts plant"
   },
   "devDependencies": {

@@ -105,6 +105,31 @@ export async function runFleetPhase(
 }
 
 /**
+ * Ciclo confirmatório canônico de um sensor: a MESMA construção que a porta de
+ * aquisição ingere — reutilizada pelo F8 para exportar a proveniência ROS do artefato.
+ */
+export function buildConfirmatoryCycle(
+  plant: PlantManifest,
+  resourceIds: ResolvedResourceIds,
+  sensorSerial: string,
+): BuiltCycle {
+  const sensor = plantSensors(plant).find((s) => s.sensorSerial === sensorSerial);
+  if (!sensor) {
+    throw new Error(`Sensor "${sensorSerial}" não existe no manifest da planta.`);
+  }
+  return buildCycle(
+    scenarioForSensor(plant, sensor, 'confirm'),
+    {
+      seed: sensor.seed + CONFIRM_SEED_OFFSET,
+      rpm: sensor.rpm,
+      loadPercent: sensor.loadPercent,
+      baseTimestamp: plant.windows.confirm,
+    },
+    identityFor(sensor, resourceIds),
+  );
+}
+
+/**
  * PORTA DE AQUISIÇÃO DO SIMULADOR (fronteira do plano): o supervisor deliberativo
  * entrega apenas o SERIAL selecionado; quem resolve a realidade sintética do sinal
  * (cenário, seed da confirmação, janela) é este lado — o módulo do supervisor não
@@ -117,20 +142,7 @@ export async function requestConfirmatoryAcquisition(
   resourceIds: ResolvedResourceIds,
   sensorSerial: string,
 ): Promise<FleetIngestion> {
-  const sensor = plantSensors(plant).find((s) => s.sensorSerial === sensorSerial);
-  if (!sensor) {
-    throw new Error(`Sensor "${sensorSerial}" não existe no manifest da planta.`);
-  }
-  const cycle = buildCycle(
-    scenarioForSensor(plant, sensor, 'confirm'),
-    {
-      seed: sensor.seed + CONFIRM_SEED_OFFSET,
-      rpm: sensor.rpm,
-      loadPercent: sensor.loadPercent,
-      baseTimestamp: plant.windows.confirm,
-    },
-    identityFor(sensor, resourceIds),
-  );
+  const cycle = buildConfirmatoryCycle(plant, resourceIds, sensorSerial);
   const { status, body } = await ingestCycle(config, token, cycle);
   return { sensorSerial, status, body };
 }

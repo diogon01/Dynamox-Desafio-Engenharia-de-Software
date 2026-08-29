@@ -4,7 +4,15 @@
  * (sequencial e reproduzível nos logs).
  */
 import { buildCycle, type BuiltCycle, type SensorTwinIdentity } from './payload';
-import { PLANT, plantSensors, validatePlantManifest, type PlantManifest, type PlantSensor } from './plant';
+import { ingestCycle, type IngestionResponse, type TwinApiConfig } from './ingest';
+import {
+  CONFIRM_SEED_OFFSET,
+  PLANT,
+  plantSensors,
+  validatePlantManifest,
+  type PlantManifest,
+  type PlantSensor,
+} from './plant';
 import type { ScenarioName } from './scenarios';
 
 export type PlantPhase = 'baseline' | 'condition' | 'confirm';
@@ -60,7 +68,8 @@ export function buildFleetCycles(
     buildCycle(
       scenarioForSensor(plant, sensor, phase),
       {
-        seed: sensor.seed,
+        // Confirmação usa realização de ruído independente: seed + offset determinístico.
+        seed: phase === 'confirm' ? sensor.seed + CONFIRM_SEED_OFFSET : sensor.seed,
         rpm: sensor.rpm,
         loadPercent: sensor.loadPercent,
         baseTimestamp: plant.windows[phase],
@@ -68,4 +77,29 @@ export function buildFleetCycles(
       identityFor(sensor, resourceIds),
     ),
   );
+}
+
+export interface FleetIngestion {
+  sensorSerial: string;
+  status: number;
+  body: IngestionResponse;
+}
+
+/**
+ * Ingere a fase SEQUENCIALMENTE (decisão do plano: 12 sensores são pequenos; ordem
+ * determinística deixa logs, falhas e demo reproduzíveis — nada de pools/filas).
+ */
+export async function runFleetPhase(
+  config: TwinApiConfig,
+  token: string,
+  plant: PlantManifest,
+  phase: PlantPhase,
+  resourceIds: ResolvedResourceIds,
+): Promise<FleetIngestion[]> {
+  const results: FleetIngestion[] = [];
+  for (const cycle of buildFleetCycles(plant, phase, resourceIds)) {
+    const { status, body } = await ingestCycle(config, token, cycle);
+    results.push({ sensorSerial: cycle.identity.sensorSerial, status, body });
+  }
+  return results;
 }

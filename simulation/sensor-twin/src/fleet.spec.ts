@@ -6,7 +6,7 @@
 import { deterministicResourceId } from '@dynamox/contracts';
 
 import { buildFleetCycles, scenarioForSensor, sensorsForPhase } from './fleet';
-import { PLANT, plantSensors } from './plant';
+import { CONFIRM_SEED_OFFSET, PLANT, plantSensors } from './plant';
 
 /** resourceIds fake, estáveis, para os 10 pontos api (os 2 do seed usam os fixos). */
 function fakeResourceIds(): Map<string, string> {
@@ -101,5 +101,47 @@ describe('frota — determinismo e independência entre engines (testes 9–11)'
     expect(tcag.payload.telemetryCycleData.tags).toContain('model:tcag');
     expect(tcag.payload.telemetryCycleData.tags).toContain('asset:ve-201-ventilador-de-tiragem');
     expect(tcag.config.rpm).toBe(1180);
+  });
+});
+
+describe('frota — snapshots F4 (carga e confirmação)', () => {
+  const ids = fakeResourceIds();
+
+  it('1–2, 5–6. cada snapshot tem 12 ciclos e exatamente 3.600 datapoints; dois = 7.200', () => {
+    const count = (cycles: ReturnType<typeof buildFleetCycles>) =>
+      cycles.reduce(
+        (sum, c) =>
+          sum +
+          c.payload.telemetryCycleData.measurements.reduce((m, x) => m + x.dataPoints.length, 0),
+        0,
+      );
+    const baseline = buildFleetCycles(PLANT, 'baseline', ids);
+    const condition = buildFleetCycles(PLANT, 'condition', ids);
+    expect(baseline).toHaveLength(12);
+    expect(condition).toHaveLength(12);
+    expect(count(baseline)).toBe(3600);
+    expect(count(condition)).toBe(3600);
+    expect(count(baseline) + count(condition)).toBe(7200);
+  });
+
+  it('3–4. exatamente um sensor muda de cenário, selecionado por identidade estável', () => {
+    const condition = buildFleetCycles(PLANT, 'condition', ids);
+    const changed = condition.filter((c) => c.config.scenario !== 'normal');
+    expect(changed).toHaveLength(1);
+    // Identidade estável do manifest — nunca busca textual de label.
+    expect(changed[0].identity.sensorSerial).toBe(PLANT.conditionTarget.sensorSerial);
+  });
+
+  it('15–17. confirmação: timestamp, seed e fingerprint DIFERENTES do condition', () => {
+    const conditionTarget = buildFleetCycles(PLANT, 'condition', ids).find(
+      (c) => c.identity.sensorSerial === PLANT.conditionTarget.sensorSerial,
+    )!;
+    const [confirm] = buildFleetCycles(PLANT, 'confirm', ids);
+
+    expect(confirm.config.baseTimestamp).not.toBe(conditionTarget.config.baseTimestamp);
+    expect(confirm.config.seed).toBe(conditionTarget.config.seed + CONFIRM_SEED_OFFSET);
+    expect(confirm.fingerprint).not.toBe(conditionTarget.fingerprint);
+    expect(confirm.idempotencyKey).not.toBe(conditionTarget.idempotencyKey);
+    expect(confirm.acquisitionIntentId).not.toBe(conditionTarget.acquisitionIntentId);
   });
 });

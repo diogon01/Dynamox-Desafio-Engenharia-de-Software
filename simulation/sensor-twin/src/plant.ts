@@ -19,6 +19,13 @@ import {
 } from '@dynamox/domain';
 
 export type PointLabel = 'DE' | 'NDE';
+
+/**
+ * Política determinística da aquisição confirmatória (F6): mesma condição sintética,
+ * realização de ruído DIFERENTE — seed da confirmação = seed do sensor + este offset.
+ * A confirmação vira evidência independente dentro do modelo sintético, não um replay.
+ */
+export const CONFIRM_SEED_OFFSET = 1000;
 export type ResourceIdStrategy = 'seed-name' | 'api-machine-id';
 
 export interface PlantPointSpec {

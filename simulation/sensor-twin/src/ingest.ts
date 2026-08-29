@@ -204,3 +204,105 @@ export async function fetchAllSamples(
     if (offset + pageSize >= page.total || page.items.length === 0) return all;
   }
 }
+
+// ————— Cliente da API de gestão (usado pelo bootstrap da planta, F2) —————
+
+export interface MachineItem {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export async function listMachines(config: TwinApiConfig, token: string): Promise<MachineItem[]> {
+  const response = await fetch(`${config.baseUrl}/machines`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: httpSignal(),
+  });
+  if (!response.ok) throw new Error(`GET /machines falhou: HTTP ${response.status}.`);
+  return (await parseJson(response, 'Máquinas')) as MachineItem[];
+}
+
+export interface ApiAttempt<T> {
+  status: number;
+  body: T | null;
+}
+
+async function postJson<T>(
+  config: TwinApiConfig,
+  token: string,
+  path: string,
+  payload: unknown,
+): Promise<ApiAttempt<T>> {
+  const response = await fetch(`${config.baseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+    signal: httpSignal(),
+  });
+  const body = (await response.json().catch(() => null)) as T | null;
+  return { status: response.status, body };
+}
+
+export function createMachineApi(
+  config: TwinApiConfig,
+  token: string,
+  name: string,
+  type: string,
+): Promise<ApiAttempt<MachineItem>> {
+  return postJson<MachineItem>(config, token, '/machines', { name, type });
+}
+
+export interface MonitoringPointItem {
+  id: string;
+  name: string;
+  machine: { id: string; name: string; type: string };
+  sensor: { id: string; serialNumber: string; model: string } | null;
+}
+
+export function createMonitoringPointApi(
+  config: TwinApiConfig,
+  token: string,
+  machineId: string,
+  name: string,
+): Promise<ApiAttempt<MonitoringPointItem>> {
+  return postJson<MonitoringPointItem>(config, token, '/monitoring-points', { machineId, name });
+}
+
+export function assignSensorApi(
+  config: TwinApiConfig,
+  token: string,
+  pointId: string,
+  serialNumber: string,
+  model: string,
+): Promise<ApiAttempt<MonitoringPointItem>> {
+  return postJson<MonitoringPointItem>(config, token, `/monitoring-points/${pointId}/sensor`, {
+    serialNumber,
+    model,
+  });
+}
+
+/** Varre TODAS as páginas de pontos: pageSize máximo nunca é tratado como prova. */
+export async function fetchAllMonitoringPoints(
+  config: TwinApiConfig,
+  token: string,
+): Promise<MonitoringPointItem[]> {
+  const pageSize = 50;
+  const all: MonitoringPointItem[] = [];
+  for (let page = 1; ; page += 1) {
+    const response = await fetch(
+      `${config.baseUrl}/monitoring-points?page=${page}&pageSize=${pageSize}`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: httpSignal() },
+    );
+    if (!response.ok) throw new Error(`GET /monitoring-points falhou: HTTP ${response.status}.`);
+    const body = (await parseJson(response, 'Pontos')) as {
+      items: MonitoringPointItem[];
+      total: number;
+      pageSize: number;
+    };
+    all.push(...body.items);
+    if (body.items.length === 0 || page * body.pageSize >= body.total) return all;
+  }
+}

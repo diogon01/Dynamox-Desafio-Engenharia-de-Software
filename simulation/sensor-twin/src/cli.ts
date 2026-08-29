@@ -9,7 +9,16 @@
  *     as séries e amostras pelos endpoints reais.
  */
 import { buildCycle } from './payload';
-import { fetchAllSamples, fetchSeries, ingestCycle, loadTwinConfig, login } from './ingest';
+import { ensurePlant } from './bootstrap';
+import { identityFor } from './fleet';
+import { PLANT, plantSensors, validatePlantManifest } from './plant';
+import {
+  fetchAllSamples,
+  fetchSeries,
+  ingestCycle,
+  loadTwinConfig,
+  login,
+} from './ingest';
 
 interface CliArgs {
   command: string | undefined;
@@ -46,7 +55,49 @@ function summarize(cycle: ReturnType<typeof buildCycle>): void {
   console.log(`fingerprint........: ${cycle.fingerprint}`);
 }
 
+async function runPlantBootstrap(): Promise<void> {
+  validatePlantManifest(PLANT);
+  const config = loadTwinConfig();
+  const token = await login(config);
+  console.log(`planta.............: ${PLANT.plantName} (${PLANT.plantId})`);
+  console.log(`login..............: OK (${config.email} em ${config.baseUrl})`);
+
+  const result = await ensurePlant(config, token, PLANT);
+  const show = (label: string, c: { created: number; existing: number }) =>
+    console.log(`${label}: created=${c.created} existing=${c.existing}`);
+  show('máquinas...........', result.machines);
+  show('pontos.............', result.points);
+  show('sensores...........', result.sensors);
+
+  // F2.1 — prova de resourceId: ingerir um ciclo REAL de um ponto criado pelo bootstrap.
+  const proofSensor = plantSensors(PLANT).find((s) => s.resourceIdStrategy === 'api-machine-id')!;
+  const proofCycle = buildCycle(
+    'normal',
+    {
+      seed: proofSensor.seed,
+      rpm: proofSensor.rpm,
+      loadPercent: proofSensor.loadPercent,
+      baseTimestamp: PLANT.windows.baseline,
+    },
+    identityFor(proofSensor, result.resourceIds),
+  );
+  const proof = await ingestCycle(config, token, proofCycle);
+  console.log(
+    `prova resourceId...: ${proofSensor.sensorSerial} → HTTP ${proof.status} duplicate=${proof.body.duplicate} (RESOURCE_ID_MISMATCH falharia aqui)`,
+  );
+}
+
 async function main(): Promise<void> {
+  if (process.argv[2] === 'plant') {
+    const sub = process.argv[3];
+    if (sub === 'bootstrap') {
+      await runPlantBootstrap();
+      return;
+    }
+    console.error('Uso: plant bootstrap');
+    process.exit(2);
+  }
+
   const args = parseArgs(process.argv.slice(2));
   const overrides = args.seed !== undefined ? { seed: args.seed } : {};
 

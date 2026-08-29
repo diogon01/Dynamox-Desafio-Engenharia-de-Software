@@ -25,6 +25,7 @@
     "lint": "nx run-many -t lint",
     "typecheck": "nx run-many -t typecheck",
     "test": "nx run-many -t test",
+    "predev:api": "npx nx run-many -t build --projects @dynamox/contracts,@dynamox/domain",
     "dev:api": "npm run dev -w @dynamox/api",
     "dev:web": "npm run dev -w @dynamox/web",
     "analysis:inventory": "tsx tools/extract-endpoint-inventory.ts",

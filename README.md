@@ -264,7 +264,7 @@ de senha — ainda uma ordem de grandeza abaixo do limite.
 ## Testes
 
 ```bash
-npm run test                        # tudo: API + web
+npm run test                        # tudo: API + web + sensor twin (unitários)
 npm run test -w @dynamox/api        # Jest: unitários + e2e (PostgreSQL real) + contrato
 npm run test:unit -w @dynamox/api   # somente unitários isolados (mocks, sem banco, < 2 s)
 npm run test -w @dynamox/web        # Vitest: componentes, slices Redux e cliente HTTP
@@ -280,6 +280,22 @@ criam e removem as próprias fixtures (prefixos dedicados) e não destroem o see
 casos estão: corrida `PATCH → Pump` × associação de `TcAg` em paralelo, idempotência de
 ingestão sob repetição, paginação varrendo a série inteira e ordenação nas quatro colunas
 nos dois sentidos.
+
+## Demonstração opcional: gêmeo digital industrial (bônus)
+
+Uma planta sintética de monitoramento de condição — 6 máquinas, 12 pontos, 12 sensores
+determinísticos — que consome esta aplicação como cliente: bootstrap via APIs reais,
+snapshots de telemetria, supervisor que prioriza inspeção lendo só o que está
+persistido e proveniência ROS opcional da aquisição confirmatória.
+
+```bash
+npm run plant -- bootstrap && npm run plant -- baseline && npm run plant -- condition
+npm run plant -- deliberate     # ranking + aquisição confirmatória + recomendação
+```
+
+Requisitos: os mesmos do fluxo normal (`db:up` + `dev:api` + seed). **ROS é opcional**
+e só o comando `plant rosbag`/`twin:ros` o utiliza (Noetic). Dados 100% sintéticos e
+didáticos. Guia completo: [`simulation/sensor-twin/README.md`](./simulation/sensor-twin/README.md).
 
 ## Documentação adicional
 

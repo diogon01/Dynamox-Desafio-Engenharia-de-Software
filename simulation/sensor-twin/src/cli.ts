@@ -10,7 +10,6 @@
  */
 import { buildCycle } from './payload';
 import { fetchAllSamples, fetchSeries, ingestCycle, loadTwinConfig, login } from './ingest';
-import { TWIN_IDENTITY } from './scenarios';
 
 interface CliArgs {
   command: string | undefined;
@@ -39,7 +38,7 @@ function summarize(cycle: ReturnType<typeof buildCycle>): void {
   };
 
   console.log(`cenário............: ${cycle.config.scenario}`);
-  console.log(`sensor.............: ${TWIN_IDENTITY.sensorSerial} (${TWIN_IDENTITY.sensorProfile}) em ${TWIN_IDENTITY.machineName}/${TWIN_IDENTITY.monitoringPointName}`);
+  console.log(`sensor.............: ${cycle.identity.sensorSerial} (${cycle.identity.sensorModel}) em ${cycle.identity.machineName}/${cycle.identity.monitoringPointName}`);
   console.log(`janela.............: ${cycle.config.baseTimestamp} +${cycle.config.durationSeconds}s (seed ${cycle.config.seed})`);
   console.log(`measurements.......: ${measurements.length} (${points} dataPoints)`);
   console.log(`RMS médio (g)......: x=${meanOf(0).toFixed(6)} y=${meanOf(1).toFixed(6)} z=${meanOf(2).toFixed(6)}`);
@@ -76,7 +75,7 @@ async function main(): Promise<void> {
 
     // Prova de persistência: ler de volta pelos endpoints reais.
     const series = (await fetchSeries(config, token)).filter(
-      (s) => s.sensorSerialNumber === TWIN_IDENTITY.sensorSerial,
+      (s) => s.sensorSerialNumber === cycle.identity.sensorSerial,
     );
     console.log(`séries do sensor...: ${series.length}`);
     const accelerationY = series.find((s) => s.physicalQuantity === 'acceleration' && s.axis === 'y');

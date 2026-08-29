@@ -1,11 +1,17 @@
 /**
- * Mapeamento das janelas para o contrato REAL de telemetria (B3).
+ * Mapeamento das janelas para o contrato REAL de telemetria, agora parametrizado por
+ * identidade (F3): a MESMA engine serve qualquer sensor do manifest — nada de
+ * identidade de frota hardcoded.
  *
- * Nada aqui inventa formato: o payload segue `contracts/dynamox/telemetry-cycle.schema.json`
- * na forma do exemplo oficial, é validado pelo MESMO Ajv do backend
- * (`validateTelemetryCycle`) e canonicalizado pelo MESMO fingerprint
- * (`computePayloadFingerprint`) — a "representação canônica" do twin é literalmente a
- * da aplicação, não uma cópia local.
+ * Modelo de identidades (plano v3.1 §3 — conceitos separados, nunca igualados):
+ *   acquisitionIntentId  sim.<serial>.<scenario>.s<seed>.<janela>   (intenção)
+ *   payloadFingerprint   computePayloadFingerprint (conteúdo; o MESMO do backend)
+ *   artifactId           <intent>.<fp8>                             (intenção+versão)
+ *   Idempotency-Key      = artifactId
+ *   metadata.cycleId     = Idempotency-Key (o schema documenta cycleId como cópia
+ *                          rastreável da chave)
+ * A circularidade fingerprint↔cycleId é resolvida em DUAS passadas determinísticas:
+ * fp8 é calculado com cycleId = intentId; depois cycleId recebe a chave final.
  */
 import {
   computePayloadFingerprint,
@@ -15,15 +21,25 @@ import {
   type TelemetryCyclePayload,
   type TelemetryMeasurement,
 } from '@dynamox/contracts';
+import type { SensorModel } from '@dynamox/domain';
 
 import { generateStream } from './signal';
 import { windowStream, type CycleWindows } from './windows';
 import { TWIN_IDENTITY, getScenarioConfig, type ScenarioConfig } from './scenarios';
 
+export interface SensorTwinIdentity {
+  machineName: string;
+  monitoringPointName: string;
+  sensorSerial: string;
+  /** Modelo/perfil público (HF+, TcAg, TcAs) — vira metadata.profile e tag de modelo. */
+  sensorModel: SensorModel;
+  /** resourceId JÁ RESOLVIDO (24 hex) do ponto monitorado. */
+  resourceId: string;
+}
+
 /**
- * resourceId do ponto monitorado — derivado com a MESMA função e as MESMAS entradas do
- * seed do banco (nome da máquina + nome do ponto), portanto idêntico ao que o backend
- * exige em RESOURCE_ID_MISMATCH. Para os defaults: 42d726ba50f8645df08dba9f.
+ * resourceId do ponto canônico do seed — derivado com a MESMA função e as MESMAS
+ * entradas do seed do banco (nome da máquina + nome do ponto). 42d726ba…
  */
 export function monitoringPointResourceId(): string {
   return deterministicResourceId(
@@ -34,14 +50,38 @@ export function monitoringPointResourceId(): string {
   );
 }
 
-/** `sim.SIM-HF-001.normal.s42.20260830T090000Z` — legível e dentro do charset da API. */
-export function idempotencyKeyFor(config: ScenarioConfig): string {
+/** Identidade default: o sensor canônico single-sensor (P-101/SIM-HF-001). */
+export const DEFAULT_IDENTITY: SensorTwinIdentity = Object.freeze({
+  machineName: TWIN_IDENTITY.machineName,
+  monitoringPointName: TWIN_IDENTITY.monitoringPointName,
+  sensorSerial: TWIN_IDENTITY.sensorSerial,
+  sensorModel: 'HF+',
+  resourceId: monitoringPointResourceId(),
+});
+
+const MODEL_SLUGS: Record<SensorModel, string> = {
+  'HF+': 'hf-plus',
+  TcAg: 'tcag',
+  TcAs: 'tcas',
+};
+
+/** Slug determinístico para tags: minúsculo, sem acentos, [a-z0-9-]. */
+export function slugify(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Identidade da INTENÇÃO de aquisição — usada por orquestração/reconciliação. */
+export function acquisitionIntentId(
+  config: ScenarioConfig,
+  identity: SensorTwinIdentity,
+): string {
   const compactStart = config.baseTimestamp.replace(/[-:]/g, '').replace('.000Z', 'Z');
-  const key = `sim.${TWIN_IDENTITY.sensorSerial}.${config.scenario}.s${config.seed}.${compactStart}`;
-  if (!isValidIdempotencyKey(key)) {
-    throw new Error(`Idempotency-Key gerada fora do contrato da API: "${key}"`);
-  }
-  return key;
+  return `sim.${identity.sensorSerial}.${config.scenario}.s${config.seed}.${compactStart}`;
 }
 
 const DISPLAY_NAMES = {
@@ -56,9 +96,13 @@ function dataPoints(timestamps: string[], values: number[]) {
   return timestamps.map((timestamp, index) => ({ timestamp, value: values[index] }));
 }
 
-export function buildCyclePayload(windows: CycleWindows): TelemetryCyclePayload {
+export function buildCyclePayload(
+  windows: CycleWindows,
+  identity: SensorTwinIdentity,
+  cycleId: string,
+): TelemetryCyclePayload {
   const { config } = windows;
-  const resourceId = monitoringPointResourceId();
+  const { resourceId } = identity;
 
   const accelerationMeasurement = (axis: 'x' | 'y' | 'z'): TelemetryMeasurement => ({
     resourceId,
@@ -73,7 +117,7 @@ export function buildCyclePayload(windows: CycleWindows): TelemetryCyclePayload 
 
   const payload: TelemetryCyclePayload = {
     telemetryCycleData: {
-      measuringSystemUniqueIdentifier: TWIN_IDENTITY.sensorSerial,
+      measuringSystemUniqueIdentifier: identity.sensorSerial,
       measuringSystemModel: { name: TWIN_IDENTITY.generatorName, version: 1 },
       measurements: [
         accelerationMeasurement('x'),
@@ -104,23 +148,22 @@ export function buildCyclePayload(windows: CycleWindows): TelemetryCyclePayload 
           name: TWIN_IDENTITY.generatorName,
           version: TWIN_IDENTITY.generatorVersion,
         },
-        profile: TWIN_IDENTITY.sensorProfile,
-        cycleId: deterministicResourceId(
-          'dynamox-challenge',
-          'twin-cycle',
-          config.scenario,
-          `s${config.seed}`,
-          config.baseTimestamp,
-        ),
+        profile: identity.sensorModel,
+        cycleId,
         seed: config.seed,
         synthetic: true,
       },
-      tags: ['simulated', 'pump-p101', 'hf-plus', `scenario:${config.scenario}`],
+      tags: [
+        'simulated',
+        `asset:${slugify(identity.machineName)}`,
+        `model:${MODEL_SLUGS[identity.sensorModel]}`,
+        `scenario:${config.scenario}`,
+      ],
     },
     configuration: {
       monitoringLocationMap: [
         {
-          mapLabel: `${TWIN_IDENTITY.machineName} / ${TWIN_IDENTITY.monitoringPointName}`,
+          mapLabel: `${identity.machineName} / ${identity.monitoringPointName}`,
           mapValue: resourceId,
         },
       ],
@@ -147,25 +190,44 @@ export function buildCyclePayload(windows: CycleWindows): TelemetryCyclePayload 
 
 export interface BuiltCycle {
   config: ScenarioConfig;
+  identity: SensorTwinIdentity;
   payload: TelemetryCyclePayload;
+  /** Intenção da aquisição (sem versão de conteúdo). */
+  acquisitionIntentId: string;
+  /** artifactId = intent.fp8 — é o que viaja como Idempotency-Key. */
   idempotencyKey: string;
-  /** Fingerprint canônico da APLICAÇÃO (não uma cópia local). */
+  /** Fingerprint canônico da APLICAÇÃO sobre o payload FINAL. */
   fingerprint: string;
 }
 
-/** Cenário → stream → janelas → payload validado, em uma chamada determinística. */
+/** Cenário + identidade → stream → janelas → payload validado, determinístico. */
 export function buildCycle(
   scenario: unknown,
   overrides: Partial<Omit<ScenarioConfig, 'scenario'>> = {},
+  identity: SensorTwinIdentity = DEFAULT_IDENTITY,
 ): BuiltCycle {
   const config = getScenarioConfig(scenario, overrides);
   const windows = windowStream(generateStream(config));
-  const payload = buildCyclePayload(windows);
+
+  const intentId = acquisitionIntentId(config, identity);
+  // 1ª passada: cycleId = intenção → fingerprint de versão do conteúdo.
+  const draft = buildCyclePayload(windows, identity, intentId);
+  const fp8 = computePayloadFingerprint(draft).slice(0, 8);
+
+  const idempotencyKey = `${intentId}.${fp8}`;
+  if (!isValidIdempotencyKey(idempotencyKey)) {
+    throw new Error(`Idempotency-Key gerada fora do contrato da API: "${idempotencyKey}"`);
+  }
+
+  // 2ª passada: cycleId = chave final (cópia rastreável, como o schema documenta).
+  const payload = buildCyclePayload(windows, identity, idempotencyKey);
 
   return {
     config,
+    identity,
     payload,
-    idempotencyKey: idempotencyKeyFor(config),
+    acquisitionIntentId: intentId,
+    idempotencyKey,
     fingerprint: computePayloadFingerprint(payload),
   };
 }

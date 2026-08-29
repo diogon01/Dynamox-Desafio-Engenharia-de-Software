@@ -5,9 +5,12 @@
  */
 import { validateTelemetryCycle } from '@dynamox/contracts';
 
+import { isValidIdempotencyKey } from '@dynamox/contracts';
+
 import {
+  acquisitionIntentId,
   buildCycle,
-  idempotencyKeyFor,
+  DEFAULT_IDENTITY,
   monitoringPointResourceId,
 } from './payload';
 import { getScenarioConfig } from './scenarios';
@@ -94,23 +97,33 @@ describe('payload × contrato real', () => {
   });
 });
 
-describe('identidade e chave de idempotência', () => {
+describe('identidades: intenção, artefato, chave e cycleId', () => {
   it('o resourceId derivado é o MESMO do seed do banco (42d726ba…)', () => {
     expect(monitoringPointResourceId()).toBe('42d726ba50f8645df08dba9f');
   });
 
-  it('a chave segue o formato do plano e o charset aceito pela API', () => {
-    expect(idempotencyKeyFor(getScenarioConfig('normal'))).toBe(
+  it('a INTENÇÃO segue o formato do plano; a CHAVE é intent.fp8 e passa no charset da API', () => {
+    expect(acquisitionIntentId(getScenarioConfig('normal'), DEFAULT_IDENTITY)).toBe(
       'sim.SIM-HF-001.normal.s42.20260830T090000Z',
     );
-    expect(idempotencyKeyFor(getScenarioConfig('imbalance'))).toBe(
+    expect(acquisitionIntentId(getScenarioConfig('imbalance'), DEFAULT_IDENTITY)).toBe(
       'sim.SIM-HF-001.imbalance.s42.20260830T100000Z',
     );
+
+    const cycle = buildCycle('normal');
+    expect(cycle.idempotencyKey).toMatch(
+      /^sim\.SIM-HF-001\.normal\.s42\.20260830T090000Z\.[0-9a-f]{8}$/,
+    );
+    expect(isValidIdempotencyKey(cycle.idempotencyKey)).toBe(true);
+    // cycleId = chave (cópia rastreável, como o schema documenta).
+    expect(cycle.payload.telemetryCycleData.metadata.cycleId).toBe(cycle.idempotencyKey);
   });
 
-  it('a mesma aquisição gera sempre a mesma chave', () => {
-    expect(idempotencyKeyFor(getScenarioConfig('normal'))).toBe(
-      idempotencyKeyFor(getScenarioConfig('normal')),
+  it('a mesma aquisição gera sempre a mesma chave; gerador alterado geraria chave nova', () => {
+    expect(buildCycle('normal').idempotencyKey).toBe(buildCycle('normal').idempotencyKey);
+    // Seed diferente ⇒ intenção diferente E fp8 diferente.
+    expect(buildCycle('normal', { seed: 43 }).idempotencyKey).not.toBe(
+      buildCycle('normal').idempotencyKey,
     );
   });
 

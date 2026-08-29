@@ -9,8 +9,10 @@
  *     as séries e amostras pelos endpoints reais.
  */
 import { buildCycle } from './payload';
-import { ensurePlant } from './bootstrap';
-import { identityFor } from './fleet';
+import { assessFleet, type FleetAssessment } from './assess';
+import { ensurePlant, type PlantBootstrapResult } from './bootstrap';
+import { deliberate } from './deliberate';
+import { identityFor, runFleetPhase, type PlantPhase } from './fleet';
 import { PLANT, plantSensors, validatePlantManifest } from './plant';
 import {
   fetchAllSamples,
@@ -87,6 +89,81 @@ async function runPlantBootstrap(): Promise<void> {
   );
 }
 
+async function plantSession(): Promise<{ config: ReturnType<typeof loadTwinConfig>; token: string; bootstrap: PlantBootstrapResult }> {
+  validatePlantManifest(PLANT);
+  const config = loadTwinConfig();
+  const token = await login(config);
+  // ensure idempotente: descobre machineIds/resourceIds sem criar nada novo.
+  const bootstrap = await ensurePlant(config, token, PLANT);
+  return { config, token, bootstrap };
+}
+
+async function runPlantPhaseCommand(phase: PlantPhase): Promise<void> {
+  const { config, token, bootstrap } = await plantSession();
+  console.log(`fase...............: ${phase} @ ${PLANT.windows[phase]}`);
+  const results = await runFleetPhase(config, token, PLANT, phase, bootstrap.resourceIds);
+  const created = results.filter((r) => r.status === 201).length;
+  const duplicates = results.filter((r) => r.body.duplicate).length;
+  for (const r of results) {
+    console.log(
+      `  ${r.sensorSerial.padEnd(13)} HTTP ${r.status} duplicate=${r.body.duplicate} fp=${r.body.payloadFingerprint.slice(0, 12)}…`,
+    );
+  }
+  console.log(`resumo.............: ${results.length} ciclos — ${created} novos, ${duplicates} duplicates`);
+}
+
+function printAssessment(assessment: FleetAssessment): void {
+  console.log('Fleet assessment');
+  console.log('─'.repeat(72));
+  console.log(
+    'Rank  ' + 'Asset'.padEnd(34) + 'Point  ' + 'Sensor'.padEnd(14) + 'Ratio    State',
+  );
+  assessment.ranked.forEach((sensor, index) => {
+    console.log(
+      String(index + 1).padEnd(6) +
+        sensor.machineName.slice(0, 32).padEnd(34) +
+        sensor.shortLabel.padEnd(7) +
+        sensor.sensorSerial.padEnd(14) +
+        `${sensor.deviationRatio.toFixed(2)}x`.padEnd(9) +
+        sensor.state,
+    );
+  });
+  console.log('─'.repeat(72));
+  const stable = assessment.sensors.filter((s) => s.state === 'STABLE').length;
+  const suspect = assessment.sensors.filter((s) => s.state === 'SUSPECT').length;
+  console.log(`janelas............: baseline ${assessment.baselineWindow} · condition ${assessment.conditionWindow}`);
+  console.log(`estados............: ${stable} STABLE · ${suspect} SUSPECT (limiar sintético ${assessment.thresholdRatio}x)`);
+  if (assessment.selected) {
+    console.log(`selecionado........: ${assessment.selected.machineName} / ${assessment.selected.shortLabel} / ${assessment.selected.sensorSerial}`);
+    console.log(`ação...............: ${assessment.selectedAction}`);
+  } else {
+    console.log('selecionado........: nenhum (todos abaixo do limiar) — ação: NONE');
+  }
+}
+
+async function runPlantAssess(): Promise<void> {
+  const { config, token } = await plantSession();
+  // assess NÃO ingere nada: somente observa o que está persistido.
+  printAssessment(await assessFleet(config, token, PLANT));
+}
+
+async function runPlantDeliberate(): Promise<void> {
+  const { config, token, bootstrap } = await plantSession();
+  const result = await deliberate(config, token, PLANT, bootstrap.resourceIds);
+  printAssessment(result.assessment);
+
+  if (result.action === 'NONE' || !result.confirmation) {
+    console.log('deliberação........: nenhuma aquisição confirmatória necessária');
+    return;
+  }
+  const c = result.confirmation;
+  console.log('deliberação........: ACT — aquisição confirmatória do selecionado');
+  console.log(`confirmação........: HTTP ${c.ingestStatus} duplicate=${c.ingestDuplicate} fp=${c.fingerprint.slice(0, 12)}…`);
+  console.log(`confirmRatio.......: ${c.confirmRatio.toFixed(2)}x (re-observado pelo banco)`);
+  console.log(`transição..........: SUSPECT → ${result.finalState}`);
+  if (result.recommendation) console.log(`recomendação.......: ${result.recommendation}`);
+}
+
 async function main(): Promise<void> {
   if (process.argv[2] === 'plant') {
     const sub = process.argv[3];
@@ -94,7 +171,19 @@ async function main(): Promise<void> {
       await runPlantBootstrap();
       return;
     }
-    console.error('Uso: plant bootstrap');
+    if (sub === 'baseline' || sub === 'condition') {
+      await runPlantPhaseCommand(sub);
+      return;
+    }
+    if (sub === 'assess') {
+      await runPlantAssess();
+      return;
+    }
+    if (sub === 'deliberate') {
+      await runPlantDeliberate();
+      return;
+    }
+    console.error('Uso: plant bootstrap|baseline|condition|assess|deliberate');
     process.exit(2);
   }
 

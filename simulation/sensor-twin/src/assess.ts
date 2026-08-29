@@ -140,17 +140,67 @@ export interface SeriesIds {
   temperature: string | null;
 }
 
-function windowRange(startIso: string, windowCount: number): { start: string; end: string } {
-  const startMs = Date.parse(startIso);
-  return {
-    start: startIso,
-    end: new Date(startMs + (windowCount - 1) * 1000).toISOString(),
-  };
+interface Sample {
+  timestamp: string;
+  value: number;
 }
 
-function inWindow(samples: Array<{ timestamp: string; value: number }>, startIso: string) {
-  const { start, end } = windowRange(startIso, 60);
-  return samples.filter((s) => s.timestamp >= start && s.timestamp <= end);
+/** Época em ms com validação: timestamp fora do ISO canônico é erro, não silêncio. */
+function epochOf(timestamp: string, context: string): number {
+  const ms = Date.parse(timestamp);
+  if (Number.isNaN(ms)) {
+    throw new Error(`Timestamp inválido vindo da API (${context}): "${timestamp}"`);
+  }
+  return ms;
+}
+
+/** Amostras dentro da janela [start, start+59s], por comparação NUMÉRICA de época. */
+export function samplesInWindow(samples: Sample[], windowStartIso: string, context: string): Sample[] {
+  const start = epochOf(windowStartIso, context);
+  const end = start + 59_000;
+  return samples.filter((sample) => {
+    const at = epochOf(sample.timestamp, context);
+    return at >= start && at <= end;
+  });
+}
+
+/**
+ * Pareamento ESTANQUE dos RMS radiais de uma janela (política de dados do plano):
+ * exige exatamente 60 amostras em CADA eixo, timestamps únicos em cada eixo e
+ * conjuntos de timestamps idênticos entre Y e Z. Qualquer outra forma é erro alto —
+ * nunca ranquear no escuro, nunca aceitar pareamento parcial como completo.
+ */
+export function windowRadialSeries(
+  ySamples: Sample[],
+  zSamples: Sample[],
+  windowStartIso: string,
+  context: string,
+): number[] {
+  const y = samplesInWindow(ySamples, windowStartIso, context);
+  const z = samplesInWindow(zSamples, windowStartIso, context);
+
+  for (const [axis, values] of [
+    ['Y', y],
+    ['Z', z],
+  ] as const) {
+    if (values.length !== 60) {
+      throw new Error(`Janela ${context}: eixo ${axis} tem ${values.length}/60 amostras.`);
+    }
+    if (new Set(values.map((s) => s.timestamp)).size !== 60) {
+      throw new Error(`Janela ${context}: eixo ${axis} tem timestamps duplicados.`);
+    }
+  }
+
+  const zByTimestamp = new Map(z.map((sample) => [sample.timestamp, sample.value]));
+  return y.map((sample) => {
+    const zValue = zByTimestamp.get(sample.timestamp);
+    if (zValue === undefined) {
+      throw new Error(
+        `Janela ${context}: timestamp ${sample.timestamp} existe em Y mas não em Z.`,
+      );
+    }
+    return radialRms(sample.value, zValue);
+  });
 }
 
 export async function seriesIdsForPlant(
@@ -175,46 +225,30 @@ export async function seriesIdsForPlant(
   return map;
 }
 
-/**
- * Lê pela API os RMS radiais de UMA janela do sensor, pareando Y e Z por timestamp.
- * Falha alto se a janela não tiver exatamente `windowCount` pares.
- */
-export async function observeWindowRadial(
+/** Leituras completas de UM sensor: cada série é buscada UMA vez (3 GETs por sensor). */
+export interface SensorReadings {
+  ySamples: Sample[];
+  zSamples: Sample[];
+  temperatureSamples: Sample[];
+}
+
+export async function readSensorSeries(
   config: TwinApiConfig,
   token: string,
   ids: SeriesIds,
-  windowStart: string,
-  sensorSerial: string,
-  windowLabel: string,
-): Promise<number[]> {
-  const [ySamples, zSamples] = [
-    inWindow(await fetchAllSamples(config, token, ids.y), windowStart),
-    inWindow(await fetchAllSamples(config, token, ids.z), windowStart),
-  ];
-  const zByTimestamp = new Map(zSamples.map((s) => [s.timestamp, s.value]));
-
-  const radial: number[] = [];
-  for (const y of ySamples) {
-    const z = zByTimestamp.get(y.timestamp);
-    if (z !== undefined) radial.push(radialRms(y.value, z));
-  }
-  if (radial.length !== 60) {
-    throw new Error(
-      `Janela ${windowLabel} de ${sensorSerial} tem ${radial.length}/60 pares Y-Z no banco.`,
-    );
-  }
-  return radial;
+): Promise<SensorReadings> {
+  return {
+    ySamples: await fetchAllSamples(config, token, ids.y),
+    zSamples: await fetchAllSamples(config, token, ids.z),
+    temperatureSamples: ids.temperature
+      ? await fetchAllSamples(config, token, ids.temperature)
+      : [],
+  };
 }
 
-async function observeTemperatureMean(
-  config: TwinApiConfig,
-  token: string,
-  seriesId: string | null,
-  windowStart: string,
-): Promise<number | null> {
-  if (!seriesId) return null;
-  const samples = inWindow(await fetchAllSamples(config, token, seriesId), windowStart);
-  return samples.length > 0 ? meanOf(samples.map((s) => s.value)) : null;
+function temperatureMean(readings: SensorReadings, windowStartIso: string): number | null {
+  const inside = samplesInWindow(readings.temperatureSamples, windowStartIso, 'temperature');
+  return inside.length > 0 ? meanOf(inside.map((s) => s.value)) : null;
 }
 
 /** OBSERVE + RANK: assessment completo da frota lendo somente o que está persistido. */
@@ -228,24 +262,23 @@ export async function assessFleet(
 
   const observations: ObservedWindows[] = [];
   for (const sensor of sensors) {
-    const seriesIds = ids.get(sensor.sensorSerial)!;
+    // Uma leitura por série; as duas janelas são particionadas localmente.
+    const readings = await readSensorSeries(config, token, ids.get(sensor.sensorSerial)!);
     observations.push({
       sensorSerial: sensor.sensorSerial,
       machineName: sensor.machineName,
       monitoringPointName: sensor.pointName,
       shortLabel: sensor.shortLabel,
-      baselineRadial: await observeWindowRadial(
-        config, token, seriesIds, plant.windows.baseline, sensor.sensorSerial, 'baseline',
+      baselineRadial: windowRadialSeries(
+        readings.ySamples, readings.zSamples, plant.windows.baseline,
+        `baseline de ${sensor.sensorSerial}`,
       ),
-      conditionRadial: await observeWindowRadial(
-        config, token, seriesIds, plant.windows.condition, sensor.sensorSerial, 'condition',
+      conditionRadial: windowRadialSeries(
+        readings.ySamples, readings.zSamples, plant.windows.condition,
+        `condition de ${sensor.sensorSerial}`,
       ),
-      baselineTemperatureMeanC: await observeTemperatureMean(
-        config, token, seriesIds.temperature, plant.windows.baseline,
-      ),
-      conditionTemperatureMeanC: await observeTemperatureMean(
-        config, token, seriesIds.temperature, plant.windows.condition,
-      ),
+      baselineTemperatureMeanC: temperatureMean(readings, plant.windows.baseline),
+      conditionTemperatureMeanC: temperatureMean(readings, plant.windows.condition),
     });
   }
 

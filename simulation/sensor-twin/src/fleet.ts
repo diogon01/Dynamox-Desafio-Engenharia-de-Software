@@ -103,3 +103,34 @@ export async function runFleetPhase(
   }
   return results;
 }
+
+/**
+ * PORTA DE AQUISIÇÃO DO SIMULADOR (fronteira do plano): o supervisor deliberativo
+ * entrega apenas o SERIAL selecionado; quem resolve a realidade sintética do sinal
+ * (cenário, seed da confirmação, janela) é este lado — o módulo do supervisor não
+ * importa nem enxerga rótulos de cenário, e um teste de fronteira garante isso.
+ */
+export async function requestConfirmatoryAcquisition(
+  config: TwinApiConfig,
+  token: string,
+  plant: PlantManifest,
+  resourceIds: ResolvedResourceIds,
+  sensorSerial: string,
+): Promise<FleetIngestion> {
+  const sensor = plantSensors(plant).find((s) => s.sensorSerial === sensorSerial);
+  if (!sensor) {
+    throw new Error(`Sensor "${sensorSerial}" não existe no manifest da planta.`);
+  }
+  const cycle = buildCycle(
+    scenarioForSensor(plant, sensor, 'confirm'),
+    {
+      seed: sensor.seed + CONFIRM_SEED_OFFSET,
+      rpm: sensor.rpm,
+      loadPercent: sensor.loadPercent,
+      baseTimestamp: plant.windows.confirm,
+    },
+    identityFor(sensor, resourceIds),
+  );
+  const { status, body } = await ingestCycle(config, token, cycle);
+  return { sensorSerial, status, body };
+}

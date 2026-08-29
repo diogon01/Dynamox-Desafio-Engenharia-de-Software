@@ -122,10 +122,13 @@ describe('F4–F6 — snapshots, assessment e deliberação contra a API real', 
     );
 
     const seriesAfter = await fetchSeries(config, token);
-    for (const s of seriesAfter) {
-      if (countsBefore.has(s.id)) {
-        expect(s.sampleCount).toBe(countsBefore.get(s.id));
-      }
+    const fleetAfter = seriesAfter.filter((s) =>
+      plantSensors().some((p) => p.sensorSerial === s.sensorSerialNumber),
+    );
+    // Nem contagens crescem, NEM séries novas aparecem (conjunto idêntico de ids).
+    expect(new Set(fleetAfter.map((s) => s.id))).toEqual(new Set(countsBefore.keys()));
+    for (const s of fleetAfter) {
+      expect(s.sampleCount).toBe(countsBefore.get(s.id));
     }
   }, 120000);
 });

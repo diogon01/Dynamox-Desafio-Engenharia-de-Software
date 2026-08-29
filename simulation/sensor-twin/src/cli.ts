@@ -142,8 +142,11 @@ function printAssessment(assessment: FleetAssessment): void {
 }
 
 async function runPlantAssess(): Promise<void> {
-  const { config, token } = await plantSession();
-  // assess NÃO ingere nada: somente observa o que está persistido.
+  // assess é ESTRITAMENTE observacional: login + leitura. Nenhum ensure/bootstrap —
+  // criar entidades pertence só aos comandos que agem (achado da revisão incorporado).
+  validatePlantManifest(PLANT);
+  const config = loadTwinConfig();
+  const token = await login(config);
   printAssessment(await assessFleet(config, token, PLANT));
 }
 

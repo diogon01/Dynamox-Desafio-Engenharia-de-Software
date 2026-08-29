@@ -12,6 +12,7 @@ import {
   computeAssessment,
   meanOf,
   radialRms,
+  windowRadialSeries,
   type ObservedWindows,
 } from './assess';
 import { buildRecommendation, confirmTransition } from './deliberate';
@@ -181,5 +182,49 @@ describe('F6 — transição por re-observação e recomendação (testes 18–2
     const first = computeAssessment(observationsFromEngine(), OPTIONS);
     const second = computeAssessment(observationsFromEngine(), OPTIONS);
     expect(second).toEqual(first);
+  });
+});
+
+describe('pareamento Y/Z estanque (achados da revisão)', () => {
+  const start = PLANT.windows.baseline;
+  const startMs = Date.parse(start);
+  const stamps = Array.from({ length: 60 }, (_, i) => new Date(startMs + i * 1000).toISOString());
+  const axis = (value: number) => stamps.map((timestamp) => ({ timestamp, value }));
+
+  it('60 pares perfeitos produzem 60 RMS radiais', () => {
+    const radial = windowRadialSeries(axis(0.02), axis(0.02), start, 'teste');
+    expect(radial).toHaveLength(60);
+    expect(radial[0]).toBeCloseTo(0.02, 12);
+  });
+
+  it('59 amostras em um eixo falham alto (nunca pareamento parcial)', () => {
+    expect(() => windowRadialSeries(axis(0.02).slice(0, 59), axis(0.02), start, 'teste')).toThrow(
+      /59\/60/,
+    );
+  });
+
+  it('conjuntos de timestamps divergentes entre Y e Z falham alto', () => {
+    const shifted = axis(0.02).map((s, i) =>
+      i === 30 ? { ...s, timestamp: new Date(startMs + 30_500).toISOString() } : s,
+    );
+    expect(() => windowRadialSeries(axis(0.02), shifted, start, 'teste')).toThrow(
+      /existe em Y mas não em Z/,
+    );
+  });
+
+  it('timestamps duplicados em um eixo falham alto, mesmo com 60 amostras', () => {
+    const duplicated = axis(0.02);
+    duplicated[1] = { ...duplicated[0] };
+    expect(() => windowRadialSeries(duplicated, axis(0.02), start, 'teste')).toThrow(
+      /duplicados/,
+    );
+  });
+
+  it('timestamp não-ISO vindo da API é erro explícito, não comparação silenciosa', () => {
+    const broken = axis(0.02);
+    broken[0] = { ...broken[0], timestamp: 'not-a-timestamp' };
+    expect(() => windowRadialSeries(broken, axis(0.02), start, 'teste')).toThrow(
+      /Timestamp inválido/,
+    );
   });
 });

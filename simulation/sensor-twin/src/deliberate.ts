@@ -1,27 +1,30 @@
 /**
  * Loop deliberativo (F6): OBSERVE → RANK → DECIDE → ACT → RE-OBSERVE → RECOMMEND.
  *
- * A confirmação NÃO é replay idempotente: é uma NOVA aquisição do sensor que os DADOS
- * selecionaram — janela própria (confirm) e seed determinística independente
- * (seed + CONFIRM_SEED_OFFSET) ⇒ mesma condição sintética, realização de ruído
- * diferente. O supervisor só escolhe QUEM confirmar; a realidade sintética do sinal
- * pertence ao simulador (manifest). A transição de estado nasce SEMPRE da releitura do
- * banco — duplicate é transporte, nunca evidência.
+ * FRONTEIRA ESTANQUE (achado da revisão incorporado): este módulo — o supervisor — não
+ * importa nenhuma maquinaria de cenário/seed/realidade do simulador. Ele decide QUEM
+ * confirmar pelos dados e entrega apenas o serial à porta de aquisição do simulador
+ * (fleet.requestConfirmatoryAcquisition). A lista de tokens proibidos vive em
+ * boundary.spec.ts, que varre este arquivo e o assess.ts para impedir regressão.
+ *
+ * A confirmação NÃO é replay: é uma NOVA aquisição (janela e seed próprios, resolvidos
+ * pelo simulador). A transição de estado nasce SEMPRE da releitura do banco —
+ * duplicate é transporte, nunca evidência.
  */
 import {
   SYNTHETIC_ATTENTION_RATIO,
   assessFleet,
   meanOf,
-  observeWindowRadial,
+  readSensorSeries,
   seriesIdsForPlant,
+  windowRadialSeries,
   type FleetAssessment,
   type SensorAssessment,
   type SensorState,
 } from './assess';
-import { identityFor, scenarioForSensor, type ResolvedResourceIds } from './fleet';
-import { ingestCycle, type TwinApiConfig } from './ingest';
-import { buildCycle } from './payload';
-import { CONFIRM_SEED_OFFSET, PLANT, plantSensors, type PlantManifest } from './plant';
+import { requestConfirmatoryAcquisition, type ResolvedResourceIds } from './fleet';
+import type { TwinApiConfig } from './ingest';
+import { PLANT, plantSensors, type PlantManifest } from './plant';
 
 export interface ConfirmationEvidence {
   sensorSerial: string;
@@ -62,11 +65,7 @@ export function buildRecommendation(
   );
 }
 
-/**
- * OBSERVE → RANK → DECIDE → ACT → RE-OBSERVE → RECOMMEND.
- * O supervisor escolhe QUAL sensor confirmar; a realidade sintética do sinal pertence
- * ao simulador (manifest) — o supervisor nunca lê rótulos de cenário.
- */
+/** OBSERVE → RANK → DECIDE → ACT (via porta do simulador) → RE-OBSERVE → RECOMMEND. */
 export async function deliberate(
   config: TwinApiConfig,
   token: string,
@@ -85,33 +84,27 @@ export async function deliberate(
     };
   }
 
-  // ACT: nova aquisição do sensor QUE OS DADOS SELECIONARAM — janela e seed próprios
-  // da confirmação (realização de ruído independente). O supervisor só escolhe QUEM
-  // confirmar; a realidade sintética do sinal é resolvida pelo simulador (manifest).
-  const sensors = plantSensors(plant);
-  const target = sensors.find((s) => s.sensorSerial === assessment.selected!.sensorSerial)!;
-  const confirmCycle = buildCycle(
-    scenarioForSensor(plant, target, 'confirm'),
-    {
-      seed: target.seed + CONFIRM_SEED_OFFSET,
-      rpm: target.rpm,
-      loadPercent: target.loadPercent,
-      baseTimestamp: plant.windows.confirm,
-    },
-    identityFor(target, resourceIds),
+  // ACT: o supervisor entrega SOMENTE o serial selecionado à porta do simulador.
+  const selectedSerial = assessment.selected.sensorSerial;
+  const ingestion = await requestConfirmatoryAcquisition(
+    config, token, plant, resourceIds, selectedSerial,
   );
-  const ingestion = await ingestCycle(config, token, confirmCycle);
 
   // RE-OBSERVE: a conclusão nasce do BANCO, nunca do resultado interno do gerador.
-  const ids = (await seriesIdsForPlant(config, token, [target])).get(target.sensorSerial)!;
-  const confirmRadial = await observeWindowRadial(
-    config, token, ids, plant.windows.confirm, target.sensorSerial, 'confirm',
+  const target = plantSensors(plant).find((s) => s.sensorSerial === selectedSerial)!;
+  const ids = (await seriesIdsForPlant(config, token, [target])).get(selectedSerial)!;
+  const readings = await readSensorSeries(config, token, ids);
+  const confirmRadial = windowRadialSeries(
+    readings.ySamples,
+    readings.zSamples,
+    plant.windows.confirm,
+    `confirm de ${selectedSerial}`,
   );
   const confirmRadialRms = meanOf(confirmRadial);
   const confirmRatio = confirmRadialRms / assessment.selected.baselineRadialRms;
 
   const confirmation: ConfirmationEvidence = {
-    sensorSerial: target.sensorSerial,
+    sensorSerial: selectedSerial,
     ingestStatus: ingestion.status,
     ingestDuplicate: ingestion.body.duplicate,
     fingerprint: ingestion.body.payloadFingerprint,

@@ -68,7 +68,9 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 105 API + 82 web = 187 testes; exige o PostgreSQL no ar
+npm run test                  # 152 API (47 unit + 105 e2e/contrato) + 82 web = 234 testes
+npm run test:unit -w @dynamox/api   # somente unitários isolados (sem banco, < 2 s)
+npm run perf:latency          # TS-07: latência < 350 ms (exige a API no ar)
 ```
 
 ## Credenciais de demonstração
@@ -117,7 +119,9 @@ proteção (o frontend apenas espelha):
 | `DELETE` | `/api/time-series/:id` | Exclui a série e todas as amostras em cascata (`204`); `404` se não existir |
 
 A documentação interativa (Swagger UI) fica em <http://localhost:3000/api/docs>, com o
-documento OpenAPI 3 em `/api/docs-json`. Use o botão **Authorize** com o token do login.
+documento OpenAPI 3 em `/api/docs-json`: todas as rotas e códigos de erro, com schemas
+dos corpos de requisição; os formatos de resposta estão descritos por texto e detalhados
+nestas seções. Use o botão **Authorize** com o token do login.
 
 ### Autenticando pelo terminal
 
@@ -273,8 +277,10 @@ prisma       schema, migrações e seed
 
 ## Pendências para fechar o P0
 
-- README de entrega na raiz com decisões, pressupostos e limitações.
-- Medição reproduzível de latência abaixo de 350 ms.
+Nenhuma. O P0 convencional está completo: README de entrega na raiz (`docs: add
+reproducible challenge delivery guide`), testes unitários isolados de backend, medição
+reproduzível de latência (`npm run perf:latency`) e validação integral em clone limpo.
+O que resta é da entrega em si (revisão final, PR e e-mail) e os bônus.
 
 ## Pendências específicas do bônus BON-06
 

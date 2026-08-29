@@ -89,7 +89,9 @@ cada execução, então a credencial anunciada sempre funciona.
 ### Documentação interativa da API
 
 Swagger UI em <http://localhost:3000/api/docs> (documento OpenAPI 3 em `/api/docs-json`),
-com todas as rotas, códigos de erro e schemas. As rotas privadas exigem
+com todas as rotas e códigos de erro, e os schemas dos corpos de requisição; os formatos
+de resposta estão descritos em cada operação e em [`docs/SETUP.md`](./docs/SETUP.md). As
+rotas privadas exigem
 `Authorization: Bearer <token>`; pelo terminal:
 
 ```bash
@@ -175,8 +177,10 @@ O enunciado pede que ambiguidades sejam resolvidas com pressupostos explícitos:
 2. **Sessão**: token em `sessionStorage` (sobrevive a reload, morre ao fechar o
    navegador), validade de 8h, sem refresh token — simplicidade adequada ao escopo.
 3. **Unicidade**: nome de máquina é único global; nome de ponto é único **por máquina**;
-   ambos com trim e limite de 120 caracteres (nomes maiores estourariam a entrada do
-   índice B-tree e virariam erro 500 do banco — a API responde 400 determinístico).
+   ambos com trim e limite de 120 caracteres. O teto é uma decisão defensiva de produto:
+   como os nomes participam de índices únicos, aceitar tamanho arbitrário empurraria ao
+   banco uma falha que deveria ser validação (um nome de ~10 KB estoura a entrada do
+   índice B-tree e viraria 500; testado no e2e) — a API responde 400 determinístico.
 4. **"Pelo menos dois pontos de monitoramento"**: demonstrado pelo seed (P-101 com dois
    mancais, cada um com sensor HF+) e suportado sem limite pela API/UI.
 5. **Paginação de 5**: a interface usa sempre 5 por página, como pede o enunciado; na

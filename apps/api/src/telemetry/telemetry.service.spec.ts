@@ -46,6 +46,11 @@ describe('TelemetryService.getSamplesPage (TS-03)', () => {
     expect(prisma.timeSeriesSample.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ skip: 10, take: 2, orderBy: { timestamp: 'asc' } }),
     );
+    // Página e contagem precisam sair do MESMO snapshot: remover o Repeatable Read
+    // seria uma regressão silenciosa — este assert a torna barulhenta.
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Array), {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
+    });
   });
 
   it('responde 404 para série inexistente antes de consultar amostras', async () => {

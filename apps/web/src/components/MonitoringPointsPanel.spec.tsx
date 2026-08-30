@@ -207,7 +207,7 @@ describe('MonitoringPointsPanel', () => {
 
     expect(screen.getByText('1–5 de 7')).toBeDefined();
 
-    await userEvent.click(screen.getByRole('button', { name: /Go to next page/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Ir para a próxima página/i }));
     await waitFor(() => {
       const urls = fetchMock.mock.calls.map((call) => String(call[0]));
       expect(urls.some((url) => url.includes('page=2'))).toBe(true);

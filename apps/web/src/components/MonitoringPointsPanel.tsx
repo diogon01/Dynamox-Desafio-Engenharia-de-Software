@@ -352,6 +352,7 @@ export function MonitoringPointsPanel(): JSX.Element {
                         {point.sensor ? null : (
                           <Button
                             size="small"
+                            aria-label={`Associar sensor ao ponto ${point.name} de ${point.machine.name}`}
                             onClick={() => startAssign(point)}
                             disabled={assigning}
                           >
@@ -372,6 +373,9 @@ export function MonitoringPointsPanel(): JSX.Element {
               rowsPerPage={pageSize}
               rowsPerPageOptions={[pageSize]}
               labelDisplayedRows={({ from, to, count }) => `${from}–${to} de ${count}`}
+              getItemAriaLabel={(type) =>
+                type === 'previous' ? 'Ir para a página anterior' : 'Ir para a próxima página'
+              }
             />
           </>
         ) : null}

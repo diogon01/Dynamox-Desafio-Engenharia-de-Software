@@ -335,6 +335,7 @@ export function MachinesPanel(): JSX.Element {
                     <TableCell align="right">
                       <Button
                         size="small"
+                        aria-label={`Editar máquina ${machine.name}`}
                         onClick={() => startEdit(machine)}
                         disabled={saving || removing}
                       >
@@ -343,6 +344,7 @@ export function MachinesPanel(): JSX.Element {
                       <Button
                         size="small"
                         color="error"
+                        aria-label={`Excluir máquina ${machine.name}`}
                         onClick={() => {
                           setEditTarget(null);
                           setDeleteTarget(machine);

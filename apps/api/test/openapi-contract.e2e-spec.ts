@@ -110,4 +110,126 @@ describe('contrato OpenAPI publicado', () => {
       expect((operation.tags as string[]).length).toBeGreaterThan(0);
     }
   });
+
+  /**
+   * Campo anulável precisa manter o tipo base publicado. O gerador lê o metadado de
+   * runtime do TypeScript e, numa união com null, ele chega como Object — sem `type`
+   * explícito o contrato passa a anunciar `object` no lugar de string/number/boolean.
+   * Este teste olha o documento final, não o decorator, para pegar a regressão onde ela
+   * apareceria para o consumidor.
+   */
+  it('campo anulável preserva o tipo primitivo em vez de virar object', () => {
+    const esperado: Record<string, Record<string, { type: string; format?: string }>> = {
+      MonitoringPointPageResponse: {
+        search: { type: 'string' },
+        hasSensor: { type: 'boolean' },
+        machineType: { type: 'string' },
+        sensorModel: { type: 'string' },
+      },
+      SeriesMetricsResponse: {
+        min: { type: 'number' },
+        max: { type: 'number' },
+        avg: { type: 'number' },
+        last: { type: 'number' },
+        firstTimestamp: { type: 'string', format: 'date-time' },
+        lastTimestamp: { type: 'string', format: 'date-time' },
+      },
+      TimeSeriesSummaryResponse: {
+        axis: { type: 'string' },
+      },
+    };
+
+    const schemas = (document.components?.schemas ?? {}) as Record<
+      string,
+      { properties?: Record<string, { type?: string; format?: string; nullable?: boolean }> }
+    >;
+
+    for (const [schemaName, fields] of Object.entries(esperado)) {
+      for (const [field, expectation] of Object.entries(fields)) {
+        const property = schemas[schemaName]?.properties?.[field];
+        expect(property).toBeDefined();
+        expect(`${schemaName}.${field}: ${property?.type}`).toBe(
+          `${schemaName}.${field}: ${expectation.type}`,
+        );
+        expect(property?.nullable).toBe(true);
+        if (expectation.format) expect(property?.format).toBe(expectation.format);
+      }
+    }
+  });
+
+  it('nenhuma propriedade primitiva é publicada como object', () => {
+    const schemas = (document.components?.schemas ?? {}) as Record<
+      string,
+      { properties?: Record<string, Record<string, unknown>> }
+    >;
+    const suspeitas: string[] = [];
+
+    for (const [schemaName, schema] of Object.entries(schemas)) {
+      for (const [field, property] of Object.entries(schema.properties ?? {})) {
+        // Objeto de verdade traz `properties`; referência traz $ref/allOf. O que sobra
+        // como `object` puro é união com null que perdeu o tipo base.
+        const ehObjetoReal = 'properties' in property || '$ref' in property || 'allOf' in property;
+        if (property.type === 'object' && !ehObjetoReal) {
+          suspeitas.push(`${schemaName}.${field}`);
+        }
+      }
+    }
+    expect(suspeitas).toEqual([]);
+  });
+
+  /**
+   * O 403 nasce da autorização por perfil: só faz sentido onde há mutação. Anunciá-lo
+   * numa leitura diria ao consumidor que o perfil VIEWER não pode consultar — o oposto
+   * do que a API faz.
+   */
+  it('403 é publicado apenas em operações que alteram estado', () => {
+    const divergencias: string[] = [];
+    for (const { path, method, operation } of operations()) {
+      const publica403 = '403' in ((operation.responses ?? {}) as Record<string, unknown>);
+      const altera = ['post', 'patch', 'put', 'delete'].includes(method);
+      const publico = path === '/api/auth/login' || path === '/api/health';
+      const deveria = altera && !publico;
+      if (publica403 !== deveria) {
+        divergencias.push(`${method.toUpperCase()} ${path} publica403=${publica403} esperado=${deveria}`);
+      }
+    }
+    expect(divergencias).toEqual([]);
+  });
+
+  it('toda operação privada publica 401', () => {
+    for (const { path, method, operation } of operations()) {
+      if (path === '/api/auth/login' || path === '/api/health') continue;
+      const codes = Object.keys((operation.responses ?? {}) as Record<string, unknown>);
+      expect(`${method.toUpperCase()} ${path}: ${codes.includes('401')}`).toBe(
+        `${method.toUpperCase()} ${path}: true`,
+      );
+    }
+  });
+
+  it('respostas de erro apontam para o contrato { code, message }', () => {
+    const schemas = (document.components?.schemas ?? {}) as Record<string, unknown>;
+    expect(schemas.ErrorResponse).toBeDefined();
+
+    /**
+     * Exceção deliberada: o probe de saúde responde 503 com o MESMO corpo do 200, apenas
+     * com status "degraded". É estado de disponibilidade, não erro de negócio — forçá-lo
+     * ao formato { code, message } quebraria quem monitora o endpoint.
+     */
+    const naoUsamErrorResponse = new Set(['GET /api/health 503']);
+
+    for (const { path, method, operation } of operations()) {
+      const responses = (operation.responses ?? {}) as Record<
+        string,
+        { content?: Record<string, { schema?: { $ref?: string } }> }
+      >;
+      for (const [status, response] of Object.entries(responses)) {
+        if (!status.startsWith('4') && !status.startsWith('5')) continue;
+        if (naoUsamErrorResponse.has(`${method.toUpperCase()} ${path} ${status}`)) continue;
+        const ref = Object.values(response.content ?? {})[0]?.schema?.$ref;
+        expect(`${method.toUpperCase()} ${path} ${status}: ${ref}`).toBe(
+          `${method.toUpperCase()} ${path} ${status}: #/components/schemas/ErrorResponse`,
+        );
+      }
+    }
+  });
 });

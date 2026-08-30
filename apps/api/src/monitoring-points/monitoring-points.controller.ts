@@ -31,16 +31,16 @@ import {
 @ApiTags('monitoring-points')
 @ApiBearerAuth('bearer')
 @ApiResponse({ status: 401, description: 'Token ausente, inválido ou expirado', type: ErrorResponse })
-@ApiResponse({
-  status: 403,
-  description: 'Perfil VIEWER: a consulta é permitida, alterar não.',
-  type: ErrorResponse,
-})
 @Controller('monitoring-points')
 export class MonitoringPointsController {
   constructor(private readonly monitoringPoints: MonitoringPointsService) {}
 
   @Post()
+  @ApiResponse({
+    status: 403,
+    description: 'Perfil VIEWER: este endpoint altera estado e exige perfil administrador.',
+    type: ErrorResponse,
+  })
   @ApiOperation({ summary: 'Cria um ponto de monitoramento para uma máquina' })
   @ApiBody({
     schema: {
@@ -125,6 +125,11 @@ export class MonitoringPointsController {
   }
 
   @Post(':id/sensor')
+  @ApiResponse({
+    status: 403,
+    description: 'Perfil VIEWER: este endpoint altera estado e exige perfil administrador.',
+    type: ErrorResponse,
+  })
   @ApiOperation({ summary: 'Associa um sensor novo ao ponto (máx. 1 por ponto)' })
   @ApiBody({
     schema: {

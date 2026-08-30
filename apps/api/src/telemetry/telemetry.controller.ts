@@ -87,11 +87,6 @@ export function parseSamplesQuery(query: Record<string, unknown>): { limit: numb
 
 @ApiBearerAuth('bearer')
 @ApiResponse({ status: 401, description: 'Token ausente, inválido ou expirado', type: ErrorResponse })
-@ApiResponse({
-  status: 403,
-  description: 'Perfil VIEWER: consultar séries é permitido; ingerir e excluir, não.',
-  type: ErrorResponse,
-})
 @Controller()
 export class TelemetryController {
   constructor(private readonly telemetry: TelemetryService) {}
@@ -102,6 +97,11 @@ export class TelemetryController {
    * Quando o header não vem, a chave é derivada do próprio conteúdo do ciclo.
    */
   @Post('telemetry-cycles')
+  @ApiResponse({
+    status: 403,
+    description: 'Perfil VIEWER: este endpoint altera estado e exige perfil administrador.',
+    type: ErrorResponse,
+  })
   @ApiTags('telemetry')
   @ApiOperation({
     summary: 'Ingestão idempotente de um ciclo de telemetria (contrato SCP-04)',
@@ -352,6 +352,11 @@ export class TelemetryController {
 
   /** TS-05: remove a série e, em cascata, todas as suas amostras. */
   @Delete('time-series/:id')
+  @ApiResponse({
+    status: 403,
+    description: 'Perfil VIEWER: este endpoint altera estado e exige perfil administrador.',
+    type: ErrorResponse,
+  })
   @ApiTags('time-series')
   @ApiOperation({ summary: 'Exclui a série e todas as suas amostras (cascata)' })
   @ApiResponse({ status: 204, description: 'Removida; resposta sem corpo.' })

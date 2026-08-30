@@ -169,7 +169,13 @@ export class MonitoringPointPageResponse {
   @ApiProperty({ enum: ['asc', 'desc'], example: 'asc' })
   sortDir!: 'asc' | 'desc';
 
+  /**
+   * `type` explícito é obrigatório nos campos anuláveis: o gerador lê o metadado de
+   * runtime do TypeScript, e uma união com null chega como Object — o contrato sairia
+   * publicando `type: object` para o que é, de fato, string.
+   */
   @ApiProperty({
+    type: String,
     nullable: true,
     description: 'Eco do recorte aplicado: confirma o que o servidor considerou.',
     example: null,
@@ -182,7 +188,7 @@ export class MonitoringPointPageResponse {
   @ApiProperty({ enum: ['TcAg', 'TcAs', 'HF+'], nullable: true, example: null })
   sensorModel!: 'TcAg' | 'TcAs' | 'HF+' | null;
 
-  @ApiProperty({ nullable: true, example: null })
+  @ApiProperty({ type: Boolean, nullable: true, example: null })
   hasSensor!: boolean | null;
 }
 
@@ -227,22 +233,32 @@ export class SeriesMetricsResponse {
   @ApiProperty({ example: 270 })
   count!: number;
 
-  @ApiProperty({ nullable: true, example: 0.0195 })
+  @ApiProperty({ type: Number, nullable: true, example: 0.0195 })
   min!: number | null;
 
-  @ApiProperty({ nullable: true, example: 0.0324 })
+  @ApiProperty({ type: Number, nullable: true, example: 0.0324 })
   max!: number | null;
 
-  @ApiProperty({ nullable: true, example: 0.0258 })
+  @ApiProperty({ type: Number, nullable: true, example: 0.0258 })
   avg!: number | null;
 
-  @ApiProperty({ description: 'Valor da amostra mais recente.', nullable: true, example: 0.0303 })
+  @ApiProperty({
+    type: Number,
+    description: 'Valor da amostra mais recente.',
+    nullable: true,
+    example: 0.0303,
+  })
   last!: number | null;
 
-  @ApiProperty({ format: 'date-time', nullable: true, example: ISO })
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, example: ISO })
   firstTimestamp!: string | null;
 
-  @ApiProperty({ format: 'date-time', nullable: true, example: '2026-08-31T08:04:29.000Z' })
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    example: '2026-08-31T08:04:29.000Z',
+  })
   lastTimestamp!: string | null;
 }
 

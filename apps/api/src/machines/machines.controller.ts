@@ -22,16 +22,16 @@ import { MachinesService, type MachineDto } from './machines.service';
 @ApiTags('machines')
 @ApiBearerAuth('bearer')
 @ApiResponse({ status: 401, description: 'Token ausente, inválido ou expirado', type: ErrorResponse })
-@ApiResponse({
-  status: 403,
-  description: 'Perfil VIEWER: a consulta é permitida, alterar não.',
-  type: ErrorResponse,
-})
 @Controller('machines')
 export class MachinesController {
   constructor(private readonly machines: MachinesService) {}
 
   @Post()
+  @ApiResponse({
+    status: 403,
+    description: 'Perfil VIEWER: este endpoint altera estado e exige perfil administrador.',
+    type: ErrorResponse,
+  })
   @ApiOperation({ summary: 'Cria uma máquina (name + type em Pump/Fan)' })
   @ApiBody({
     schema: {
@@ -75,6 +75,11 @@ export class MachinesController {
   }
 
   @Patch(':id')
+  @ApiResponse({
+    status: 403,
+    description: 'Perfil VIEWER: este endpoint altera estado e exige perfil administrador.',
+    type: ErrorResponse,
+  })
   @ApiOperation({ summary: 'Altera name e/ou type; corpo vazio é 400' })
   @ApiBody({
     description: 'Envie apenas os campos que mudam.',
@@ -107,6 +112,11 @@ export class MachinesController {
   }
 
   @Delete(':id')
+  @ApiResponse({
+    status: 403,
+    description: 'Perfil VIEWER: este endpoint altera estado e exige perfil administrador.',
+    type: ErrorResponse,
+  })
   @ApiOperation({ summary: 'Remove a máquina; pontos de monitoramento caem em cascata' })
   @ApiResponse({ status: 204, description: 'Removida; resposta sem corpo.' })
   @ApiResponse({ status: 404, description: 'MACHINE_NOT_FOUND', type: ErrorResponse })

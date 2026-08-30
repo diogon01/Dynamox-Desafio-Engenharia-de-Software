@@ -77,16 +77,55 @@ npm run test:unit -w @dynamox/api   # somente unitários isolados (sem banco, < 
 npm run perf:latency          # TS-07: latência < 350 ms (exige a API no ar)
 ```
 
+## Consulta da listagem de pontos
+
+Paginação, ordenação, busca e filtros são resolvidos **no servidor**: o cliente pede um
+recorte e recebe a página junto com os metadados desse recorte. Nada é filtrado sobre a
+página já carregada.
+
+| Parâmetro | Valores | Padrão |
+|---|---|---|
+| `page` | inteiro ≥ 1 | 1 |
+| `pageSize` | inteiro de 1 a 50 | 5 |
+| `sortBy` | `machineName`, `machineType`, `pointName`, `sensorModel` | `machineName` |
+| `sortDir` | `asc`, `desc` | `asc` |
+| `search` | texto até 120 caracteres | — |
+| `machineType` | `Pump`, `Fan` | — |
+| `sensorModel` | `TcAg`, `TcAs`, `HF+` | — |
+| `hasSensor` | `true`, `false` | — |
+
+Resposta: `{ items, total, page, pageSize, totalPages, sortBy, sortDir, search, machineType, sensorModel, hasSensor }`.
+`total` e `totalPages` já refletem o recorte — não são o tamanho da tabela.
+
+**Decisão sobre `pageSize`.** O enunciado exige exibir **até 5 pontos por página**, e a
+tela cumpre isso usando o padrão 5, sem oferecer troca de tamanho. A API, porém, aceita
+até 50: o inventário do dashboard e o bootstrap do bônus são clientes legítimos que
+precisam varrer a lista em menos requisições. Limitar a API a 5 não tornaria a tela mais
+correta e quebraria esses consumidores.
+
+**Notas de contrato.** Parâmetro desconhecido ou valor fora do vocabulário responde `400`
+(nunca é ignorado em silêncio, para o cliente não achar que filtrou). `sortBy` é uma
+whitelist — nenhum campo chega ao `ORDER BY` sem validação. A busca é por trecho, sem
+diferenciar maiúsculas, sobre nome da máquina, nome do ponto e série do sensor; curingas
+de `LIKE` digitados pelo usuário são tratados como texto literal. Ao consultar
+`sensorModel=HF+`, codifique o valor (`HF%2B`): `+` cru numa query string significa espaço.
+
 ## Credenciais de demonstração
 
 O enunciado pede login com e-mail e senha fixos. O seed cria o usuário abaixo (upsert por
 e-mail: rodar o seed várias vezes não duplica o registro e **redefine a senha**, garantindo
 que a credencial anunciada sempre funcione):
 
-| Campo | Valor |
-|---|---|
-| E-mail | `analista@dynamox.local` |
-| Senha | `Dynamox@2026` |
+| Perfil | E-mail | Senha | Pode |
+|---|---|---|---|
+| `ADMIN` | `analista@dynamox.local` | `Dynamox@2026` | consultar e alterar (criar, editar, excluir, ingerir) |
+| `VIEWER` | `consulta@dynamox.local` | `Consulta@2026` | somente consultar |
+
+O perfil viaja no JWT e é devolvido em `/auth/login` e `/auth/me`. A autorização é do
+**backend**: com credencial `VIEWER`, qualquer `POST`/`PATCH`/`DELETE` responde `403`
+(autenticado, sem permissão) — distinto do `401` de sessão ausente ou inválida. A interface
+apenas deixa de oferecer ações que o perfil não pode concluir; esconder botão não é
+autorização. Ambos os perfis são configuráveis por `SEED_USER_*` e `SEED_VIEWER_*`.
 
 São valores públicos de demonstração, configuráveis por `SEED_USER_EMAIL` e
 `SEED_USER_PASSWORD` no `.env`. A senha é gravada como `scrypt$salt$hash` — nunca em texto
@@ -114,7 +153,7 @@ proteção (o frontend apenas espelha):
 | `PATCH` | `/api/machines/:id` | Altera `name` e/ou `type`; corpo vazio é `400` |
 | `DELETE` | `/api/machines/:id` | Remove a máquina (`204`); `404` se não existir |
 | `POST` | `/api/monitoring-points` | Cria ponto de monitoramento (`machineId` + `name`) |
-| `GET` | `/api/monitoring-points` | Lista paginada (5 por página) e ordenável por qualquer coluna |
+| `GET` | `/api/monitoring-points` | Lista paginada (5 por página), ordenável por qualquer coluna, com busca e filtros — ver "Consulta da listagem" |
 | `POST` | `/api/monitoring-points/:id/sensor` | Associa um sensor (`serialNumber` + `model`) ao ponto |
 | `POST` | `/api/telemetry-cycles` | Ingestão idempotente de um ciclo de telemetria |
 | `GET` | `/api/time-series` | Séries persistidas com máquina, ponto, sensor e contagem |

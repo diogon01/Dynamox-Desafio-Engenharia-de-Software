@@ -65,13 +65,16 @@ Todas as variáveis têm padrão local documentado no próprio [`.env.example`](
 
 ### Credenciais de demonstração
 
-| Campo | Valor |
-|---|---|
-| E-mail | `analista@dynamox.local` |
-| Senha | `Dynamox@2026` |
+| Perfil | E-mail | Senha | Pode |
+|---|---|---|---|
+| `ADMIN` | `analista@dynamox.local` | `Dynamox@2026` | consultar e alterar |
+| `VIEWER` | `consulta@dynamox.local` | `Consulta@2026` | somente consultar |
 
-O seed grava a senha como `scrypt$salt$hash` (nunca em texto puro) e redefine o hash a
-cada execução, então a credencial anunciada sempre funciona.
+O seed grava as senhas como `scrypt$salt$hash` (nunca em texto puro) e redefine o hash a
+cada execução, então as credenciais anunciadas sempre funcionam.
+
+A autorização vive no backend: com o perfil `VIEWER`, qualquer operação de escrita responde
+`403` mesmo se chamada diretamente pela API — a interface apenas não oferece essas ações.
 
 ### Fluxo principal de uso
 

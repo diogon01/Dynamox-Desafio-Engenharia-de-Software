@@ -194,26 +194,27 @@ describe('OperationalDashboard', () => {
     renderDashboard(vi.mocked(fetch));
     expect(screen.getByRole('heading', { name: /Visão geral operacional/i })).toBeDefined();
     expect(screen.getByLabelText(/Carregando matriz de sensores/i)).toBeDefined();
-    expect(screen.getByLabelText(/Em atenção: carregando/i)).toBeDefined();
+    expect(screen.getByLabelText(/Ativos em atenção: carregando/i)).toBeDefined();
   });
 
-  it('separa os KPIs por conceito em vez de somar tudo num indicador só', async () => {
+  it('os quatro KPIs separam condição, magnitude, cobertura e recência', async () => {
     renderDashboard();
     // Condição: apenas o sensor com desvio.
-    expect(await screen.findByLabelText('Em atenção: 1')).toBeDefined();
-    // Recência: os dois sensores instalados reportaram há 2 dias.
-    expect(screen.getByLabelText('Sem leitura recente: 2')).toBeDefined();
-    // Cobertura: o ponto sem sensor.
-    expect(screen.getByLabelText('Cobertura: 1')).toBeDefined();
-    // Inventário é contexto, não manchete.
-    expect(screen.getByText(/Monitorando 2 máquina\(s\) · 3 ponto\(s\) · 2 sensor\(es\)/i)).toBeDefined();
+    expect(await screen.findByLabelText('Ativos em atenção: 1')).toBeDefined();
+    // Magnitude: o maior desvio atual, com a grandeza que o sustenta.
+    const desvio = screen.getByLabelText('Maior desvio: 3×');
+    expect(within(desvio).getByText(/Aceleração radial \(Y\/Z\)/i)).toBeDefined();
+    // Cobertura: instrumentados e reportando sobre o total de pontos.
+    expect(screen.getByLabelText('Cobertura monitorada: 66,7%')).toBeDefined();
+    // Recência: leituras de 2 dias atrás estão fora da janela de 24 h.
+    expect(screen.getByLabelText('Leituras atuais: 0%')).toBeDefined();
   });
 
   it('a carga inicial não busca métricas série a série', async () => {
     const fetcher = fixtureFetch();
     renderDashboard(fetcher);
-    await screen.findByLabelText('Em atenção: 1');
-    await waitFor(() => expect(screen.getByText(/3× baseline/i)).toBeDefined());
+    await screen.findByLabelText('Ativos em atenção: 1');
+    await waitFor(() => expect(screen.getAllByText(/3×/).length).toBeGreaterThan(0));
 
     const urls = fetcher.mock.calls.map(([input]) => String(input));
     // O resumo das séries já traz a última leitura: nenhuma chamada de métricas.
@@ -225,21 +226,23 @@ describe('OperationalDashboard', () => {
     expect(inventario).toHaveLength(3);
   });
 
-  it('a exceção aparece com a evidência que a classificou', async () => {
+  it('a prioridade lista exceções primeiro, com valor e desvio da medição que classificou', async () => {
     renderDashboard();
     const fila = await screen.findByRole('region', { name: /Prioridade de inspeção/i });
+    expect(within(fila).getByText(/Mostrando 2 de 2 avaliados/i)).toBeDefined();
 
-    // A primeira linha é a de maior severidade — o sensor com desvio, não o mais antigo.
-    const alta = within(fila).getByText(/Prioridade alta/i).closest('div')?.parentElement;
-    expect(alta).toBeTruthy();
-    expect(within(alta!).getByText(/SIM-HF-002/i)).toBeDefined();
-    // Grandeza medida + índice, não um número órfão de outra série (o eixo X vale 0,008).
-    expect(within(alta!).getByText(/Aceleração radial \(Y\/Z\)/i)).toBeDefined();
-    expect(within(alta!).getByText(/3× o baseline demonstrativo/i)).toBeDefined();
-    expect(within(alta!).queryByText(/0,008/)).toBeNull();
+    const linhas = within(fila).getAllByRole('row').slice(1); // sem o cabeçalho
+    // Exceção antes do normal.
+    expect(linhas[0].textContent).toContain('SIM-HF-002');
+    expect(within(linhas[0]).getByText('Atenção')).toBeDefined();
+    // Valor atual = RMS radial (3 g), nunca o eixo X (0,008 g).
+    expect(within(linhas[0]).getByText('3 g')).toBeDefined();
+    expect(within(linhas[0]).getByText('3×')).toBeDefined();
+    expect(within(linhas[0]).queryByText(/0,008/)).toBeNull();
+    expect(linhas[1].textContent).toContain('SIM-HF-001');
   });
 
-  it('investigar leva ao painel de histórico com o contexto selecionado', async () => {
+  it('investigar leva à evidência temporal com o contexto selecionado', async () => {
     renderDashboard();
     const fila = await screen.findByRole('region', { name: /Prioridade de inspeção/i });
     const investigar = within(fila).getAllByRole('button', { name: /Investigar/i })[0];
@@ -248,7 +251,9 @@ describe('OperationalDashboard', () => {
     const investigacao = await screen.findByRole('heading', { name: /Investigação — SIM-HF-002/i });
     // O drill-down entrega o foco: o caminho também existe no teclado.
     await waitFor(() => expect(document.activeElement).toBe(investigacao));
-    expect(screen.getAllByDisplayValue('SIM-HF-002').length).toBeGreaterThan(0);
+    // O painel de tendência crítica declara o contexto completo.
+    const trend = screen.getByRole('region', { name: /Tendência crítica/i });
+    expect(trend.textContent).toContain('SIM-HF-002');
   });
 
   it('a matriz da frota leva ao mesmo painel de investigação', async () => {
@@ -269,18 +274,42 @@ describe('OperationalDashboard', () => {
     expect(await screen.findByRole('heading', { name: /Investigação — SIM-HF-002/i })).toBeDefined();
   });
 
-  it('declara quantas exceções estão visíveis e permite ver todas', async () => {
+  it('as ocorrências recentes derivam das leituras reais, sem inventar eventos', async () => {
     renderDashboard();
-    const fila = await screen.findByRole('region', { name: /Prioridade de inspeção/i });
-    // Três pontos geram exceção (desvio, recência e ausência de sensor).
-    expect(within(fila).getByText(/Mostrando 3 de 3/i)).toBeDefined();
-    // Com o total dentro do limite visível, não há corte silencioso a revelar.
-    expect(within(fila).queryByRole('button', { name: /Ver todas/i })).toBeNull();
+    const painel = await screen.findByRole('region', { name: /Ocorrências recentes/i });
+    // Uma linha por sensor com leitura, a mais crítica identificável.
+    expect(within(painel).getByText(/P-102 · NDE · SIM-HF-002/i)).toBeDefined();
+    expect(within(painel).getByText(/não há alarmes persistidos/i)).toBeDefined();
+  });
+
+  it('o mapa semanal e o perfil 24 h são mestre/detalhe pelo dia selecionado', async () => {
+    renderDashboard();
+    await screen.findByLabelText('Ativos em atenção: 1');
+    const heatmap = await screen.findByRole('region', { name: /Mapa de calor semanal/i });
+    const perfil = screen.getByRole('region', { name: /Horários de pico/i });
+
+    // O dia com atividade abre selecionado e o perfil mostra barras.
+    const diaAtivo = new Date(baseMs).getDay();
+    const rotulos = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+    const tabAtiva = within(perfil).getByRole('button', { name: rotulos[diaAtivo] });
+    expect(tabAtiva.getAttribute('aria-pressed')).toBe('true');
+
+    // Selecionar outro dia pelo heatmap troca o detalhe.
+    const outroDia = rotulos[(diaAtivo + 1) % 7];
+    await userEvent.click(
+      within(heatmap).getByRole('button', { name: new RegExp(`Selecionar ${outroDia}`) }),
+    );
+    await waitFor(() =>
+      expect(
+        within(perfil).getByRole('button', { name: outroDia }).getAttribute('aria-pressed'),
+      ).toBe('true'),
+    );
+    expect(within(perfil).getByText(/Sem leituras neste dia/i)).toBeDefined();
   });
 
   it('quando o período não alcança o dado, oferece o período disponível', async () => {
     renderDashboard();
-    await screen.findByLabelText('Em atenção: 1');
+    await screen.findByLabelText('Ativos em atenção: 1');
     await userEvent.click(screen.getByRole('button', { name: /^24 h$/i }));
     expect(await screen.findByText(/Sem dados em 24 horas/i)).toBeDefined();
 
@@ -299,20 +328,20 @@ describe('OperationalDashboard', () => {
   it('orienta o primeiro cadastro quando não há máquinas', async () => {
     renderDashboard(fixtureFetch({ emptyInventory: true }));
     expect(await screen.findByText(/Nenhuma máquina cadastrada/i)).toBeDefined();
-    expect(screen.getByLabelText('Em atenção: 0')).toBeDefined();
+    expect(screen.getByLabelText('Ativos em atenção: 0')).toBeDefined();
     expect(screen.getByText(/Cadastre uma máquina e seus pontos/i)).toBeDefined();
   });
 
   it('mantém sensores instalados como sem dados quando não existem séries', async () => {
     renderDashboard(fixtureFetch({ seriesEmpty: true }));
-    expect(await screen.findByLabelText('Cobertura: 3')).toBeDefined();
-    expect(screen.getAllByText('Sem dados').length).toBeGreaterThan(0);
+    expect(await screen.findByLabelText('Cobertura monitorada: 0%')).toBeDefined();
+    expect(screen.getAllByText(/Sem dados/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Nenhuma série persistida/i)).toBeDefined();
   });
 
   it('abre o explorador com quatro filtros hierárquicos e métricas da série', async () => {
     renderDashboard();
-    await screen.findByLabelText('Em atenção: 1');
+    await screen.findByLabelText('Ativos em atenção: 1');
     await userEvent.click(screen.getByRole('button', { name: /Explorar série temporal/i }));
     const explorer = document.getElementById('series-explorer-content');
     expect(explorer).not.toBeNull();
@@ -327,18 +356,14 @@ describe('OperationalDashboard', () => {
   it('expõe a hierarquia da página na ordem da decisão operacional', async () => {
     renderDashboard();
     expect(await screen.findByRole('heading', { level: 1, name: /Visão geral operacional/i })).toBeDefined();
-    const secoes = screen
-      .getAllByRole('region')
-      .map((node) => node.getAttribute('aria-label') ?? node.textContent?.slice(0, 40) ?? '');
     const titulos = screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent ?? '');
-    // Exceção antes da frota; frota antes do mergulho manual.
     const iFila = titulos.findIndex((t) => /Prioridade de inspeção/.test(t));
-    const iInvestigacao = titulos.findIndex((t) => /Investigação/.test(t));
-    const iFrota = titulos.findIndex((t) => /Frota — condição por ponto/.test(t));
+    const iTendencia = titulos.findIndex((t) => /Tendência crítica/.test(t));
+    const iMatriz = titulos.findIndex((t) => /Matriz de condição da frota/.test(t));
+    // Prioridade antes da evidência; a matriz fecha a exploração.
     expect(iFila).toBeGreaterThanOrEqual(0);
-    expect(iFila).toBeLessThan(iInvestigacao);
-    expect(iInvestigacao).toBeLessThan(iFrota);
-    expect(secoes.length).toBeGreaterThan(0);
+    expect(iFila).toBeLessThan(iTendencia);
+    expect(iTendencia).toBeLessThan(iMatriz);
     expect(screen.getByRole('button', { name: /7 dias/i }).getAttribute('aria-pressed')).toBe('true');
   });
 });

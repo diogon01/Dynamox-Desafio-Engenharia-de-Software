@@ -21,21 +21,28 @@ import {
   periodChanged,
 } from '../../features/dashboard/dashboardSlice';
 import { useAppDispatch, useAppSelector } from '../../store';
+import { AcquisitionActivity } from './AcquisitionActivity';
+import { AssetConditionColumns } from './AssetConditionColumns';
 import { DashboardHeader } from './DashboardHeader';
-import { FleetFreshness } from './FleetFreshness';
-import { InspectionQueue } from './InspectionQueue';
-import { KpiGrid } from './KpiGrid';
-import { SensorConditionMatrix } from './SensorConditionMatrix';
+import { DataQualityPanel } from './DataQualityPanel';
+import { DayProfilePanel } from './DayProfilePanel';
+import { FleetConditionBar } from './FleetConditionBar';
+import { FleetConditionMatrix } from './FleetConditionMatrix';
+import { InspectionPriorityTable } from './InspectionPriorityTable';
+import { KpiRow } from './KpiRow';
+import { RecentOccurrences } from './RecentOccurrences';
+import { SensorHealthDonut } from './SensorHealthDonut';
 import { SeriesExplorer } from './SeriesExplorer';
 import { TrendPanel } from './TrendPanel';
+import { WeeklyHeatmap } from './WeeklyHeatmap';
 
 /**
- * Central operacional. A ordem da página é a ordem das perguntas de quem opera:
+ * Central operacional de condition monitoring. A composição segue a hierarquia
+ * SITUAÇÃO → PRIORIDADE → EVIDÊNCIA → CONTEXTO DA FROTA → QUALIDADE → PADRÃO TEMPORAL
+ * → EXPLORAÇÃO, num grid de 12 colunas:
  *
- *   ATENÇÃO → ATIVO → PONTO → SENSOR → SINAL → EVIDÊNCIA → HISTÓRICO
- *
- * Antes, a página abria pelo inventário e pela frota inteira; a exceção real aparecia
- * depois de doze linhas iguais, e o gráfico que sustentava a decisão ficava no rodapé.
+ *   KPIs (3+3+3+3) · Condição/Prioridade/Saúde (3+6+3) · Tendência/Ocorrências (9+3)
+ *   Condição por ativo/Aquisição/Qualidade (3+6+3) · Heatmap/Perfil 24h (8+4) · Matriz (12)
  */
 export function OperationalDashboard(): JSX.Element {
   const dispatch = useAppDispatch();
@@ -46,30 +53,28 @@ export function OperationalDashboard(): JSX.Element {
   const inventoryLoading = useAppSelector(selectDashboardInventoryLoading);
   const partialErrors = useAppSelector(selectDashboardPartialErrors);
   const investigationRef = useRef<HTMLHeadingElement>(null);
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   useEffect(() => {
     void dispatch(fetchOperationalDashboard());
   }, [dispatch]);
 
-  // Segunda etapa: só depois que as séries chegaram, e fora do caminho crítico do primeiro
-  // render — a tela já está utilizável enquanto a avaliação de condição é buscada.
+  // Segunda etapa: fora do caminho crítico do primeiro render — a tela já está
+  // utilizável enquanto a avaliação de condição chega.
   useEffect(() => {
     if (dashboard.series.status === 'succeeded' && dashboard.conditionStatus === 'idle') {
       void dispatch(fetchConditionEvidence());
     }
   }, [dispatch, dashboard.series.status, dashboard.conditionStatus]);
 
-  /**
-   * Assim que a condição é avaliada, o painel passa a mostrar a maior exceção — a menos
-   * que a pessoa já tenha escolhido outra série. Abrir o dashboard num sensor arbitrário
-   * enquanto existe um ponto em atenção contraria a ordem de leitura da tela.
-   */
+  // Ao terminar a avaliação, o painel mostra a maior exceção — a menos que a pessoa já
+  // tenha escolhido outra série.
   useEffect(() => {
-    const alvo = view.ranking[0]?.preferredSeriesId;
+    const alvo = view.ranking[0]?.preferredSeriesId ?? view.priority[0]?.preferredSeriesId;
     if (dashboard.conditionStatus === 'succeeded' && alvo) {
       dispatch(dashboardSeriesAutoSelected(alvo));
     }
-  }, [dispatch, dashboard.conditionStatus, view.ranking]);
+  }, [dispatch, dashboard.conditionStatus, view.ranking, view.priority]);
 
   useEffect(() => {
     if (dashboard.selectedSeriesId) {
@@ -85,16 +90,15 @@ export function OperationalDashboard(): JSX.Element {
   );
 
   /**
-   * Drill-down: além de trocar a seleção, leva a pessoa até o painel de investigação.
-   * Sem isto, clicar numa exceção atualizava um painel fora da tela e a interação parecia
-   * não ter feito nada. O foco vai para o título, então o caminho também existe no teclado.
+   * Drill-down: troca o contexto E leva a pessoa até a evidência temporal — com foco,
+   * para o caminho existir também no teclado.
    */
   const investigate = useCallback(
     (seriesId: string) => {
       selectSeries(seriesId);
       const heading = investigationRef.current;
       if (!heading) return;
-      heading.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      heading.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
       heading.focus?.({ preventScroll: true });
     },
     [selectSeries],
@@ -106,19 +110,34 @@ export function OperationalDashboard(): JSX.Element {
     }
   };
 
-  const evaluating = dashboard.conditionStatus === 'loading' || dashboard.conditionStatus === 'idle';
+  const evaluating =
+    dashboard.conditionStatus === 'loading' || dashboard.conditionStatus === 'idle';
+
+  // Master/detail do padrão temporal: sem escolha explícita, o dia mais ativo.
+  const activeDay =
+    selectedDay ??
+    view.weekMap.days.reduce(
+      (best, day) => {
+        const total = day.hours.reduce((sum, hour) => sum + hour.samples, 0);
+        return total > best.total ? { day: day.day, total } : best;
+      },
+      { day: new Date(nowMs).getDay(), total: 0 },
+    ).day;
+
+  /** Item do grid: spans por breakpoint + ordem no empilhamento mobile. */
+  const item = (lg: number, md: number, order: number) => ({
+    gridColumn: { xs: 'span 12', md: `span ${md}`, lg: `span ${lg}` },
+    order: { xs: order, md: 0 },
+    minWidth: 0,
+  });
 
   return (
-    <Stack spacing={1.5}>
+    <Stack spacing={1.75}>
       <DashboardHeader
         period={dashboard.period}
         loadedAt={dashboard.loadedAt}
         latestReading={view.latestTimestamp}
-        inventory={{
-          machines: view.kpis.machines,
-          points: view.kpis.points,
-          sensors: view.kpis.sensors,
-        }}
+        nowMs={nowMs}
         onPeriodChange={(period) => dispatch(periodChanged(period))}
       />
 
@@ -141,63 +160,103 @@ export function OperationalDashboard(): JSX.Element {
         </Alert>
       ) : null}
 
-      {/* 1. Existe algo exigindo atenção? */}
-      <KpiGrid view={view} loading={inventoryLoading} />
+      <KpiRow view={view} loading={inventoryLoading} />
 
-      {/* 2–6. Qual ativo, ponto, sensor, sinal e por quê. */}
-      <InspectionQueue
-        view={view}
-        loading={inventoryLoading}
-        evaluating={evaluating}
-        nowMs={nowMs}
-        selectedSeriesId={dashboard.selectedSeriesId}
-        onInvestigate={investigate}
-      />
-
-      {/* 7–9. Desde quando e qual é o histórico. */}
-      <TrendPanel
-        period={dashboard.period}
-        series={dashboard.series.data}
-        selectedSeriesId={dashboard.selectedSeriesId}
-        samples={dashboard.detailSamples}
-        status={dashboard.detailStatus}
-        error={dashboard.detailError}
-        nowMs={nowMs}
-        onSelectSeries={selectSeries}
-        onRetry={retryDetail}
-        onPeriodChange={(period) => dispatch(periodChanged(period))}
-        headingRef={investigationRef}
-      />
-
-      {/* Frota completa: contexto, depois da exceção. */}
       <Box
-        sx={{
+        sx={(muiTheme) => ({
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 2.6fr) minmax(260px, 1fr)' },
-          gap: 1.5,
-          alignItems: 'start',
-        }}
+          gridTemplateColumns: 'repeat(12, minmax(0, 1fr))',
+          gap: `${muiTheme.dashboard.gridGap}px`,
+          alignItems: 'stretch',
+        })}
       >
-        <SensorConditionMatrix
-          view={view}
-          loading={inventoryLoading}
-          nowMs={nowMs}
-          selectedSeriesId={dashboard.selectedSeriesId}
-          onSelectSeries={investigate}
-        />
-        <FleetFreshness view={view} loading={inventoryLoading} />
-      </Box>
+        {/* SITUAÇÃO → PRIORIDADE → SAÚDE */}
+        <Box sx={item(3, 6, 4)}>
+          <FleetConditionBar view={view} loading={inventoryLoading} />
+        </Box>
+        <Box sx={item(6, 12, 1)}>
+          <InspectionPriorityTable
+            view={view}
+            loading={inventoryLoading}
+            evaluating={evaluating}
+            selectedSeriesId={dashboard.selectedSeriesId}
+            onInvestigate={investigate}
+          />
+        </Box>
+        <Box sx={item(3, 6, 6)}>
+          <SensorHealthDonut view={view} loading={inventoryLoading} />
+        </Box>
 
-      {/* Mergulho manual em qualquer série, inclusive as que não geram exceção. */}
-      <SeriesExplorer
-        series={dashboard.series.data}
-        selectedSeriesId={dashboard.selectedSeriesId}
-        samples={dashboard.detailSamples}
-        status={dashboard.detailStatus}
-        error={dashboard.detailError}
-        onSelectSeries={selectSeries}
-        onRetry={retryDetail}
-      />
+        {/* EVIDÊNCIA */}
+        <Box sx={item(9, 12, 2)}>
+          <TrendPanel
+            period={dashboard.period}
+            series={dashboard.series.data}
+            selectedSeriesId={dashboard.selectedSeriesId}
+            samples={dashboard.detailSamples}
+            status={dashboard.detailStatus}
+            error={dashboard.detailError}
+            nowMs={nowMs}
+            onRetry={retryDetail}
+            onPeriodChange={(period) => dispatch(periodChanged(period))}
+            headingRef={investigationRef}
+          />
+        </Box>
+        <Box sx={item(3, 12, 3)}>
+          <RecentOccurrences view={view} loading={inventoryLoading} onInvestigate={investigate} />
+        </Box>
+
+        {/* CONTEXTO DA FROTA + QUALIDADE */}
+        <Box sx={item(3, 6, 7)}>
+          <AssetConditionColumns view={view} loading={inventoryLoading} />
+        </Box>
+        <Box sx={item(6, 12, 8)}>
+          <AcquisitionActivity view={view} loading={inventoryLoading || evaluating} />
+        </Box>
+        <Box sx={item(3, 6, 5)}>
+          <DataQualityPanel view={view} loading={inventoryLoading} />
+        </Box>
+
+        {/* PADRÃO TEMPORAL */}
+        <Box sx={item(8, 12, 9)}>
+          <WeeklyHeatmap
+            weekMap={view.weekMap}
+            loading={inventoryLoading || evaluating}
+            selectedDay={activeDay}
+            onSelectDay={setSelectedDay}
+          />
+        </Box>
+        <Box sx={item(4, 12, 10)}>
+          <DayProfilePanel
+            weekMap={view.weekMap}
+            loading={inventoryLoading || evaluating}
+            selectedDay={activeDay}
+            onSelectDay={setSelectedDay}
+          />
+        </Box>
+
+        {/* EXPLORAÇÃO */}
+        <Box sx={item(12, 12, 11)}>
+          <FleetConditionMatrix
+            view={view}
+            loading={inventoryLoading}
+            nowMs={nowMs}
+            selectedSeriesId={dashboard.selectedSeriesId}
+            onSelect={investigate}
+          />
+        </Box>
+        <Box sx={item(12, 12, 12)}>
+          <SeriesExplorer
+            series={dashboard.series.data}
+            selectedSeriesId={dashboard.selectedSeriesId}
+            samples={dashboard.detailSamples}
+            status={dashboard.detailStatus}
+            error={dashboard.detailError}
+            onSelectSeries={selectSeries}
+            onRetry={retryDetail}
+          />
+        </Box>
+      </Box>
     </Stack>
   );
 }

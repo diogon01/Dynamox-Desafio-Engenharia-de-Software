@@ -8,7 +8,10 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 
 import type { DashboardPeriod } from '../../features/dashboard/dashboardSlice';
-import { formatDateTime } from '../../features/dashboard/dashboardFormatters';
+import {
+  formatDateTime,
+  formatRelativeTime,
+} from '../../features/dashboard/dashboardFormatters';
 
 const PERIOD_LABELS: Record<DashboardPeriod, string> = {
   '24h': '24 h',
@@ -23,51 +26,66 @@ export interface DashboardHeaderProps {
   period: DashboardPeriod;
   loadedAt: string | null;
   latestReading: string | null;
-  /** Inventário: contexto do que está sendo monitorado, não a mensagem operacional. */
-  inventory: { machines: number; points: number; sensors: number };
+  nowMs: number;
   onPeriodChange: (period: DashboardPeriod) => void;
 }
 
+/** Cabeçalho operacional: título, janela ativa e a troca de período — nada de inventário. */
 export function DashboardHeader({
   period,
   loadedAt,
   latestReading,
-  inventory,
+  nowMs,
   onPeriodChange,
 }: DashboardHeaderProps): JSX.Element {
   return (
     <Box
       component="header"
-      sx={{
-        p: { xs: 2, md: 2.5 },
-        borderRadius: 3,
+      sx={(muiTheme) => ({
+        px: `${muiTheme.dashboard.cardPadding + 4}px`,
+        py: 1.5,
+        borderRadius: `${muiTheme.dashboard.cardRadius}px`,
         border: 1,
         borderColor: 'divider',
         bgcolor: 'background.paper',
         boxShadow: 1,
-      }}
+      })}
     >
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         justifyContent="space-between"
-        alignItems={{ xs: 'stretch', md: 'flex-end' }}
-        gap={2}
+        alignItems={{ xs: 'stretch', md: 'center' }}
+        gap={1.5}
       >
-        <Box>
-          <Typography
-            variant="overline"
-            color="primary.main"
-            sx={{ fontWeight: 700, letterSpacing: 1 }}
-          >
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="overline" color="primary.main" component="div">
             Central de condição
           </Typography>
-          <Typography variant="h1" component="h1">
+          <Typography variant="h1" component="h1" sx={{ lineHeight: 1.15 }}>
             Visão geral operacional
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Exceções primeiro; a frota completa e o histórico ficam abaixo.
+          <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.25 }}>
+            Priorização de inspeção, tendência e saúde dos sensores com dados persistidos pela API.
           </Typography>
-          <Stack direction="row" gap={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
+        </Box>
+
+        <Stack alignItems={{ xs: 'stretch', md: 'flex-end' }} gap={0.75}>
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={period}
+            aria-label="Período global do dashboard"
+            onChange={(_event, next: DashboardPeriod | null) => {
+              if (next) onPeriodChange(next);
+            }}
+          >
+            {PERIODS.map((key) => (
+              <ToggleButton key={key} value={key} aria-label={PERIOD_LABELS[key]} sx={{ flex: 1, px: 1.5 }}>
+                {PERIOD_LABELS[key]}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+          <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap justifyContent={{ md: 'flex-end' }}>
             <Chip
               icon={<CalendarMonthOutlinedIcon />}
               label={`Período: ${PERIOD_LABELS[period]}`}
@@ -82,38 +100,14 @@ export function DashboardHeader({
             />
             {loadedAt ? (
               <Chip
-                label={`Painel atualizado: ${formatDateTime(loadedAt)}`}
+                label={`Painel atualizado ${formatRelativeTime(loadedAt, nowMs)}`}
                 size="small"
                 variant="outlined"
-                // Redundante no celular: ocupa uma linha inteira antes das exceções.
                 sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
               />
             ) : null}
           </Stack>
-          {/* Inventário como contexto: informa a escala do monitoramento sem competir
-              com os indicadores de exceção. */}
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Monitorando {inventory.machines} máquina(s) · {inventory.points} ponto(s) ·{' '}
-            {inventory.sensors} sensor(es)
-          </Typography>
-        </Box>
-
-        <ToggleButtonGroup
-          exclusive
-          size="small"
-          value={period}
-          aria-label="Período global do dashboard"
-          onChange={(_event, next: DashboardPeriod | null) => {
-            if (next) onPeriodChange(next);
-          }}
-          sx={{ alignSelf: { xs: 'stretch', sm: 'flex-start', md: 'flex-end' } }}
-        >
-          {PERIODS.map((key) => (
-            <ToggleButton key={key} value={key} aria-label={PERIOD_LABELS[key]} sx={{ flex: 1 }}>
-              {PERIOD_LABELS[key]}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
+        </Stack>
       </Stack>
     </Box>
   );

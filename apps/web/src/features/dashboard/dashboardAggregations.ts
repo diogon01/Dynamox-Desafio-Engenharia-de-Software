@@ -108,12 +108,67 @@ export interface AttentionSignal {
   baseline: number | null;
 }
 
+/** Manchete operacional: os quatro números do topo, cada um de um conceito. */
+export interface FleetHeadline {
+  /** CONDIÇÃO — pontos com desvio demonstrativo, e o mais crítico deles. */
+  attention: { count: number; top: SensorCellView | null };
+  /** Maior desvio atual vs baseline demonstrativo. */
+  maxDeviation: { ratio: number; cell: SensorCellView } | null;
+  /** COBERTURA — pontos instrumentados que já reportaram alguma leitura. */
+  coverage: { reporting: number; instrumented: number; points: number };
+  /** RECÊNCIA — sensores com leitura dentro da janela de 24 h. */
+  recency: { current: number; installed: number };
+}
+
+/** Linha derivada de leitura real + classificação atual — não é um Event persistido. */
+export interface OccurrenceRow {
+  id: string;
+  timestamp: string | null;
+  machineName: string;
+  pointLabel: string;
+  sensorSerial: string;
+  statusKind: ConditionKind | 'stale' | 'future';
+  statusLabel: string;
+  message: string;
+  seriesId: string | null;
+}
+
+export interface HourActivityBucket {
+  hourStartMs: number;
+  label: string;
+  samples: number;
+  sensorsReporting: number;
+}
+
+export interface HeatHour {
+  hour: number;
+  sensorsReporting: number;
+  samples: number;
+  /** Fração de sensores com leitura na célula (0–1). */
+  share: number;
+}
+
+export interface WeekHeatmap {
+  totalSensors: number;
+  days: Array<{ day: number; label: string; hours: HeatHour[] }>;
+  /** Faixa contígua de maior atividade no dia mais ativo, quando derivável. */
+  peak: { day: number; hourStart: number; hourEnd: number } | null;
+}
+
 export interface DashboardView {
   rows: MachineMatrixRow[];
   cells: SensorCellView[];
   assessments: SyntheticAssessment[];
   ranking: SensorCellView[];
   signals: AttentionSignal[];
+  headline: FleetHeadline;
+  /** Top da fila de inspeção: exceções primeiro, depois maiores razões — máx. 5. */
+  priority: SensorCellView[];
+  occurrences: OccurrenceRow[];
+  activity24h: HourActivityBucket[];
+  weekMap: WeekHeatmap;
+  /** Miniaturas de tendência (média radial por aquisição) por célula da fila. */
+  sparklines: Record<string, Array<{ t: number; v: number }>>;
   /**
    * Um KPI = um conceito. Antes havia um único "sinais de atenção" somando condição,
    * ausência de sensor, ausência de dados e recência — o número resultante era sempre
@@ -589,6 +644,240 @@ export function buildAttentionSignals(cells: SensorCellView[]): AttentionSignal[
   );
 }
 
+const WEEKDAY_LABELS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
+
+const CONDITION_STATUS_LABELS: Record<ConditionKind, string> = {
+  normal: 'Normal',
+  observation: 'Observação',
+  attention: 'Atenção',
+  unclassified: 'Sem classificação',
+  'no-data': 'Sem dados',
+  'no-sensor': 'Sem sensor',
+};
+
+/**
+ * Ocorrências recentes DERIVADAS do estado disponível — o domínio não persiste eventos,
+ * então cada linha é a última leitura real de um sensor com a classificação atual dela.
+ * O painel se chama "ocorrências", nunca "alarmes persistidos".
+ */
+export function buildOccurrences(cells: SensorCellView[], limit = 6): OccurrenceRow[] {
+  const rows: OccurrenceRow[] = [];
+  for (const cell of cells) {
+    if (!cell.sensorSerial) continue;
+    let statusKind: OccurrenceRow['statusKind'] = cell.condition;
+    let statusLabel = CONDITION_STATUS_LABELS[cell.condition];
+    let message: string;
+    if (cell.condition === 'attention') {
+      message = `Desvio ${formatRatioText(cell.assessment?.deviationRatio)} acima do baseline demonstrativo`;
+    } else if (cell.condition === 'observation') {
+      message = `Tendência de aumento detectada (${formatRatioText(cell.assessment?.deviationRatio)})`;
+    } else if (cell.condition === 'no-data') {
+      message = 'Sensor instalado sem leitura disponível';
+    } else if (cell.condition === 'unclassified') {
+      message = 'Leitura registrada; baseline demonstrativo não calculável';
+    } else {
+      message = 'Operação dentro do esperado (demonstrativo)';
+    }
+    // Recência sobrepõe a mensagem quando é o fato mais relevante da linha.
+    if (cell.freshness === 'stale') {
+      statusKind = 'stale';
+      statusLabel = 'Desatualizado';
+      message = 'Última leitura fora da janela de 24 h';
+    } else if (cell.freshness === 'future') {
+      statusKind = 'future';
+      statusLabel = 'Relógio divergente';
+      message = 'Instante à frente do relógio local';
+    }
+    rows.push({
+      id: cell.key,
+      timestamp: cell.lastTimestamp,
+      machineName: cell.machineName,
+      pointLabel: cell.positionLabel,
+      sensorSerial: cell.sensorSerial,
+      statusKind,
+      statusLabel,
+      message,
+      seriesId: cell.preferredSeriesId,
+    });
+  }
+  return rows
+    .sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? ''))
+    .slice(0, limit);
+}
+
+function formatRatioText(ratio: number | undefined): string {
+  return ratio === undefined ? '—' : `${ratio.toFixed(2).replace('.', ',')}×`;
+}
+
+/** serial do sensor por id de série, para agrupar amostras carregadas por sensor. */
+function serialBySeriesId(series: TimeSeriesSummary[]): Map<string, string> {
+  return new Map(series.map((item) => [item.id, item.sensorSerialNumber]));
+}
+
+/**
+ * Atividade de aquisição nas últimas 24 h: amostras persistidas por hora e quantos
+ * sensores reportaram em cada balde. Fonte: as amostras radiais já carregadas para a
+ * avaliação de condição — nenhuma requisição extra.
+ */
+export function buildAcquisitionActivity(
+  series: TimeSeriesSummary[],
+  samplesBySeries: Record<string, TimeSeriesSampleDto[]>,
+  nowMs = Date.now(),
+): HourActivityBucket[] {
+  const serials = serialBySeriesId(series);
+  const hourMs = 60 * 60 * 1000;
+  const firstHour = Math.floor((nowMs - 23 * hourMs) / hourMs) * hourMs;
+  const buckets: HourActivityBucket[] = Array.from({ length: 24 }, (_, index) => {
+    const hourStartMs = firstHour + index * hourMs;
+    return {
+      hourStartMs,
+      label: `${String(new Date(hourStartMs).getHours()).padStart(2, '0')}h`,
+      samples: 0,
+      sensorsReporting: 0,
+    };
+  });
+  const reporting: Array<Set<string>> = buckets.map(() => new Set());
+
+  for (const [seriesId, samples] of Object.entries(samplesBySeries)) {
+    const serial = serials.get(seriesId);
+    for (const sample of samples) {
+      const at = parseTimestamp(sample.timestamp);
+      if (at === null || at < firstHour || at > nowMs) continue;
+      const index = Math.min(23, Math.floor((at - firstHour) / hourMs));
+      buckets[index].samples += 1;
+      if (serial) reporting[index].add(serial);
+    }
+  }
+  buckets.forEach((bucket, index) => {
+    bucket.sensorsReporting = reporting[index].size;
+  });
+  return buckets;
+}
+
+/**
+ * Mapa semanal de aquisição: para cada dia × hora, quantos sensores tiveram leitura e
+ * quantas amostras foram persistidas. A intensidade é a FRAÇÃO de sensores reportando —
+ * cobertura de aquisição, não "ocupação" de qualquer outra coisa.
+ */
+export function buildWeeklyAcquisitionMap(
+  series: TimeSeriesSummary[],
+  samplesBySeries: Record<string, TimeSeriesSampleDto[]>,
+): WeekHeatmap {
+  const serials = serialBySeriesId(series);
+  const totalSensors = new Set(
+    Object.keys(samplesBySeries)
+      .map((id) => serials.get(id))
+      .filter((serial): serial is string => Boolean(serial)),
+  ).size;
+
+  const samples: number[][] = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
+  const reporting: Array<Array<Set<string>>> = Array.from({ length: 7 }, () =>
+    Array.from({ length: 24 }, () => new Set<string>()),
+  );
+
+  for (const [seriesId, list] of Object.entries(samplesBySeries)) {
+    const serial = serials.get(seriesId);
+    for (const sample of list) {
+      const at = parseTimestamp(sample.timestamp);
+      if (at === null) continue;
+      const date = new Date(at);
+      const day = date.getDay();
+      const hour = date.getHours();
+      samples[day][hour] += 1;
+      if (serial) reporting[day][hour].add(serial);
+    }
+  }
+
+  const days = WEEKDAY_LABELS.map((label, day) => ({
+    day,
+    label,
+    hours: Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      sensorsReporting: reporting[day][hour].size,
+      samples: samples[day][hour],
+      share: totalSensors > 0 ? reporting[day][hour].size / totalSensors : 0,
+    })),
+  }));
+
+  // Pico: no dia mais ativo, a faixa contígua de horas com share máximo.
+  let peak: WeekHeatmap['peak'] = null;
+  let best = 0;
+  for (const dayRow of days) {
+    for (const hour of dayRow.hours) {
+      if (hour.share > best) {
+        best = hour.share;
+        peak = { day: dayRow.day, hourStart: hour.hour, hourEnd: hour.hour + 1 };
+      }
+    }
+  }
+  if (peak) {
+    const hours = days[peak.day].hours;
+    while (peak.hourEnd < 24 && hours[peak.hourEnd].share >= best * 0.75 && hours[peak.hourEnd].share > 0) {
+      peak.hourEnd += 1;
+    }
+    while (peak.hourStart > 0 && hours[peak.hourStart - 1].share >= best * 0.75 && hours[peak.hourStart - 1].share > 0) {
+      peak.hourStart -= 1;
+    }
+  }
+
+  return { totalSensors, days, peak };
+}
+
+/**
+ * Miniatura de tendência de um ponto: a média radial (Y/Z) de cada aquisição. São os
+ * mesmos números que sustentam o índice — nunca uma curva decorativa.
+ */
+export function buildRadialSparkline(
+  cell: SensorCellView,
+  samplesBySeries: Record<string, TimeSeriesSampleDto[]>,
+): Array<{ t: number; v: number }> {
+  const y = cell.series.find((item) => item.physicalQuantity === 'acceleration' && item.axis === 'y');
+  const z = cell.series.find((item) => item.physicalQuantity === 'acceleration' && item.axis === 'z');
+  if (!y || !z) return [];
+  const zByTimestamp = new Map(
+    (samplesBySeries[z.id] ?? []).map((sample) => [sample.timestamp, sample.value]),
+  );
+  const radial = (samplesBySeries[y.id] ?? []).flatMap((sample) => {
+    const zValue = zByTimestamp.get(sample.timestamp);
+    return zValue === undefined
+      ? []
+      : [{ timestamp: sample.timestamp, value: Math.sqrt((sample.value ** 2 + zValue ** 2) / 2) }];
+  });
+  return groupAcquisitionWindows(radial)
+    .filter((window) => window.length >= MIN_BASELINE_SAMPLES)
+    .map((window) => ({
+      t: Date.parse(window[0].timestamp),
+      v: mean(window.map((sample) => sample.value)),
+    }))
+    .slice(-8);
+}
+
+const CONDITION_SEVERITY_RANK: Record<ConditionKind, number> = {
+  attention: 5,
+  observation: 4,
+  unclassified: 2,
+  'no-data': 1,
+  'no-sensor': 0,
+  normal: 3,
+};
+
+/** Fila de prioridade: exceções primeiro; o restante por razão decrescente. Máx. 5. */
+export function buildPriorityList(cells: SensorCellView[], limit = 5): SensorCellView[] {
+  return cells
+    .filter((cell) => cell.sensorSerial)
+    .sort((a, b) => {
+      const exceptional = (cell: SensorCellView) =>
+        cell.condition === 'attention' || cell.condition === 'observation' ? 1 : 0;
+      return (
+        exceptional(b) - exceptional(a) ||
+        (b.assessment?.deviationRatio ?? 0) - (a.assessment?.deviationRatio ?? 0) ||
+        CONDITION_SEVERITY_RANK[b.condition] - CONDITION_SEVERITY_RANK[a.condition] ||
+        a.machineName.localeCompare(b.machineName, 'pt-BR')
+      );
+    })
+    .slice(0, limit);
+}
+
 export function buildDashboardView(
   state: DashboardState,
   nowMs = Date.now(),
@@ -634,12 +923,52 @@ export function buildDashboardView(
     { key: 'no-data' as const, label: 'Sem dados', value: sensors.filter((cell) => cell.freshness === 'unknown').length },
   ];
 
+  const withSensor = cells.filter((cell) => cell.sensorSerial);
+  const headline: FleetHeadline = {
+    attention: {
+      count: cells.filter(
+        (cell) => cell.condition === 'attention' || cell.condition === 'observation',
+      ).length,
+      top: ranking[0] ?? null,
+    },
+    maxDeviation:
+      ranking[0]?.assessment != null
+        ? { ratio: ranking[0].assessment.deviationRatio, cell: ranking[0] }
+        : assessments[0]
+          ? {
+              ratio: assessments[0].deviationRatio,
+              cell: cells.find((cell) => cell.sensorSerial === assessments[0].serialNumber) ?? cells[0],
+            }
+          : null,
+    coverage: {
+      reporting: withSensor.filter((cell) => cell.condition !== 'no-data').length,
+      instrumented: withSensor.length,
+      points: cells.length,
+    },
+    recency: {
+      current: withSensor.filter((cell) => cell.freshness === 'current').length,
+      installed: withSensor.length,
+    },
+  };
+
+  const sparklines: DashboardView['sparklines'] = {};
+  const priority = buildPriorityList(cells);
+  for (const cell of priority) {
+    sparklines[cell.key] = buildRadialSparkline(cell, state.radialSamplesBySeries);
+  }
+
   return {
     rows,
     cells,
     assessments,
     ranking,
     signals,
+    headline,
+    priority,
+    occurrences: buildOccurrences(cells),
+    activity24h: buildAcquisitionActivity(state.series.data, state.radialSamplesBySeries, nowMs),
+    weekMap: buildWeeklyAcquisitionMap(state.series.data, state.radialSamplesBySeries),
+    sparklines,
     kpis: {
       machines: state.machines.data.length,
       points: state.points.data.length,

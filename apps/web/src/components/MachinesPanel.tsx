@@ -135,7 +135,10 @@ export function MachinesPanel(): JSX.Element {
   return (
     <Card variant="outlined">
       <CardContent>
-        <Typography variant="h2" component="h2" gutterBottom>
+        <Typography variant="overline" color="primary.main" component="div">
+          Gestão de ativos
+        </Typography>
+        <Typography variant="h1" component="h2" gutterBottom>
           Máquinas
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>

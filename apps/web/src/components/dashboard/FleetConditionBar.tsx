@@ -104,9 +104,9 @@ export function FleetConditionBar({
             })}
           </Stack>
 
-          <Stack spacing={0.5} sx={{ mt: 1.5 }}>
+          <Stack direction="row" flexWrap="wrap" useFlexGap gap={0.8} sx={{ mt: 1.1 }}>
             {present.map((segment) => (
-              <Stack key={segment.kind} direction="row" alignItems="center" spacing={0.75}>
+              <Stack key={segment.kind} direction="row" alignItems="center" spacing={0.55} sx={{ minWidth: '29%' }}>
                 <Box
                   aria-hidden="true"
                   sx={{
@@ -117,14 +117,8 @@ export function FleetConditionBar({
                     bgcolor: statusColor(segment.kind, muiTheme.palette),
                   }}
                 />
-                <Typography variant="caption" sx={{ flexGrow: 1 }} noWrap>
+                <Typography variant="caption" noWrap>
                   {segment.label}
-                </Typography>
-                <Typography variant="caption" sx={{ fontWeight: 700 }}>
-                  {segment.count}
-                </Typography>
-                <Typography variant="caption" color="text.secondary" sx={{ width: 44, textAlign: 'right' }}>
-                  {formatNumber((segment.count / total) * 100, 1)}%
                 </Typography>
               </Stack>
             ))}

@@ -61,7 +61,7 @@ export function DataQualityPanel({
       total: points,
       color: muiTheme.palette.primary.main,
     },
-  ];
+  ].filter((row) => row.key !== 'stale' || row.value > 0);
 
   return (
     <DashboardCard
@@ -72,7 +72,7 @@ export function DataQualityPanel({
     >
       {loading ? <Skeleton variant="rounded" height={170} /> : null}
       {!loading ? (
-        <Stack spacing={1.25}>
+        <Stack spacing={0.6}>
           {rows.map((row) => {
             const share = row.total > 0 ? row.value / row.total : 0;
             return (
@@ -101,8 +101,8 @@ export function DataQualityPanel({
                   aria-valuemin={0}
                   aria-valuemax={100}
                   sx={{
-                    mt: 0.4,
-                    height: 6,
+                    mt: 0.25,
+                    height: 5,
                     borderRadius: 999,
                     bgcolor: 'action.hover',
                     overflow: 'hidden',

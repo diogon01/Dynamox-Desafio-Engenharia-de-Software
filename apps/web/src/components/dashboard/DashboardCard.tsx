@@ -43,7 +43,8 @@ export function DashboardCard({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        p: `${muiTheme.dashboard.cardPadding}px`,
+        px: `${muiTheme.dashboard.cardPadding}px`,
+        py: `${muiTheme.dashboard.cardPadding - 2}px`,
         ...(flush ? { px: 0, '& > .DashboardCard-header': { px: `${muiTheme.dashboard.cardPadding}px` } } : {}),
       })}
     >
@@ -54,8 +55,8 @@ export function DashboardCard({
         direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
         alignItems={{ xs: 'flex-start', sm: 'flex-start' }}
-        gap={{ xs: 0.5, sm: 1 }}
-        sx={{ mb: subtitle ? 0.25 : 1 }}
+        gap={{ xs: 0.35, sm: 0.75 }}
+        sx={{ mb: subtitle ? 0.15 : 0.5, minWidth: 0 }}
       >
         <Box sx={{ minWidth: 0 }}>
           <Stack direction="row" alignItems="center" gap={0.5}>
@@ -77,9 +78,9 @@ export function DashboardCard({
             </Typography>
           ) : null}
         </Box>
-        {action ? <Box sx={{ flexShrink: 0 }}>{action}</Box> : null}
+        {action ? <Box sx={{ flexShrink: 1, minWidth: 0 }}>{action}</Box> : null}
       </Stack>
-      <Box sx={{ flexGrow: 1, minWidth: 0, mt: subtitle ? 1 : 0 }}>{children}</Box>
+      <Box sx={{ flexGrow: 1, minWidth: 0, mt: subtitle ? 0.25 : 0 }}>{children}</Box>
     </Card>
   );
 }

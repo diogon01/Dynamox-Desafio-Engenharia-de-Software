@@ -79,9 +79,9 @@ export function SensorHealthDonut({
       ) : null}
 
       {!loading && total > 0 ? (
-        <>
+        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: -1.5 }}>
           <Box
-            sx={{ position: 'relative', width: '100%', height: 168 }}
+            sx={{ position: 'relative', width: 124, height: 104, flexShrink: 0 }}
             role="img"
             aria-label={slices.map((slice) => `${slice.label}: ${slice.value}`).join('; ')}
           >
@@ -120,7 +120,7 @@ export function SensorHealthDonut({
               }}
             >
               <Box sx={{ textAlign: 'center' }}>
-                <Typography sx={{ fontSize: '1.7rem', fontWeight: 700, lineHeight: 1.1 }}>
+                <Typography sx={{ fontSize: '1.35rem', fontWeight: 750, lineHeight: 1.05 }}>
                   {total}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
@@ -130,7 +130,7 @@ export function SensorHealthDonut({
             </Box>
           </Box>
 
-          <Stack spacing={0.5} sx={{ mt: 1 }}>
+          <Stack spacing={0.6} sx={{ flexGrow: 1, minWidth: 0 }}>
             {slices.map((slice) => (
               <Stack key={slice.key} direction="row" alignItems="center" spacing={0.75}>
                 <Box
@@ -149,7 +149,7 @@ export function SensorHealthDonut({
               </Stack>
             ))}
           </Stack>
-        </>
+        </Stack>
       ) : null}
     </DashboardCard>
   );

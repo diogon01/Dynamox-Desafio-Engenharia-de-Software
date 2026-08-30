@@ -80,7 +80,7 @@ export function AssetConditionColumns({
         <EmptyState title="Sem ativos com pontos" description="Cadastre pontos de monitoramento." />
       ) : null}
       {!loading && data.length > 0 ? (
-        <Box sx={{ width: '100%', height: 208 }}>
+        <Box sx={{ width: '100%', height: 84 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} stackOffset="expand" margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
               <CartesianGrid vertical={false} stroke={chartGridStroke(muiTheme)} />

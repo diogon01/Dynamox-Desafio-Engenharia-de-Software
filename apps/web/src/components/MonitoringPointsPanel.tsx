@@ -155,7 +155,10 @@ export function MonitoringPointsPanel(): JSX.Element {
   return (
     <Card variant="outlined">
       <CardContent>
-        <Typography variant="h2" component="h2" gutterBottom>
+        <Typography variant="overline" color="primary.main" component="div">
+          Gestão de sensores
+        </Typography>
+        <Typography variant="h1" component="h2" gutterBottom>
           Pontos de monitoramento
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>

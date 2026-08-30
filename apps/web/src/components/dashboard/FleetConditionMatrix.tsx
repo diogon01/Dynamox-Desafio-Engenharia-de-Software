@@ -27,15 +27,6 @@ import {
 import { DashboardCard } from './DashboardCard';
 import { statusColor } from './StatusTag';
 
-const CONDITION_SHORT: Record<SensorCellView['condition'], string> = {
-  normal: 'NORMAL',
-  observation: 'OBSERVAÇÃO',
-  attention: 'ATENÇÃO',
-  unclassified: 'SEM CLASSIF.',
-  'no-data': 'SEM DADOS',
-  'no-sensor': 'SEM SENSOR',
-};
-
 function CellTooltip({ cell, nowMs }: { cell: SensorCellView; nowMs: number }): JSX.Element {
   return (
     <Box sx={{ p: 0.25, maxWidth: 300 }}>
@@ -112,7 +103,14 @@ export function FleetConditionMatrix({
 
       {!loading && machines.length > 0 ? (
         <TableContainer sx={{ overflowX: 'auto' }}>
-          <Table size="small" aria-label="Máquinas, pontos, sensores e condição">
+          <Table
+            size="small"
+            aria-label="Máquinas, pontos, sensores e condição"
+            sx={{
+              '& thead .MuiTableCell-root': { py: 0.1 },
+              '& thead .MuiTypography-root': { lineHeight: 1.05 },
+            }}
+          >
             <TableHead>
               <TableRow>
                 <TableCell sx={{ minWidth: 76 }}>Ponto</TableCell>
@@ -154,7 +152,7 @@ export function FleetConditionMatrix({
                       cell.series.some((item) => item.id === selectedSeriesId);
                     const clickable = Boolean(cell.preferredSeriesId);
                     return (
-                      <TableCell key={row.machine.id} align="center" sx={{ py: 0.75 }}>
+                      <TableCell key={row.machine.id} align="center" sx={{ py: 0.4 }}>
                         <Tooltip arrow title={<CellTooltip cell={cell} nowMs={nowMs} />}>
                           <span>
                             <ButtonBase
@@ -168,7 +166,7 @@ export function FleetConditionMatrix({
                                 width: '100%',
                                 maxWidth: 150,
                                 px: 1,
-                                py: 0.5,
+                                py: 0.35,
                                 borderRadius: 1.5,
                                 border: 1,
                                 borderColor: selected ? 'primary.main' : alpha(color, 0.35),
@@ -201,14 +199,6 @@ export function FleetConditionMatrix({
                                   {cell.sensorSerial ?? 'Sem sensor'}
                                 </Typography>
                               </Stack>
-                              <Typography
-                                sx={{ fontSize: 9.5, fontWeight: 700, color, letterSpacing: 0.3 }}
-                              >
-                                {CONDITION_SHORT[cell.condition]}
-                                {cell.evidence?.deviationRatio != null
-                                  ? ` · ${formatNumber(cell.evidence.deviationRatio, 2)}×`
-                                  : ''}
-                              </Typography>
                             </ButtonBase>
                           </span>
                         </Tooltip>

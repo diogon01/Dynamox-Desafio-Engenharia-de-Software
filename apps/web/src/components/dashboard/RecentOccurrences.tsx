@@ -1,10 +1,12 @@
 import Box from '@mui/material/Box';
-import ButtonBase from '@mui/material/ButtonBase';
-import Divider from '@mui/material/Divider';
 import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
-import Typography from '@mui/material/Typography';
-import { alpha } from '@mui/material/styles';
+import Table from '@mui/material/Table';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableContainer from '@mui/material/TableContainer';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
 
 import { EmptyState } from '@dynamox/ui';
 
@@ -31,7 +33,6 @@ export function RecentOccurrences({
     <DashboardCard
       title="Ocorrências recentes"
       titleId="occurrences-title"
-      subtitle="Últimas leituras e a classificação atual de cada sensor."
       info="Derivado das leituras persistidas — o domínio não possui eventos/alarmes persistidos."
     >
       {loading ? (
@@ -50,52 +51,79 @@ export function RecentOccurrences({
       ) : null}
 
       {!loading && view.occurrences.length > 0 ? (
-        <Stack divider={<Divider flexItem />}>
-          {view.occurrences.map((row) => (
-            <ButtonBase
-              key={row.id}
-              disabled={!row.seriesId}
-              onClick={() => {
-                if (row.seriesId) onInvestigate(row.seriesId);
-              }}
-              aria-label={`${row.machineName} ${row.pointLabel} ${row.sensorSerial}: ${row.statusLabel} — ${row.message}`}
-              sx={(muiTheme) => ({
-                display: 'block',
-                textAlign: 'left',
-                width: '100%',
-                py: 0.9,
-                px: 0.5,
-                borderRadius: 1,
-                '&:hover': { bgcolor: alpha(muiTheme.palette.primary.main, 0.04) },
-                '&:focus-visible': {
-                  outline: `2px solid ${alpha(muiTheme.palette.primary.main, 0.5)}`,
-                },
-                '&.Mui-disabled': { opacity: 1 },
-              })}
-            >
-              <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-                <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                  {formatShortDateTime(row.timestamp)}
-                </Typography>
-                <StatusTag kind={row.statusKind} label={row.statusLabel} />
-              </Stack>
-              <Typography variant="body2" sx={{ fontWeight: 600, mt: 0.25 }} noWrap>
-                {row.machineName} · {row.pointLabel} · {row.sensorSerial}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" component="div" noWrap>
-                {row.message}
-              </Typography>
-            </ButtonBase>
-          ))}
-        </Stack>
+        <TableContainer sx={{ overflowX: 'auto' }}>
+          <Table
+            size="small"
+            aria-label="Ocorrências recentes"
+            sx={{ minWidth: 520, '& .MuiTableCell-root': { py: 0, px: 0.65, height: 16, lineHeight: 1.05 } }}
+          >
+            <TableHead>
+              <TableRow>
+                <TableCell>Data / hora</TableCell>
+                <TableCell>Máquina</TableCell>
+                <TableCell>Ponto / sensor</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Mensagem</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {view.occurrences.slice(0, 6).map((row) => (
+                <TableRow
+                  key={row.id}
+                  hover={Boolean(row.seriesId)}
+                  onClick={() => {
+                    if (row.seriesId) onInvestigate(row.seriesId);
+                  }}
+                  aria-label={`${row.machineName} ${row.pointLabel} ${row.sensorSerial}: ${row.statusLabel} — ${row.message}`}
+                  sx={{ cursor: row.seriesId ? 'pointer' : 'default' }}
+                >
+                  <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>
+                    {formatShortDateTime(row.timestamp)}
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 650, whiteSpace: 'nowrap' }}>
+                    {row.machineName.split(' — ')[0]}
+                    <Box
+                      component="span"
+                      sx={{
+                        position: 'absolute',
+                        display: 'block',
+                        left: 0,
+                        width: 1,
+                        height: 1,
+                        overflow: 'hidden',
+                        clip: 'rect(0 0 0 0)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {row.machineName.split(' — ')[0]} · {row.pointLabel} · {row.sensorSerial}
+                    </Box>
+                  </TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.pointLabel} · {row.sensorSerial}</TableCell>
+                  <TableCell><StatusTag kind={row.statusKind} label={row.statusLabel} /></TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {row.message}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
       ) : null}
-      {!loading && view.occurrences.length > 0 ? (
-        <Box sx={{ mt: 0.5 }}>
-          <Typography variant="caption" color="text.secondary">
-            Derivado das leituras persistidas; não há alarmes persistidos no domínio.
-          </Typography>
-        </Box>
-      ) : null}
+      <Box
+        component="span"
+        sx={{
+          position: 'absolute',
+          display: 'block',
+          left: 0,
+          width: 1,
+          height: 1,
+          overflow: 'hidden',
+          clip: 'rect(0 0 0 0)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Derivado das leituras persistidas; não há alarmes persistidos no domínio.
+      </Box>
     </DashboardCard>
   );
 }

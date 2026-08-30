@@ -54,7 +54,7 @@ export function KpiRow({
           ? `${top.machineName} · ${top.positionLabel} é o mais crítico`
           : `de ${headline.coverage.points} pontos monitorados`,
       icon: <WarningAmberOutlinedIcon />,
-      tone: 'error',
+      tone: 'warning',
       active: headline.attention.count > 0,
     },
     {
@@ -108,25 +108,26 @@ export function KpiRow({
           aria-label={`${kpi.label}: ${loading ? 'carregando' : kpi.value}`}
           sx={(muiTheme) => ({
             minWidth: 0,
-            p: `${muiTheme.dashboard.cardPadding}px`,
-            borderColor: kpi.active ? `${kpi.tone}.main` : 'divider',
-            bgcolor: kpi.active
-              ? alpha(muiTheme.palette[kpi.tone].main, 0.05)
-              : 'background.paper',
+            px: `${muiTheme.dashboard.cardPadding + 2}px`,
+            py: `${muiTheme.dashboard.cardPadding - 1}px`,
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
           })}
         >
-          <Stack direction="row" spacing={1.5} alignItems="flex-start">
+          <Stack direction="row" spacing={1.25} alignItems="center">
             <Box
               aria-hidden="true"
               sx={(muiTheme) => ({
                 display: { xs: 'none', sm: 'grid' },
                 placeItems: 'center',
-                width: 40,
-                height: 40,
+                width: 48,
+                height: 48,
                 borderRadius: '50%',
                 flexShrink: 0,
                 color: `${kpi.tone}.main`,
-                bgcolor: alpha(muiTheme.palette[kpi.tone].main, 0.1),
+                bgcolor: alpha(muiTheme.palette[kpi.tone].main, 0.09),
+                border: `1px solid ${alpha(muiTheme.palette[kpi.tone].main, 0.16)}`,
+                '& svg': { fontSize: 28 },
               })}
             >
               {kpi.icon}
@@ -141,10 +142,10 @@ export function KpiRow({
                 <Typography
                   component="p"
                   sx={{
-                    fontSize: { xs: '1.6rem', md: '1.9rem' },
-                    fontWeight: 700,
-                    lineHeight: 1.15,
-                    color: kpi.active ? `${kpi.tone}.main` : 'text.primary',
+                    fontSize: { xs: '1.45rem', md: '1.62rem' },
+                    fontWeight: 750,
+                    lineHeight: 1.05,
+                    color: `${kpi.tone}.main`,
                   }}
                 >
                   {kpi.value}

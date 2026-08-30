@@ -63,8 +63,8 @@ export function WeeklyHeatmap({
               sx={{
                 display: 'grid',
                 gridTemplateColumns: '44px repeat(24, minmax(0, 1fr))',
-                gap: '3px',
-                mb: '3px',
+                gap: '1px',
+                mb: '1px',
               }}
               aria-hidden="true"
             >
@@ -87,8 +87,8 @@ export function WeeklyHeatmap({
                 sx={{
                   display: 'grid',
                   gridTemplateColumns: '44px repeat(24, minmax(0, 1fr))',
-                  gap: '3px',
-                  mb: '3px',
+                  gap: '1px',
+                  mb: '1px',
                 }}
               >
                 <Box
@@ -100,7 +100,8 @@ export function WeeklyHeatmap({
                   sx={{
                     all: 'unset',
                     cursor: 'pointer',
-                    fontSize: 10.5,
+                    fontSize: 9.5,
+                    lineHeight: 1,
                     fontWeight: 700,
                     color: selectedDay === dayRow.day ? 'primary.main' : 'text.secondary',
                     display: 'flex',
@@ -133,8 +134,8 @@ export function WeeklyHeatmap({
                         all: 'unset',
                         cursor: 'pointer',
                         display: 'block',
-                        height: 20,
-                        borderRadius: '3px',
+                        height: 10,
+                        borderRadius: '2px',
                         bgcolor: cellColor(hour.share),
                         outline:
                           selectedDay === dayRow.day
@@ -150,7 +151,7 @@ export function WeeklyHeatmap({
               </Box>
             ))}
 
-            <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={0.75} sx={{ mt: 1 }}>
+            <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={0.55} sx={{ mt: 0.55 }}>
               <Typography variant="caption" color="text.secondary">
                 Baixa atividade
               </Typography>
@@ -158,7 +159,7 @@ export function WeeklyHeatmap({
                 <Box
                   key={step}
                   aria-hidden="true"
-                  sx={{ width: 18, height: 10, borderRadius: '2px', bgcolor: cellColor(step) }}
+                  sx={{ width: 16, height: 8, borderRadius: '2px', bgcolor: cellColor(step) }}
                 />
               ))}
               <Typography variant="caption" color="text.secondary">

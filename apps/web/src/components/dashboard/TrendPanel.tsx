@@ -1,8 +1,6 @@
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import Chip from '@mui/material/Chip';
 import Skeleton from '@mui/material/Skeleton';
-import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useTheme } from '@mui/material/styles';
 import { useMemo, type RefObject } from 'react';
@@ -23,7 +21,6 @@ import { EmptyState, ErrorState } from '@dynamox/ui';
 import {
   buildTrendView,
   computeDemonstrativeSeriesBaseline,
-  computeSampleStats,
 } from '../../features/dashboard/dashboardAggregations';
 import {
   formatAxisValue,
@@ -32,12 +29,12 @@ import {
   formatMeasurement,
   formatNumber,
   formatRange,
-  formatRelativeTime,
   seriesMetricLabel,
 } from '../../features/dashboard/dashboardFormatters';
 import type { DashboardPeriod } from '../../features/dashboard/dashboardSlice';
 import type { RequestStatus } from '../../store/requestStatus';
 import { DashboardCard } from './DashboardCard';
+import { SeriesHierarchyFilters } from './SeriesHierarchyFilters';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from './chartTheme';
 
 const PERIOD_LABELS: Record<DashboardPeriod, string> = {
@@ -56,6 +53,7 @@ export interface TrendPanelProps {
   error: string | null;
   nowMs: number;
   onRetry: () => void;
+  onSelectSeries: (seriesId: string) => void;
   /** Muda o período global — usado pelo estado vazio para alcançar o dado existente. */
   onPeriodChange: (period: DashboardPeriod) => void;
   /** Alvo do drill-down: o painel recebe foco quando uma exceção é aberta. */
@@ -76,6 +74,7 @@ export function TrendPanel({
   error,
   nowMs,
   onRetry,
+  onSelectSeries,
   onPeriodChange,
   headingRef,
 }: TrendPanelProps): JSX.Element {
@@ -86,14 +85,6 @@ export function TrendPanel({
   const baseline = selected
     ? computeDemonstrativeSeriesBaseline(selected.sensorSerialNumber, samples)
     : null;
-  const stats = useMemo(() => computeSampleStats(trend.filteredSamples), [trend.filteredSamples]);
-
-  const metrics = [
-    { label: 'Atual', value: stats.last },
-    { label: 'Máximo', value: stats.max },
-    { label: 'Mínimo', value: stats.min },
-    { label: 'Média', value: stats.avg },
-  ];
 
   return (
     <DashboardCard
@@ -105,26 +96,15 @@ export function TrendPanel({
           : 'Selecione um item na prioridade de inspeção ou na matriz da frota.'
       }
       action={
-        selected ? (
-          <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap justifyContent="flex-end">
-            <Chip
-              label={
-                trend.mode === 'raw'
-                  ? 'Dado bruto'
-                  : trend.mode === 'acquisition'
-                    ? 'Média por aquisição'
-                    : 'Média agregada'
-              }
-              size="small"
-              variant="outlined"
+        series.length > 0 ? (
+          <Box sx={{ width: { sm: 420, lg: 520 }, maxWidth: '58vw' }}>
+            <SeriesHierarchyFilters
+              series={series}
+              selectedSeriesId={selectedSeriesId}
+              onSelect={onSelectSeries}
+              compact
             />
-            <Chip label={`Unidade: ${selected.unit}`} size="small" variant="outlined" />
-            <Chip
-              label={`Última leitura ${formatRelativeTime(selected.lastTimestamp, nowMs)}`}
-              size="small"
-              variant="outlined"
-            />
-          </Stack>
+          </Box>
         ) : undefined
       }
     >
@@ -166,31 +146,13 @@ export function TrendPanel({
 
       {status === 'succeeded' && trend.filteredSamples.length > 0 && selected ? (
         <>
-          <Stack
-            direction="row"
-            spacing={0}
-            divider={<Box sx={{ borderLeft: 1, borderColor: 'divider' }} />}
-            sx={{ mb: 1, borderRadius: 1.5, bgcolor: 'background.default', overflow: 'hidden' }}
-          >
-            {metrics.map((metric) => (
-              <Box key={metric.label} sx={{ flex: 1, px: 1.25, py: 0.75, minWidth: 0 }}>
-                <Typography variant="overline" color="text.secondary" component="div" noWrap>
-                  {metric.label}
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700 }} noWrap>
-                  {formatMeasurement(metric.value, selected.unit)}
-                </Typography>
-              </Box>
-            ))}
-          </Stack>
-
           <Box
             role="img"
             aria-label={`Gráfico de ${seriesMetricLabel(selected.physicalQuantity, selected.axis)} em ${selected.unit}`}
-            sx={{ width: '100%', height: { xs: 240, md: 280 }, minWidth: 0 }}
+            sx={{ width: '100%', height: { xs: 190, md: 80 }, minWidth: 0 }}
           >
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trend.points} margin={{ top: 10, right: 14, bottom: 4, left: 4 }} accessibilityLayer>
+              <LineChart data={trend.points} margin={{ top: 8, right: 10, bottom: 0, left: -4 }} accessibilityLayer>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridStroke(muiTheme)} />
                 <XAxis
                   dataKey="timestamp"
@@ -206,7 +168,7 @@ export function TrendPanel({
                   tick={axisTickStyle(muiTheme)}
                   tickLine={false}
                   axisLine={false}
-                  width={58}
+                  width={44}
                   domain={['auto', 'auto']}
                   tickFormatter={formatAxisValue}
                 />
@@ -264,7 +226,7 @@ export function TrendPanel({
               </LineChart>
             </ResponsiveContainer>
           </Box>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'block', lg: 'none' }, mt: 0.4 }}>
             Cobertura real exibida: {formatRange(trend.coveredStart, trend.coveredEnd)} ·{' '}
             {trend.filteredSamples.length} amostra(s)
             {trend.mode === 'acquisition'

@@ -53,14 +53,14 @@ export function StatusTag({
       component="span"
       sx={{
         display: 'inline-block',
-        px: 0.9,
-        py: 0.2,
+        px: 0.7,
+        py: 0.1,
         borderRadius: 1,
         bgcolor: alpha(color, 0.12),
         color,
-        fontSize: 11,
+        fontSize: '0.58rem',
         fontWeight: 700,
-        lineHeight: 1.6,
+        lineHeight: 1.35,
         whiteSpace: 'nowrap',
       }}
     >

@@ -10,21 +10,21 @@ import { alpha, createTheme } from '@mui/material/styles';
  * de layout, tokens de gráfico), não espalhada pelos componentes.
  */
 const BRAND = {
-  primary: '#0C6E92',
-  primaryDark: '#09556F',
+  primary: '#008CA5',
+  primaryDark: '#006B80',
   primaryContrast: '#F4FBFE',
-  accent: '#17A8C9',
-  background: '#F3F5F7',
+  accent: '#12A7BE',
+  background: '#F4F7F9',
   surface: '#FFFFFF',
-  surfaceAlt: '#F8FAFC',
-  onSurface: '#182636',
+  surfaceAlt: '#FBFCFD',
+  onSurface: '#14233B',
   // Texto e estados passam WCAG AA (>= 4,5:1) sobre as três superfícies reais do produto:
   // #FFFFFF (paper), #F8FAFC (drawer) e #F3F5F7 (fundo). Medido, não estimado.
-  muted: '#556676',
-  border: '#D6E0E8',
-  success: '#12813B',
-  warning: '#946200',
-  error: '#C2413B',
+  muted: '#5F6D7C',
+  border: '#D7E0E6',
+  success: '#008C62',
+  warning: '#E66A16',
+  error: '#E43E3D',
 };
 
 /**
@@ -33,32 +33,32 @@ const BRAND = {
  * cor nunca é o único canal (sempre acompanhada de rótulo e, quando preciso, ícone).
  */
 const CONDITION = {
-  normal: '#12813B',
-  observation: '#946200',
-  attention: '#C2413B',
-  unclassified: '#556676',
-  noData: '#8A98A5',
-  stale: '#8A5A00',
+  normal: '#00976A',
+  observation: '#F2A900',
+  attention: '#F04444',
+  unclassified: '#7F8996',
+  noData: '#B2BAC3',
+  stale: '#E58A00',
 };
 
 /** Tokens de layout do dashboard: uma fonte só para dimensões repetidas. */
 const DASHBOARD = {
-  sidebarWidth: 224,
-  pagePaddingX: { xs: 12, md: 24 },
-  gridGap: 14,
-  sectionGap: 14,
-  cardPadding: 14,
-  cardRadius: 10,
-  headerHeight: 52,
+  sidebarWidth: 232,
+  pagePaddingX: { xs: 10, md: 14 },
+  gridGap: 5,
+  sectionGap: 5,
+  cardPadding: 10,
+  cardRadius: 9,
+  headerHeight: 42,
   chart: {
-    tickFontSize: 11,
+    tickFontSize: 9.5,
     axisColor: '#556676',
     gridColor: alpha('#556676', 0.14),
     tooltip: {
       background: '#FFFFFF',
       border: '#D6E0E8',
-      radius: 8,
-      fontSize: 12,
+      radius: 7,
+      fontSize: 11,
       shadow: '0 4px 12px rgba(23, 37, 46, 0.12)',
     },
   },
@@ -97,18 +97,17 @@ export const theme = createTheme({
     background: { default: BRAND.background, paper: BRAND.surface },
     text: { primary: BRAND.onSurface, secondary: BRAND.muted },
   },
-  shape: { borderRadius: 10 },
+  shape: { borderRadius: 9 },
   typography: {
     fontFamily: ['Inter', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'].join(','),
-    h1: { fontSize: '1.65rem', fontWeight: 700, lineHeight: 1.25 },
-    // Section heading dos painéis: denso, 15–16px.
-    h2: { fontSize: '0.98rem', fontWeight: 700, lineHeight: 1.35 },
-    h4: { fontSize: '2rem', fontWeight: 700 },
-    subtitle2: { fontWeight: 600 },
-    body2: { fontSize: '0.82rem' },
+    h1: { fontSize: '1.42rem', fontWeight: 750, lineHeight: 1.18, letterSpacing: -0.25 },
+    h2: { fontSize: '0.77rem', fontWeight: 750, lineHeight: 1.2 },
+    h4: { fontSize: '1.8rem', fontWeight: 750 },
+    subtitle2: { fontSize: '0.78rem', fontWeight: 700 },
+    body2: { fontSize: '0.72rem' },
     button: { textTransform: 'none', fontWeight: 600 },
-    caption: { fontWeight: 500, fontSize: '0.72rem' },
-    overline: { fontSize: '0.66rem', fontWeight: 700, letterSpacing: 0.8 },
+    caption: { fontWeight: 500, fontSize: '0.61rem', lineHeight: 1.28 },
+    overline: { fontSize: '0.59rem', fontWeight: 750, lineHeight: 1.5, letterSpacing: 0.75 },
   },
   components: {
     MuiCard: {
@@ -116,44 +115,57 @@ export const theme = createTheme({
         root: {
           borderColor: BRAND.border,
           borderRadius: DASHBOARD.cardRadius,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06)',
+          boxShadow: '0 1px 2px rgba(15, 35, 55, 0.06), 0 3px 10px rgba(15, 35, 55, 0.025)',
         },
       },
     },
     MuiButton: {
       styleOverrides: {
         // Ações em pílula, marca do design system de referência.
-        root: { borderRadius: 999 },
+        root: { borderRadius: 7, minHeight: 30 },
       },
     },
     MuiChip: {
       styleOverrides: {
-        root: { fontWeight: 600 },
+        root: { height: 22, fontWeight: 650, fontSize: '0.66rem', borderRadius: 999 },
+        icon: { fontSize: '0.9rem' },
       },
     },
     MuiTableCell: {
       styleOverrides: {
-        root: { fontSize: '0.78rem' },
+        root: { fontSize: '0.68rem', padding: '5px 8px', borderColor: '#E7EDF1' },
         head: {
           fontWeight: 700,
           color: BRAND.muted,
           whiteSpace: 'nowrap',
-          fontSize: '0.7rem',
+          fontSize: '0.58rem',
           textTransform: 'uppercase',
-          letterSpacing: 0.4,
+          letterSpacing: 0.25,
+          paddingTop: 4,
+          paddingBottom: 4,
         },
       },
     },
     MuiTextField: {
       defaultProps: { size: 'small' },
     },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: { minHeight: 32, fontSize: '0.7rem', borderRadius: 7 },
+        input: { paddingTop: 7, paddingBottom: 7 },
+      },
+    },
+    MuiInputLabel: {
+      styleOverrides: { root: { fontSize: '0.72rem' } },
+    },
     MuiToggleButton: {
       styleOverrides: {
         root: {
           textTransform: 'none',
           fontWeight: 600,
-          paddingTop: 4,
-          paddingBottom: 4,
+          minHeight: 30,
+          paddingTop: 3,
+          paddingBottom: 3,
         },
       },
     },
@@ -161,15 +173,15 @@ export const theme = createTheme({
       styleOverrides: {
         paper: {
           backgroundColor: BRAND.surfaceAlt,
-          borderRight: 'none',
-          boxShadow: '24px 0 48px rgba(17, 24, 39, 0.06)',
+          borderRight: `1px solid ${BRAND.border}`,
+          boxShadow: '12px 0 32px rgba(17, 24, 39, 0.025)',
         },
       },
     },
     MuiListItemButton: {
       styleOverrides: {
         root: {
-          borderRadius: 12,
+          borderRadius: 9,
           '&.Mui-selected': {
             backgroundColor: alpha(BRAND.primary, 0.1),
             '&:hover': { backgroundColor: alpha(BRAND.primary, 0.16) },

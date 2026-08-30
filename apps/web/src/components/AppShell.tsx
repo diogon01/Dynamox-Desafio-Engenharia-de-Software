@@ -59,22 +59,23 @@ const NAV_ITEMS: NavItem[] = [
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Element {
   return (
     <Box sx={(muiTheme) => ({ width: muiTheme.dashboard.sidebarWidth, display: 'flex', flexDirection: 'column', height: '100%' })}>
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{ p: 2.5, pb: 2 }}>
+      <Stack direction="row" spacing={1.25} alignItems="center" sx={{ px: 2, py: 1.75 }}>
         <Avatar
           variant="rounded"
           sx={{
             bgcolor: 'primary.main',
             color: 'primary.contrastText',
             fontWeight: 700,
-            borderRadius: 3,
-            width: 44,
-            height: 44,
+            borderRadius: '50%',
+            width: 38,
+            height: 38,
+            fontSize: '0.86rem',
           }}
         >
           DX
         </Avatar>
         <Box>
-          <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: 0.6 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: 0.45 }}>
             CONDITION MONITORING
           </Typography>
           <Typography variant="subtitle2" sx={{ lineHeight: 1.2 }}>
@@ -83,14 +84,14 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Elemen
         </Box>
       </Stack>
 
-      <Divider sx={{ mx: 2.5 }} />
+      <Divider sx={{ mx: 2 }} />
 
       <List
         component="nav"
         aria-label="Navegação principal"
-        sx={{ px: 1.5, py: 1.5, flexGrow: 1 }}
+        sx={{ px: 1.25, py: 1.25, flexGrow: 1 }}
         subheader={
-          <ListSubheader disableSticky sx={{ bgcolor: 'transparent', lineHeight: 2.4 }}>
+          <ListSubheader disableSticky sx={{ bgcolor: 'transparent', lineHeight: 2.7, px: 1.5, fontSize: '0.68rem' }}>
             Monitoramento
           </ListSubheader>
         }
@@ -103,7 +104,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Elemen
               end={item.to === '/'}
               onClick={onNavigate}
               sx={(theme) => ({
-                mb: 0.5,
+                mb: 0.35,
+                minHeight: 54,
+                px: 1.5,
                 '&.active': {
                   bgcolor: alpha(theme.palette.primary.main, 0.1),
                   boxShadow: `inset 3px 0 0 ${theme.palette.primary.main}`,
@@ -113,19 +116,19 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Elemen
                 },
               })}
             >
-              <ListItemIcon sx={{ minWidth: 40 }}>
+              <ListItemIcon sx={{ minWidth: 36, '& svg': { fontSize: 18 } }}>
                 {item.icon}
               </ListItemIcon>
               <ListItemText
                 primary={item.label}
                 secondary={item.description}
-                primaryTypographyProps={{ fontWeight: 600 }}
+                primaryTypographyProps={{ fontWeight: 650, fontSize: '0.76rem' }}
                 secondaryTypographyProps={{ variant: 'caption' }}
               />
             </ListItemButton>
           ))}
 
-        <ListSubheader disableSticky sx={{ bgcolor: 'transparent', lineHeight: 2.4 }}>
+        <ListSubheader disableSticky sx={{ bgcolor: 'transparent', lineHeight: 2.2, px: 1.5, mt: -1.1, fontSize: '0.68rem' }}>
           Ferramentas
         </ListSubheader>
         <ListItemButton
@@ -134,20 +137,20 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Elemen
           target="_blank"
           rel="noopener noreferrer"
         >
-          <ListItemIcon sx={{ minWidth: 40 }}>
+          <ListItemIcon sx={{ minWidth: 36, '& svg': { fontSize: 18 } }}>
             <ApiOutlinedIcon />
           </ListItemIcon>
           <ListItemText
             primary="API (Swagger)"
             secondary="Documentação interativa"
-            primaryTypographyProps={{ fontWeight: 600 }}
+            primaryTypographyProps={{ fontWeight: 650, fontSize: '0.76rem' }}
             secondaryTypographyProps={{ variant: 'caption' }}
           />
         </ListItemButton>
       </List>
 
-      <Divider sx={{ mx: 2.5 }} />
-      <Typography variant="caption" color="text.secondary" sx={{ p: 2.5, pt: 1.5 }}>
+      <Divider sx={{ mx: 2 }} />
+      <Typography variant="caption" color="text.secondary" sx={{ p: 2, pt: 1.25 }}>
         Dados sintéticos de demonstração. A aplicação nunca acessa a plataforma produtiva
         da Dynamox.
       </Typography>
@@ -186,7 +189,15 @@ export function AppShell(): JSX.Element {
       )}
 
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <Box component="main" sx={{ px: { xs: 1.5, md: 3 }, py: 3, flexGrow: 1 }}>
+        <Box
+          component="main"
+          sx={(theme) => ({
+            px: `${theme.dashboard.pagePaddingX.xs}px`,
+            py: 1,
+            flexGrow: 1,
+            [theme.breakpoints.up('md')]: { px: `${theme.dashboard.pagePaddingX.md}px` },
+          })}
+        >
           {!isDesktop ? (
             <IconButton
               aria-label="Abrir menu de navegação"
@@ -197,7 +208,7 @@ export function AppShell(): JSX.Element {
               <MenuIcon />
             </IconButton>
           ) : null}
-          <Stack spacing={1.5}>
+          <Stack spacing={0.75}>
             <SystemStatusBar />
             <Suspense fallback={<LoadingState label="Carregando página…" />}>
               <Outlet />

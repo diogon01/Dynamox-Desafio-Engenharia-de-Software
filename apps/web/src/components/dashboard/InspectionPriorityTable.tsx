@@ -83,7 +83,7 @@ function Sparkline({
     );
   }
   return (
-    <Box sx={{ width: 76, height: 26 }} aria-hidden="true">
+    <Box sx={{ width: 66, height: 13 }} aria-hidden="true">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={points} margin={{ top: 3, right: 2, bottom: 3, left: 2 }}>
           <Line
@@ -146,12 +146,17 @@ export function InspectionPriorityTable({
       ) : null}
 
       {!loading && rows.length > 0 ? (
-        <TableContainer sx={{ overflowX: 'auto' }}>
+        <TableContainer sx={{ overflowX: 'auto', mt: -1 }}>
           <Table
             size="small"
             aria-label="Ranking de prioridade de inspeção"
             // Densidade industrial: menos padding lateral para a tabela caber em 6 colunas.
-            sx={{ '& .MuiTableCell-root': { px: 1.1 } }}
+            sx={{
+              '& .MuiTableCell-root': { px: 0.65, py: 0, height: 15, lineHeight: 1 },
+              '& .MuiTableRow-root': { height: 15 },
+              '& .MuiIconButton-root': { width: 13, height: 13, p: 0 },
+              '& .MuiIconButton-root svg': { fontSize: 12 },
+            }}
           >
             <TableHead>
               <TableRow>

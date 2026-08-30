@@ -126,13 +126,13 @@ export function OperationalDashboard(): JSX.Element {
 
   /** Item do grid: spans por breakpoint + ordem no empilhamento mobile. */
   const item = (lg: number, md: number, order: number) => ({
-    gridColumn: { xs: 'span 12', md: `span ${md}`, lg: `span ${lg}` },
+    gridColumn: { xs: 'span 24', md: `span ${md * 2}`, lg: `span ${lg * 2}` },
     order: { xs: order, md: 0 },
     minWidth: 0,
   });
 
   return (
-    <Stack spacing={1.75}>
+    <Stack spacing={0.65}>
       <DashboardHeader
         period={dashboard.period}
         loadedAt={dashboard.loadedAt}
@@ -165,7 +165,7 @@ export function OperationalDashboard(): JSX.Element {
       <Box
         sx={(muiTheme) => ({
           display: 'grid',
-          gridTemplateColumns: 'repeat(12, minmax(0, 1fr))',
+          gridTemplateColumns: 'repeat(24, minmax(0, 1fr))',
           gap: `${muiTheme.dashboard.gridGap}px`,
           alignItems: 'stretch',
         })}
@@ -174,7 +174,7 @@ export function OperationalDashboard(): JSX.Element {
         <Box sx={item(3, 6, 4)}>
           <FleetConditionBar view={view} loading={inventoryLoading} />
         </Box>
-        <Box sx={item(6, 12, 1)}>
+        <Box sx={item(5, 12, 1)}>
           <InspectionPriorityTable
             view={view}
             loading={inventoryLoading}
@@ -183,12 +183,12 @@ export function OperationalDashboard(): JSX.Element {
             onInvestigate={investigate}
           />
         </Box>
-        <Box sx={item(3, 6, 6)}>
+        <Box sx={item(4, 6, 6)}>
           <SensorHealthDonut view={view} loading={inventoryLoading} />
         </Box>
 
         {/* EVIDÊNCIA */}
-        <Box sx={item(9, 12, 2)}>
+        <Box sx={item(6.5, 12, 2)}>
           <TrendPanel
             period={dashboard.period}
             series={dashboard.series.data}
@@ -198,22 +198,23 @@ export function OperationalDashboard(): JSX.Element {
             error={dashboard.detailError}
             nowMs={nowMs}
             onRetry={retryDetail}
+            onSelectSeries={selectSeries}
             onPeriodChange={(period) => dispatch(periodChanged(period))}
             headingRef={investigationRef}
           />
         </Box>
-        <Box sx={item(3, 12, 3)}>
+        <Box sx={item(5.5, 12, 3)}>
           <RecentOccurrences view={view} loading={inventoryLoading} onInvestigate={investigate} />
         </Box>
 
         {/* CONTEXTO DA FROTA + QUALIDADE */}
-        <Box sx={item(3, 6, 7)}>
+        <Box sx={item(4, 6, 7)}>
           <AssetConditionColumns view={view} loading={inventoryLoading} />
         </Box>
-        <Box sx={item(6, 12, 8)}>
+        <Box sx={item(4, 12, 8)}>
           <AcquisitionActivity view={view} loading={inventoryLoading || evaluating} />
         </Box>
-        <Box sx={item(3, 6, 5)}>
+        <Box sx={item(4, 6, 5)}>
           <DataQualityPanel view={view} loading={inventoryLoading} />
         </Box>
 

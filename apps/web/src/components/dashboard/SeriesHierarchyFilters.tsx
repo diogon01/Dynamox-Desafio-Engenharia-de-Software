@@ -58,9 +58,9 @@ export function SeriesHierarchyFilters({
         gridTemplateColumns: {
           xs: '1fr',
           sm: 'repeat(2, minmax(0, 1fr))',
-          lg: compact ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))',
+          lg: 'repeat(4, minmax(0, 1fr))',
         },
-        gap: 1,
+        gap: compact ? 0.5 : 1,
         minWidth: 0,
       }}
     >
@@ -71,7 +71,7 @@ export function SeriesHierarchyFilters({
         onChange={(_event, value) => {
           if (value) selectFirst(series.filter((item) => item.machineName === value));
         }}
-        renderInput={(params) => <TextField {...params} label="1. Máquina" />}
+        renderInput={(params) => <TextField {...params} label={compact ? 'Máquina' : '1. Máquina'} />}
         noOptionsText="Nenhuma máquina com série"
       />
       <Autocomplete
@@ -82,7 +82,7 @@ export function SeriesHierarchyFilters({
         onChange={(_event, value) => {
           if (value) selectFirst(inMachine.filter((item) => item.monitoringPointName === value));
         }}
-        renderInput={(params) => <TextField {...params} label="2. Ponto" />}
+        renderInput={(params) => <TextField {...params} label={compact ? 'Ponto' : '2. Ponto'} />}
         noOptionsText="Nenhum ponto com série"
       />
       <Autocomplete
@@ -93,7 +93,7 @@ export function SeriesHierarchyFilters({
         onChange={(_event, value) => {
           if (value) selectFirst(inPoint.filter((item) => item.sensorSerialNumber === value));
         }}
-        renderInput={(params) => <TextField {...params} label="3. Sensor" />}
+        renderInput={(params) => <TextField {...params} label={compact ? 'Sensor' : '3. Sensor'} />}
         noOptionsText="Nenhum sensor com série"
       />
       <Autocomplete
@@ -106,7 +106,7 @@ export function SeriesHierarchyFilters({
         onChange={(_event, value) => {
           if (value) onSelect(value.id);
         }}
-        renderInput={(params) => <TextField {...params} label="4. Eixo / métrica" />}
+        renderInput={(params) => <TextField {...params} label={compact ? 'Eixo / métrica' : '4. Eixo / métrica'} />}
         noOptionsText="Sensor sem séries"
       />
     </Box>

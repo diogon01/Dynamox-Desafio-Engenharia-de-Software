@@ -17,7 +17,6 @@ import { useEffect } from 'react';
 
 import { API_BASE_URL } from '../api/client';
 import { logout, selectAuthenticatedUser } from '../features/auth/authSlice';
-import { formatDateTime } from '../features/dashboard/dashboardFormatters';
 import { fetchHealth, selectDiagnostics } from '../features/diagnostics/diagnosticsSlice';
 import { useAppDispatch, useAppSelector } from '../store';
 
@@ -36,14 +35,14 @@ export function SystemStatusBar(): JSX.Element {
       variant="outlined"
       component="section"
       aria-labelledby="system-status-title"
-      sx={{ bgcolor: 'background.paper' }}
+      sx={{ bgcolor: 'background.paper', minHeight: 42 }}
     >
-      <CardContent sx={{ py: 0.75, px: { xs: 1.5, sm: 2 }, '&:last-child': { pb: 0.75 } }}>
+      <CardContent sx={{ py: 0.5, px: { xs: 1.25, sm: 1.75 }, '&:last-child': { pb: 0.5 } }}>
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
           alignItems={{ xs: 'stretch', sm: 'center' }}
           justifyContent="space-between"
-          gap={1.5}
+          gap={1}
         >
           <Box sx={{ minWidth: 0, flex: 1 }}>
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
@@ -105,20 +104,11 @@ export function SystemStatusBar(): JSX.Element {
               ) : null}
             </Stack>
 
-            <Typography
-              variant="caption"
-              color={healthStatus === 'failed' ? 'error.main' : 'text.secondary'}
-              sx={{
-                // A barra não compete com o header do dashboard: detalhe só em telas largas.
-                display: { xs: 'none', lg: 'block' },
-                mt: 0.25,
-                overflowWrap: 'anywhere',
-              }}
-            >
-              {healthStatus === 'failed'
-                ? `${healthError ?? 'A API local não respondeu.'} · ${API_BASE_URL}`
-                : `${API_BASE_URL}${health?.timestamp ? ` · Atualizado em ${formatDateTime(health.timestamp)}` : ''}`}
-            </Typography>
+            {healthStatus === 'failed' ? (
+              <Typography variant="caption" color="error.main" sx={{ overflowWrap: 'anywhere' }}>
+                {healthError ?? `A API local não respondeu em ${API_BASE_URL}.`}
+              </Typography>
+            ) : null}
           </Box>
 
           <Stack
@@ -132,11 +122,11 @@ export function SystemStatusBar(): JSX.Element {
               pt: { xs: 1, sm: 0 },
             }}
           >
-            <Avatar sx={{ width: 28, height: 28, bgcolor: 'primary.main', fontSize: '0.78rem' }}>
+            <Avatar sx={{ width: 26, height: 26, bgcolor: 'primary.main', fontSize: '0.7rem' }}>
               {(user?.name ?? user?.email ?? '?').charAt(0).toUpperCase()}
             </Avatar>
             <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Typography variant="body2" noWrap sx={{ maxWidth: { xs: 210, md: 280 } }}>
+              <Typography variant="body2" noWrap sx={{ maxWidth: { xs: 210, md: 280 }, fontWeight: 600 }}>
                 {user?.email ?? 'Usuário autenticado'}
               </Typography>
               <Typography

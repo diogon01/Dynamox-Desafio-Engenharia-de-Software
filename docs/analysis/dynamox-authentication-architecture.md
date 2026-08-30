@@ -1,5 +1,9 @@
 # Autenticação — arquitetura implementada (AUT-01 · AUT-02 · AUT-03)
 
+> **Nota de auditoria (29/08/2026).** Documento fiel ao ciclo de 27/08; a arquitetura
+> descrita segue em produção no repo. Contagens atuais (152 API + 82 web, tudo verde,
+> revalidado em clone limpo) na [matriz de evidências](./dynamox-evidence-matrix.md).
+
 Registro do que **está implementado e testado** — não é proposta.
 
 ```mermaid

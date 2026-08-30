@@ -1,5 +1,13 @@
 # Blueprint — Sensor digital determinístico (TcAg · TcAs · HF+)
 
+> **⚠️ SUPERADO (29/08/2026).** Este blueprint é o plano da era SCP-05 e foi substituído
+> pela implementação real do BON-06 v3.1: o simulador vivo é `simulation/sensor-twin/`
+> (engine determinística, frota de 12 sensores, supervisor deliberativo e proveniência
+> ROS opcional). `NormalizedMetric`/`libs/sensor-sim` e o motor Fuzzy **não foram
+> construídos**. Estado atual: [matriz de evidências](./dynamox-evidence-matrix.md) e
+> [README do sensor twin](../../simulation/sensor-twin/README.md). O texto abaixo
+> permanece como registro histórico da análise.
+
 > **Status:** blueprint. Nada daqui está implementado. Este documento congela o contrato do
 > futuro simulador para que ele seja construído sobre fatos rastreáveis, e não sobre campos
 > inventados.

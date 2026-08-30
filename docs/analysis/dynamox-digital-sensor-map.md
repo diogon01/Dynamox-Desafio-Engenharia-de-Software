@@ -1,5 +1,9 @@
 # Mapa mental — Sensor digital Dynamox
 
+> **⚠️ Nota de auditoria (29/08/2026).** O "futuro sensor digital" deste mapa foi
+> entregue com outra forma: `simulation/sensor-twin/` (BON-06 v3.1). Fuzzy e forecast
+> **não existem**. Estado atual: [matriz de evidências](./dynamox-evidence-matrix.md).
+
 Mapa de navegação da análise SCP-05 e do futuro sensor digital. Compatível com Obsidian
 (bloco Mermaid `mindmap`). Os detalhes vivem nos relatórios técnicos linkados ao final —
 este mapa não os substitui. Para uma demonstração concreta, comece pelo

@@ -1,77 +1,64 @@
-# Comece aqui — Análise Sensor × API Dynamox (SCP-05)
+# Comece aqui — Análises do desafio Dynamox
 
-Esta pasta responde a uma pergunta: **o que podemos afirmar com evidência sobre o domínio
-da Dynamox para construir um sensor digital honesto?** Fizemos engenharia reversa do
-snapshot público da API (versionado neste repositório) e separamos, frase a frase, o que é
-fato, o que é cálculo nosso, o que é escolha nossa e o que ninguém sabe. O resultado é um
-contrato analítico congelado e um blueprint de simulador — **nada de integração com a API
-produtiva, nenhuma credencial, nenhum dado real**. Tudo aqui é reproduzível por comando e
-auditável por hash.
+Esta pasta reúne a análise de domínio (SCP-05, era de planejamento) e a **rastreabilidade
+da entrega real**. Estado do repositório na última auditoria (**29/08/2026**, HEAD
+`196d4dd`, branch `diogo-fragoso`, 28 commits locais ainda sem push):
 
-## Os quatro conceitos em uma frase cada
+- **Entrega convencional completa**: autenticação JWT, CRUD de máquinas, pontos e
+  sensores com regra Pump⇒HF+, paginação 5 e ordenação bidirecional, séries temporais
+  idempotentes com métricas/exclusão/recuperação completa, gráfico, Swagger.
+- **Validação executada** (pós `npx nx reset`): build/lint/typecheck verdes nos 6
+  projetos; **323 testes convencionais** (152 API + 82 web + 89 sensor twin) **+ 17 de
+  integração da planta + 5 de integração ROS**; latência pior caso ~34 ms (limite 350 ms).
+- **Reprodução em clone limpo** (DEL-01/DEL-03): só conteúdo versionado + PostgreSQL
+  novo → migrações do zero, seed, smoke completo de API e UI, bateria verde e bônus
+  reproduzido com **fingerprints determinísticos idênticos entre bancos**.
+- **Auditoria de segredos e histórico** (DEL-02): zero segredos versionados; `.env`
+  nunca commitado; 28 commits todos do autor, Conventional Commits, sem marcas de IA.
+- **Bônus BON-06** — terminologia honesta: *sensor twin determinístico com frota
+  sintética e uma sombra digital dos estados simulados persistidos* (não é gêmeo digital
+  operacional bidirecional). 6 máquinas / 12 pontos / 12 sensores; supervisor
+  OBSERVE→RANK→ACT→RE-OBSERVE→RECOMMEND decidindo só por séries persistidas
+  (P-101/NDE ≈3,49× vs ≈1,00×; SUSPECT→CONFIRMED_ATTENTION); proveniência ROS opcional
+  com replay `duplicate:true`. Blender/Xacro/Gazebo cortados; **nenhum Fuzzy ou
+  forecast implementado**; o core não depende do bônus.
 
-- **API Dynamox** — a interface pública da plataforma DynaPredict; usamos apenas o
-  *documento* que a descreve (snapshot OpenAPI 2.4.7), nunca a API em si.
-- **Sensor digital** — um gerador determinístico que imita o *formato* dos dados de um
-  sensor de vibração/temperatura (TcAg, TcAs, HF+), sem fingir ser o dispositivo real.
-- **Normalização** — traduzir dados de origens diferentes (telemetria, métricas de
-  waveform) para um único formato numérico rastreável, o `NormalizedMetric`, sem perder
-  eixo, unidade, nulos nem origem.
-- **Fuzzy** — o futuro motor de avaliação de condição (normal/atenção/crítico); ainda não
-  existe e só consumirá métricas normalizadas.
+## Rastreabilidade
 
-## Ordem recomendada de leitura
+➡️ **[Matriz de evidências requisito × código × teste × execução × Notion](./dynamox-evidence-matrix.md)** —
+fonte única do estado de cada requisito (SCP, FND, AUT, MAC, MON, FE, API, TS, TST, QLT,
+DOC, DEL, BON e BON-06.F1–F9), com limitações declaradas.
 
-1. [Walkthrough visual da P-101](./dynamox-p101-visual-walkthrough.md) — veja o sistema
-   funcionando num exemplo concreto antes da teoria.
-2. [Mapa mental](./dynamox-digital-sensor-map.md) — a paisagem inteira num diagrama.
-3. [Mapeamento Sensor × API](./dynamox-sensor-api-mapping.md) — o relatório principal:
-   inventário, perfis, contrato analítico e a decisão.
-4. [Blueprint do sensor digital](./dynamox-digital-sensor-blueprint.md) — como o simulador
-   será construído (presets, cenários, seed, nulos).
-5. [Auditoria de drift](./dynamox-contract-drift.md) — onde a especificação pública
-   diverge de si mesma e onde nós divergimos dela de propósito.
-6. [Inventário de endpoints](./dynamox-endpoint-inventory.json) — a evidência bruta,
-   gerada por `npm run analysis:inventory`.
-7. [Arquitetura de autenticação](./dynamox-authentication-architecture.md) — login fixo,
-   JWT, guard global, sessão Redux e logout (AUT-01/02/03, implementados e testados).
+Guia do bônus: [`simulation/sensor-twin/README.md`](../../simulation/sensor-twin/README.md).
+Guia operacional: [`docs/SETUP.md`](../SETUP.md). README de entrega: [`README.md`](../../README.md).
 
-## Confirmado × escolha nossa × ainda desconhecido
+## Análise de domínio (SCP-05 — histórico vivo)
 
-| Confirmado (no snapshot) | Escolha nossa (rotulada) | Ainda desconhecido |
-| --- | --- | --- |
-| 18 operações com paths exatos | Presets leves do MVP (TcAs 5040 Hz×4096; HF+ 26290 Hz×8192) | Banda útil real (Nyquist é só teto) |
-| Taxas por perfil: TcAg/TcAs 2520·5040 Hz; HF+ 1143→131450 Hz | TcAg sem waveform no MVP (conflito Q9) | Domínios de `evaluator`, `band`, `statisticalProcessing` |
-| Waveform raw/spectrum travados em `acceleration`/`g` | Booleano → `unsupported` (nunca vira 0/1) | Composição entre elementos de `conditions[]` |
-| Nulabilidade: `unit`, `value.x/y/z`, eixos, `rpm` | Eixo desabilitado ⇒ `null` (regra determinística local) | Forma real da lista de waveforms |
-| Severidade `no-alert/a1/a2` separada de `detected/notDetected/notEvaluated` | `NormalizedMetric` + `WaveformAcquisitionContext` | Autenticação (`securitySchemes` vazio) |
-| Escrita `timestamp` × leitura `datetime` | Cadência de telemetria (1/min) | Qualquer limiar numérico de alarme |
+A análise abaixo foi feita **antes** da implementação e continua válida como registro de
+engenharia reversa do snapshot público (nunca da API produtiva). Atenção: o simulador
+descrito no blueprint evoluiu — **o que existe de verdade é `simulation/sensor-twin/`**
+(ver banner em cada documento quando aplicável).
 
-## Estado atual da SCP-05
+1. [Walkthrough visual da P-101](./dynamox-p101-visual-walkthrough.md) — o sistema num
+   exemplo concreto.
+2. [Mapa mental](./dynamox-digital-sensor-map.md) — a paisagem num diagrama.
+3. [Mapeamento Sensor × API](./dynamox-sensor-api-mapping.md) — inventário, perfis,
+   contrato analítico e decisão (GO com restrições, 2 revisões factuais).
+4. [Blueprint do sensor digital](./dynamox-digital-sensor-blueprint.md) — plano da era
+   SCP-05; **superado pela implementação real** (banner no topo).
+5. [Auditoria de drift](./dynamox-contract-drift.md) — divergências da spec pública e as
+   nossas, deliberadas.
+6. [Inventário de endpoints](./dynamox-endpoint-inventory.json) — evidência bruta
+   (`npm run analysis:inventory`).
+7. [Arquitetura de autenticação](./dynamox-authentication-architecture.md) — AUT-01/02/03
+   (números daquele documento são do ciclo de 27/08; estado atual na matriz).
 
-Análise executada e **revisada duas vezes por revisor factual independente**: a primeira
-revisão reprovou (8 erros, todos corrigidos), a segunda aprovou com ressalvas médias (também
-corrigidas). Decisão técnica: **GO COM RESTRIÇÕES** — o sensor digital pode ser construído
-sobre o subconjunto rastreável, com toda hipótese rotulada. O status do cartão no Notion é
-decisão do Diogo; os entregáveis estão prontos para revisão humana.
+## Conceitos em uma frase
 
-## Estado da autenticação (AUT-01 · AUT-02 · AUT-03)
-
-**Implementada, revisada e em revisão humana** (27/08/2026). Login fixo com JWT próprio,
-guard global protegendo todas as rotas privadas, sessão Redux com restauração via
-`/auth/me`, logout completo e 401 centralizado. Duas rodadas de revisão externa: a
-primeira apontou 4 achados (enumeração por latência, seed sem reset de senha, corrida na
-restauração, formato de e-mail) e a segunda apontou 3 no ciclo de sessão (falha
-transitória derrubando JWT válido, 401 atrasado apagando login novo, teste declarando
-cobertura maior que a real) — **todos os 7 corrigidos e revalidados** (61 testes de API +
-30 de web verdes). Detalhes em
-[Arquitetura de autenticação](./dynamox-authentication-architecture.md).
-
-## Próxima task recomendada (após aprovação)
-
-Fechar os **P0 restantes**: `MAC-01` (CRUD de máquinas) e a cadeia `MON-01…06` (pontos,
-sensores, regra `Pump × TcAg/TcAs`, lista paginada e ordenável). Só depois vem o núcleo do
-sensor digital (`libs/sensor-sim`: tipos `NormalizedMetric`, `NormalizationResult` e
-`WaveformAcquisitionContext`, gerador determinístico por seed com os presets congelados),
-alimentando o `POST /api/telemetry-cycles` já existente — conforme o gate registrado no
-board. Prazo do desafio: **31/08/2026**.
+- **API Dynamox** — usamos apenas o *documento* público (snapshot OpenAPI 2.4.7,
+  versionado com hash), nunca a API em si; o simulador recusa domínios Dynamox por código.
+- **Sensor twin** — gerador determinístico que imita o *formato* dos dados (TcAg, TcAs,
+  HF+), sem fingir ser o dispositivo real; amplitudes pedagógicas, limiar 2,0 didático.
+- **Normalização** — conceito da análise SCP-05; na implementação, o contrato interno de
+  telemetria (`libs/contracts`) cumpre o papel de formato único validado por Ajv.
+- **Fuzzy / forecast** — **não implementados**; registrados apenas como evolução futura.

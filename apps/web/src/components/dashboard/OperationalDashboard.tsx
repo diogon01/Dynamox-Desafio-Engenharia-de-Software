@@ -5,15 +5,18 @@ import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import { useEffect, useMemo, useState } from 'react';
 
-import { HealthPanel } from '../HealthPanel';
-import { buildDashboardView } from '../../features/dashboard/dashboardAggregations';
+import {
+  createSelectDashboardView,
+  selectDashboard,
+  selectDashboardInventoryLoading,
+  selectDashboardPartialErrors,
+} from '../../features/dashboard/dashboardSelectors';
 import {
   dashboardSeriesSelected,
   fetchDashboardSeriesDetail,
   fetchOperationalDashboard,
   periodChanged,
 } from '../../features/dashboard/dashboardSlice';
-import { fetchHealth } from '../../features/diagnostics/diagnosticsSlice';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { DashboardHeader } from './DashboardHeader';
 import { KpiGrid } from './KpiGrid';
@@ -24,11 +27,14 @@ import { TrendPanel } from './TrendPanel';
 
 export function OperationalDashboard(): JSX.Element {
   const dispatch = useAppDispatch();
-  const dashboard = useAppSelector((state) => state.dashboard);
   const [nowMs] = useState(() => Date.now());
+  const selectView = useMemo(() => createSelectDashboardView(nowMs), [nowMs]);
+  const dashboard = useAppSelector(selectDashboard);
+  const view = useAppSelector(selectView);
+  const inventoryLoading = useAppSelector(selectDashboardInventoryLoading);
+  const partialErrors = useAppSelector(selectDashboardPartialErrors);
 
   useEffect(() => {
-    void dispatch(fetchHealth());
     void dispatch(fetchOperationalDashboard());
   }, [dispatch]);
 
@@ -37,22 +43,6 @@ export function OperationalDashboard(): JSX.Element {
       void dispatch(fetchDashboardSeriesDetail(dashboard.selectedSeriesId));
     }
   }, [dispatch, dashboard.selectedSeriesId]);
-
-  const view = useMemo(() => buildDashboardView(dashboard, nowMs), [dashboard, nowMs]);
-  const inventoryLoading = [dashboard.machines, dashboard.points, dashboard.series].some(
-    (resource) => resource.status === 'idle' || resource.status === 'loading',
-  );
-  const partialErrors = [
-    dashboard.machines.error ? `Máquinas: ${dashboard.machines.error}` : null,
-    dashboard.points.error ? `Pontos: ${dashboard.points.error}` : null,
-    dashboard.series.error ? `Séries: ${dashboard.series.error}` : null,
-    Object.keys(dashboard.metricErrors).length > 0
-      ? `${Object.keys(dashboard.metricErrors).length} série(s) sem métricas.`
-      : null,
-    Object.keys(dashboard.radialSampleErrors).length > 0
-      ? `${Object.keys(dashboard.radialSampleErrors).length} série(s) radiais sem baseline calculável.`
-      : null,
-  ].flatMap((value) => (value ? [value] : []));
 
   const selectSeries = (seriesId: string) => {
     dispatch(dashboardSeriesSelected(seriesId));
@@ -66,7 +56,6 @@ export function OperationalDashboard(): JSX.Element {
 
   return (
     <Stack spacing={1.5}>
-      <HealthPanel />
       <DashboardHeader
         period={dashboard.period}
         loadedAt={dashboard.loadedAt}

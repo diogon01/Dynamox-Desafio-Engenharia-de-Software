@@ -1,14 +1,10 @@
-import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider } from '@mui/material/styles';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MonitoringPointsPanel } from './MonitoringPointsPanel';
 import { setToken } from '../api/client';
-import { createStore } from '../store';
-import { theme } from '../theme';
+import { renderWithProviders } from '../test/renderWithProviders';
 
 const MACHINES = [
   {
@@ -80,14 +76,7 @@ function stubApi(options: {
 }
 
 function renderPanel() {
-  return render(
-    <Provider store={createStore()}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <MonitoringPointsPanel />
-      </ThemeProvider>
-    </Provider>,
-  );
+  return renderWithProviders(<MonitoringPointsPanel />);
 }
 
 afterEach(() => {

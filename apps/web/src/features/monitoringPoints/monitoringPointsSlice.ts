@@ -1,4 +1,10 @@
-import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import {
+  createAsyncThunk,
+  createSlice,
+  type PayloadAction,
+  type ThunkDispatch,
+  type UnknownAction,
+} from '@reduxjs/toolkit';
 
 import type { SensorModel } from '@dynamox/domain';
 
@@ -7,7 +13,8 @@ import {
   type MonitoringPointPageDto,
   type MonitoringPointSortColumn,
 } from '../../api/client';
-import type { RequestStatus } from '../machines/machinesSlice';
+import type { RootState } from '../../store';
+import type { RequestStatus } from '../../store/requestStatus';
 
 export interface MonitoringPointsState {
   /** Página corrente devolvida pela API; a paginação e a ordenação são do servidor. */
@@ -36,11 +43,17 @@ export const initialMonitoringPointsState: MonitoringPointsState = {
   assignError: null,
 };
 
+type MonitoringPointsRootState = { monitoringPoints: MonitoringPointsState };
+const createMonitoringPointsThunk = createAsyncThunk.withTypes<{
+  state: MonitoringPointsRootState;
+  dispatch: ThunkDispatch<MonitoringPointsRootState, unknown, UnknownAction>;
+}>();
+
 /** Busca a página corrente usando page/sort do próprio estado (fonte única). */
-export const fetchMonitoringPoints = createAsyncThunk(
+export const fetchMonitoringPoints = createMonitoringPointsThunk(
   'monitoringPoints/fetch',
   async (_: void, { getState }) => {
-    const { monitoringPoints } = getState() as { monitoringPoints: MonitoringPointsState };
+    const { monitoringPoints } = getState();
     return api.monitoringPoints({
       page: monitoringPoints.page,
       sortBy: monitoringPoints.sortBy,
@@ -49,7 +62,7 @@ export const fetchMonitoringPoints = createAsyncThunk(
   },
 );
 
-export const createMonitoringPoint = createAsyncThunk(
+export const createMonitoringPoint = createMonitoringPointsThunk(
   'monitoringPoints/create',
   async (input: { machineId: string; name: string }, { dispatch }) => {
     const created = await api.createMonitoringPoint(input.machineId, input.name);
@@ -59,7 +72,7 @@ export const createMonitoringPoint = createAsyncThunk(
   },
 );
 
-export const assignSensor = createAsyncThunk(
+export const assignSensor = createMonitoringPointsThunk(
   'monitoringPoints/assignSensor',
   async (
     input: { pointId: string; serialNumber: string; model: SensorModel },
@@ -138,3 +151,6 @@ const monitoringPointsSlice = createSlice({
 
 export const { pageChanged, sortChanged } = monitoringPointsSlice.actions;
 export const monitoringPointsReducer = monitoringPointsSlice.reducer;
+
+export const selectMonitoringPoints = (state: RootState): MonitoringPointsState =>
+  state.monitoringPoints;

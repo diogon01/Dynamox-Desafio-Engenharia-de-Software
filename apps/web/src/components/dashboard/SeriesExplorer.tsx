@@ -9,6 +9,7 @@ import Chip from '@mui/material/Chip';
 import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { useTheme } from '@mui/material/styles';
 import { useMemo } from 'react';
 import {
   CartesianGrid,
@@ -29,10 +30,11 @@ import {
 } from '../../features/dashboard/dashboardAggregations';
 import {
   formatDateTime,
+  formatChartTick,
   formatNumber,
   seriesMetricLabel,
 } from '../../features/dashboard/dashboardFormatters';
-import type { RequestStatus } from '../../features/diagnostics/diagnosticsSlice';
+import type { RequestStatus } from '../../store/requestStatus';
 import { SeriesHierarchyFilters } from './SeriesHierarchyFilters';
 
 export interface SeriesExplorerProps {
@@ -54,6 +56,7 @@ export function SeriesExplorer({
   onSelectSeries,
   onRetry,
 }: SeriesExplorerProps): JSX.Element {
+  const muiTheme = useTheme();
   const selected = series.find((item) => item.id === selectedSeriesId) ?? null;
   const stats = useMemo(() => computeSampleStats(samples), [samples]);
   const chart = useMemo(() => aggregateSamplesForDetail(samples), [samples]);
@@ -154,21 +157,22 @@ export function SeriesExplorer({
                   sx={{ width: '100%', height: { xs: 240, md: 300 }, minWidth: 0 }}
                 >
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chart.points} margin={{ top: 8, right: 16, bottom: 8, left: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#D6E0E8" />
+                    <LineChart
+                      data={chart.points}
+                      margin={{ top: 8, right: 16, bottom: 8, left: 4 }}
+                      accessibilityLayer
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        vertical={false}
+                        stroke={muiTheme.palette.divider}
+                      />
                       <XAxis
                         dataKey="timestamp"
                         type="number"
                         scale="time"
                         domain={['dataMin', 'dataMax']}
-                        tickFormatter={(value: number) =>
-                          new Intl.DateTimeFormat('pt-BR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          }).format(new Date(value))
-                        }
+                        tickFormatter={formatChartTick}
                         fontSize={11}
                         minTickGap={30}
                       />
@@ -179,13 +183,14 @@ export function SeriesExplorer({
                         tickFormatter={(value: number) => formatNumber(value, 3)}
                       />
                       <Tooltip
+                        accessibilityLayer
                         labelFormatter={(label) => formatDateTime(Number(label))}
                         formatter={(value) => [`${formatNumber(Number(value), 4)} ${selected.unit}`, 'Valor']}
                       />
                       <Line
                         type="monotone"
                         dataKey="value"
-                        stroke="#0C6E92"
+                        stroke={muiTheme.palette.primary.main}
                         strokeWidth={2}
                         dot={false}
                         connectNulls={false}

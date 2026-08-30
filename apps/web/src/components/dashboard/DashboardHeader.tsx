@@ -16,6 +16,8 @@ const PERIOD_LABELS: Record<DashboardPeriod, string> = {
   '30d': '30 dias',
 };
 
+const PERIODS: DashboardPeriod[] = ['24h', '7d', '30d'];
+
 export interface DashboardHeaderProps {
   period: DashboardPeriod;
   loadedAt: string | null;
@@ -38,7 +40,7 @@ export function DashboardHeader({
         border: 1,
         borderColor: 'divider',
         bgcolor: 'background.paper',
-        boxShadow: '0 8px 24px rgba(15, 40, 60, 0.05)',
+        boxShadow: 1,
       }}
     >
       <Stack
@@ -94,7 +96,7 @@ export function DashboardHeader({
           }}
           sx={{ alignSelf: { xs: 'stretch', sm: 'flex-start', md: 'flex-end' } }}
         >
-          {(Object.keys(PERIOD_LABELS) as DashboardPeriod[]).map((key) => (
+          {PERIODS.map((key) => (
             <ToggleButton key={key} value={key} aria-label={PERIOD_LABELS[key]} sx={{ flex: 1 }}>
               {PERIOD_LABELS[key]}
             </ToggleButton>

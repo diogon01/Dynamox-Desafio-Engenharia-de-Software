@@ -14,7 +14,7 @@ import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha, type Theme } from '@mui/material/styles';
-import type { ReactNode } from 'react';
+import type { ReactElement } from 'react';
 
 import { EmptyState } from '@dynamox/ui';
 
@@ -31,7 +31,7 @@ import {
 
 const CONDITION_META: Record<
   ConditionKind,
-  { label: string; color: 'success' | 'warning' | 'error' | 'default'; icon: ReactNode }
+  { label: string; color: 'success' | 'warning' | 'error' | 'default'; icon: ReactElement }
 > = {
   normal: { label: 'Normal demonstrativo', color: 'success', icon: <CheckCircleOutlineIcon /> },
   observation: { label: 'Observação demonstrativa', color: 'warning', icon: <ErrorOutlineIcon /> },
@@ -40,6 +40,14 @@ const CONDITION_META: Record<
   'no-data': { label: 'Sem dados', color: 'default', icon: <SensorsOffOutlinedIcon /> },
   'no-sensor': { label: 'Sem sensor', color: 'default', icon: <SensorsOffOutlinedIcon /> },
 };
+
+const LEGEND_CONDITIONS: ConditionKind[] = [
+  'normal',
+  'observation',
+  'attention',
+  'unclassified',
+  'no-data',
+];
 
 function cellBackground(theme: Theme, condition: ConditionKind): string {
   if (condition === 'attention') return alpha(theme.palette.error.main, 0.08);
@@ -109,13 +117,13 @@ export function SensorConditionMatrix({
             </Typography>
           </Box>
           <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap aria-label="Legenda de condição">
-            {(['normal', 'observation', 'attention', 'unclassified', 'no-data'] as ConditionKind[]).map(
+            {LEGEND_CONDITIONS.map(
               (condition) => {
                 const meta = CONDITION_META[condition];
                 return (
                   <Chip
                     key={condition}
-                    icon={meta.icon as JSX.Element}
+                    icon={meta.icon}
                     label={meta.label}
                     color={meta.color}
                     size="small"
@@ -244,7 +252,7 @@ export function SensorConditionMatrix({
                               </Stack>
                               <Stack direction="row" gap={0.75} alignItems="center" sx={{ mt: 1 }} flexWrap="wrap">
                                 <Chip
-                                  icon={meta.icon as JSX.Element}
+                                  icon={meta.icon}
                                   label={meta.label}
                                   color={meta.color}
                                   size="small"

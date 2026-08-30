@@ -126,7 +126,19 @@ interface RequestOptions {
   skipUnauthorizedHandler?: boolean;
 }
 
-async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
+function apiErrorMessage(payload: unknown): string | null {
+  if (
+    typeof payload === 'object' &&
+    payload !== null &&
+    'message' in payload &&
+    typeof payload.message === 'string'
+  ) {
+    return payload.message;
+  }
+  return null;
+}
+
+async function request(path: string, options: RequestOptions = {}): Promise<Response> {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -142,19 +154,31 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
     // Só derruba a sessão se o token desta requisição ainda for o atual: um 401 atrasado
     // de uma chamada feita com token antigo não pode apagar o token de um login novo.
     if (!options.skipUnauthorizedHandler && token === getToken()) onUnauthorized?.();
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new UnauthorizedError(payload?.message ?? 'Não autorizado.');
+    const payload: unknown = await response.json().catch(() => null);
+    throw new UnauthorizedError(apiErrorMessage(payload) ?? 'Não autorizado.');
   }
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? `Falha ao consultar ${path}: HTTP ${response.status}`);
+    const payload: unknown = await response.json().catch(() => null);
+    throw new Error(apiErrorMessage(payload) ?? `Falha ao consultar ${path}: HTTP ${response.status}`);
   }
 
-  // DELETE bem-sucedido responde 204 sem corpo; chamar .json() aqui estouraria.
-  if (response.status === 204) return undefined as T;
+  return response;
+}
 
-  return (await response.json()) as T;
+async function requestJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await request(path, options);
+  if (response.status === 204) {
+    throw new Error(`A API respondeu sem conteúdo para ${path}.`);
+  }
+
+  // Os DTOs são definidos pelo contrato local da API; o payload continua desconhecido
+  // até cruzar esta única fronteira de desserialização.
+  return response.json() as Promise<T>;
+}
+
+async function requestVoid(path: string, options: RequestOptions): Promise<void> {
+  await request(path, options);
 }
 
 async function getAllMonitoringPoints(): Promise<MonitoringPointDto[]> {
@@ -211,7 +235,7 @@ export const api = {
   updateMachine: (id: string, changes: { name?: string; type?: MachineType }) =>
     requestJson<MachineDto>(`/machines/${id}`, { method: 'PATCH', body: changes }),
   deleteMachine: (id: string) =>
-    requestJson<void>(`/machines/${id}`, { method: 'DELETE' }),
+    requestVoid(`/machines/${id}`, { method: 'DELETE' }),
   monitoringPoints: (params: MonitoringPointListParams) => {
     const query = new URLSearchParams({
       page: String(params.page),
@@ -248,6 +272,6 @@ export const api = {
   /** Recupera a série inteira usando a paginação existente; nunca trunca em silêncio. */
   allSamples: getAllSamples,
   deleteTimeSeries: (id: string) =>
-    requestJson<void>(`/time-series/${id}`, { method: 'DELETE' }),
+    requestVoid(`/time-series/${id}`, { method: 'DELETE' }),
   metrics: (id: string) => requestJson<SeriesMetrics>(`/time-series/${id}/metrics`),
 };

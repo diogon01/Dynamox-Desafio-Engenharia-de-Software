@@ -13,18 +13,23 @@ import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
+import { useEffect } from 'react';
 
 import { API_BASE_URL } from '../api/client';
-import { logout } from '../features/auth/authSlice';
+import { logout, selectAuthenticatedUser } from '../features/auth/authSlice';
 import { formatDateTime } from '../features/dashboard/dashboardFormatters';
-import { fetchHealth } from '../features/diagnostics/diagnosticsSlice';
+import { fetchHealth, selectDiagnostics } from '../features/diagnostics/diagnosticsSlice';
 import { useAppDispatch, useAppSelector } from '../store';
 
-export function HealthPanel(): JSX.Element {
+export function SystemStatusBar(): JSX.Element {
   const dispatch = useAppDispatch();
-  const user = useAppSelector((state) => state.auth.user);
-  const { healthStatus, health, healthError } = useAppSelector((state) => state.diagnostics);
+  const user = useAppSelector(selectAuthenticatedUser);
+  const { healthStatus, health, healthError } = useAppSelector(selectDiagnostics);
   const loading = healthStatus === 'loading' || healthStatus === 'idle';
+
+  useEffect(() => {
+    void dispatch(fetchHealth());
+  }, [dispatch]);
 
   return (
     <Card

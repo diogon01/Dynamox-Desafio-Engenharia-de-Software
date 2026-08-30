@@ -692,7 +692,7 @@ export function aggregateSamplesForDetail(
   }
 
   const start = Date.parse(sorted[0].timestamp);
-  const end = Date.parse(sorted.at(-1)!.timestamp);
+  const end = Date.parse(sorted[sorted.length - 1].timestamp);
   const bucketMs = Math.max(1, Math.ceil((end - start + 1) / maxPoints));
   const buckets = new Map<number, number[]>();
   for (const sample of sorted) {

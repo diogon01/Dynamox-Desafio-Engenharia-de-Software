@@ -9,19 +9,31 @@ import Typography from '@mui/material/Typography';
 import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
-import { login } from '../features/auth/authSlice';
+import { login, selectAuth } from '../features/auth/authSlice';
 import { useAppDispatch, useAppSelector } from '../store';
+
+function requestedPrivatePath(state: unknown): string {
+  if (
+    typeof state === 'object' &&
+    state !== null &&
+    'from' in state &&
+    typeof state.from === 'string' &&
+    state.from.startsWith('/')
+  ) {
+    return state.from;
+  }
+  return '/';
+}
 
 export function LoginPage(): JSX.Element {
   const dispatch = useAppDispatch();
-  const { status, error } = useAppSelector((state) => state.auth);
+  const { status, error } = useAppSelector(selectAuth);
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
   if (status === 'authenticated') {
-    const from = (location.state as { from?: string } | null)?.from ?? '/';
-    return <Navigate to={from} replace />;
+    return <Navigate to={requestedPrivatePath(location.state)} replace />;
   }
 
   const handleSubmit = (event: FormEvent) => {

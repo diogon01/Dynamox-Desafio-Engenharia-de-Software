@@ -1,6 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
 import { api, getToken, setToken, UnauthorizedError, type SessionUser } from '../../api/client';
+import type { RootState } from '../../store';
 
 export type AuthStatus =
   | 'idle'
@@ -35,20 +36,25 @@ export const login = createAsyncThunk(
  * Guarda o token do início do thunk: se um login trocar o token enquanto a restauração
  * está em voo, o resultado obsoleto não pode limpar o JWT novo nem derrubar a sessão.
  */
-export const restoreSession = createAsyncThunk('auth/restoreSession', async () => {
+type RestoreSessionResult = SessionUser | null | 'stale';
+
+export const restoreSession = createAsyncThunk<RestoreSessionResult>(
+  'auth/restoreSession',
+  async () => {
   const tokenAtStart = getToken();
   if (!tokenAtStart) return null;
   try {
     const user = await api.me();
-    return getToken() === tokenAtStart ? user : ('stale' as const);
+    return getToken() === tokenAtStart ? user : 'stale';
   } catch (error) {
-    if (getToken() !== tokenAtStart) return 'stale' as const;
+    if (getToken() !== tokenAtStart) return 'stale';
     // Só um 401 real invalida a sessão. Falha transitória (rede fora, 5xx) preserva o
     // token: o usuário volta ao login agora, mas o próximo reload tenta restaurar de novo.
     if (error instanceof UnauthorizedError) setToken(null);
     return null;
   }
-});
+  },
+);
 
 export const logout = createAsyncThunk('auth/logout', async () => {
   setToken(null);
@@ -112,3 +118,7 @@ const authSlice = createSlice({
 
 export const { sessionExpired } = authSlice.actions;
 export const authReducer = authSlice.reducer;
+
+export const selectAuth = (state: RootState): AuthState => state.auth;
+export const selectAuthenticatedUser = (state: RootState): SessionUser | null => state.auth.user;
+export const selectAuthStatus = (state: RootState): AuthStatus => state.auth.status;

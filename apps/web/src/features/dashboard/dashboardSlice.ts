@@ -11,8 +11,7 @@ import {
   type MachineDto,
   type MonitoringPointDto,
 } from '../../api/client';
-import type { RootState } from '../../store';
-import type { RequestStatus } from '../diagnostics/diagnosticsSlice';
+import type { RequestStatus } from '../../store/requestStatus';
 
 export type DashboardPeriod = '24h' | '7d' | '30d';
 
@@ -149,10 +148,14 @@ export const fetchOperationalDashboard = createAsyncThunk(
   },
 );
 
-export const fetchDashboardSeriesDetail = createAsyncThunk(
+export const fetchDashboardSeriesDetail = createAsyncThunk<
+  { seriesId: string; samples: TimeSeriesSampleDto[] },
+  string,
+  { state: { dashboard: DashboardState } }
+>(
   'dashboard/fetchSeriesDetail',
   async (seriesId: string, { getState }) => {
-    const state = getState() as RootState;
+    const state = getState();
     const cached = state.dashboard.radialSamplesBySeries[seriesId];
     const samples = cached ?? (await api.allSamples(seriesId));
     return { seriesId, samples };

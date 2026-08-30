@@ -3,8 +3,8 @@ import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import type { MachineType } from '@dynamox/domain';
 
 import { api, type MachineDto } from '../../api/client';
-
-export type RequestStatus = 'idle' | 'loading' | 'succeeded' | 'failed';
+import type { RootState } from '../../store';
+import type { RequestStatus } from '../../store/requestStatus';
 
 export interface MachinesState {
   items: MachineDto[];
@@ -126,3 +126,5 @@ const machinesSlice = createSlice({
 
 export const { createErrorDismissed } = machinesSlice.actions;
 export const machinesReducer = machinesSlice.reducer;
+
+export const selectMachines = (state: RootState): MachinesState => state.machines;

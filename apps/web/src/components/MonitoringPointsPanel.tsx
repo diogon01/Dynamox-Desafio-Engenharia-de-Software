@@ -21,18 +21,20 @@ import { useEffect, useState, type FormEvent } from 'react';
 
 import {
   SENSOR_MODELS,
+  isSensorModel,
   isSensorModelAllowedForMachine,
   type SensorModel,
 } from '@dynamox/domain';
 import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
 
 import type { MonitoringPointDto, MonitoringPointSortColumn } from '../api/client';
-import { fetchMachines } from '../features/machines/machinesSlice';
+import { fetchMachines, selectMachines } from '../features/machines/machinesSlice';
 import {
   assignSensor,
   createMonitoringPoint,
   fetchMonitoringPoints,
   pageChanged,
+  selectMonitoringPoints,
   sortChanged,
 } from '../features/monitoringPoints/monitoringPointsSlice';
 import { useAppDispatch, useAppSelector } from '../store';
@@ -49,7 +51,7 @@ const COLUMNS: Array<{ id: MonitoringPointSortColumn; label: string }> = [
 
 export function MonitoringPointsPanel(): JSX.Element {
   const dispatch = useAppDispatch();
-  const machines = useAppSelector((state) => state.machines);
+  const machines = useAppSelector(selectMachines);
   const {
     pageData,
     page,
@@ -61,7 +63,7 @@ export function MonitoringPointsPanel(): JSX.Element {
     createError,
     assignStatus,
     assignError,
-  } = useAppSelector((state) => state.monitoringPoints);
+  } = useAppSelector(selectMonitoringPoints);
 
   const [machineId, setMachineId] = useState('');
   const [pointName, setPointName] = useState('');
@@ -241,7 +243,9 @@ export function MonitoringPointsPanel(): JSX.Element {
                   select
                   label="Modelo"
                   value={sensorModel}
-                  onChange={(event) => setSensorModel(event.target.value as SensorModel)}
+                  onChange={(event) => {
+                    if (isSensorModel(event.target.value)) setSensorModel(event.target.value);
+                  }}
                   disabled={assigning}
                   helperText=" "
                   sx={{ minWidth: { sm: 160 }, width: { xs: '100%', sm: 'auto' } }}

@@ -1,28 +1,21 @@
-import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider } from '@mui/material/styles';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App';
 import { getToken, setToken } from './api/client';
-import { createStore, type RootState } from './store';
-import { theme } from './theme';
+import type { RootState } from './store';
+import { renderWithProviders } from './test/renderWithProviders';
 
 const USER = { id: 'u1', email: 'analista@dynamox.local', name: 'Analista' };
 
 function renderApp(preloaded?: Partial<RootState>) {
-  return render(
-    <Provider store={createStore(preloaded)}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <MemoryRouter initialEntries={['/']}>
-          <App />
-        </MemoryRouter>
-      </ThemeProvider>
-    </Provider>,
+  return renderWithProviders(
+    <MemoryRouter initialEntries={['/']}>
+      <App />
+    </MemoryRouter>,
+    { preloadedState: preloaded },
   );
 }
 
@@ -234,13 +227,16 @@ describe('AppShell — navegação lateral', () => {
 
     // Máquinas.
     let nav = await openNav();
+    expect(within(nav).getByRole('link', { name: /Visão geral/i }).getAttribute('aria-current')).toBe('page');
     await userEvent.click(within(nav).getByText('Máquinas'));
     // A toolbar duplicada foi removida; existe apenas o título próprio do painel.
     expect(await screen.findAllByRole('heading', { name: /^Máquinas$/i })).toHaveLength(1);
-    expect(screen.queryByRole('heading', { name: /Estado do sistema/i })).toBeNull();
+    expect(screen.getByRole('heading', { name: /Estado do sistema/i })).toBeDefined();
+    expect(screen.getByRole('button', { name: /Sair da sessão/i })).toBeDefined();
 
     // Pontos e sensores.
     nav = await openNav();
+    expect(within(nav).getByRole('link', { name: /Máquinas/i }).getAttribute('aria-current')).toBe('page');
     await userEvent.click(within(nav).getByText('Pontos e sensores'));
     expect(
       await screen.findByRole('heading', { name: /Pontos de monitoramento/i }),

@@ -12,6 +12,13 @@ const shortDateTime = new Intl.DateTimeFormat('pt-BR', {
   minute: '2-digit',
 });
 
+const chartTick = new Intl.DateTimeFormat('pt-BR', {
+  day: '2-digit',
+  month: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
 const number = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
 
 export const QUANTITY_LABELS: Record<PhysicalQuantity, string> = {
@@ -31,6 +38,11 @@ export function formatShortDateTime(value: string | number | null): string {
   if (value === null) return '—';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? 'Data inválida' : shortDateTime.format(date);
+}
+
+export function formatChartTick(value: number): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : chartTick.format(date);
 }
 
 export function formatNumber(value: number | null, maximumFractionDigits = 3): string {

@@ -1,15 +1,25 @@
-import { useEffect } from 'react';
+import { lazy, useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 
 import { registerUnauthorizedHandler } from './api/client';
 import { AppShell } from './components/AppShell';
-import { MachinesPanel } from './components/MachinesPanel';
-import { MonitoringPointsPanel } from './components/MonitoringPointsPanel';
-import { OperationalDashboard } from './components/dashboard/OperationalDashboard';
 import { RequireAuth } from './components/RequireAuth';
 import { restoreSession, sessionExpired } from './features/auth/authSlice';
 import { LoginPage } from './pages/LoginPage';
 import { useAppDispatch } from './store';
+
+const OperationalDashboard = lazy(async () => {
+  const module = await import('./components/dashboard/OperationalDashboard');
+  return { default: module.OperationalDashboard };
+});
+const MachinesPanel = lazy(async () => {
+  const module = await import('./components/MachinesPanel');
+  return { default: module.MachinesPanel };
+});
+const MonitoringPointsPanel = lazy(async () => {
+  const module = await import('./components/MonitoringPointsPanel');
+  return { default: module.MonitoringPointsPanel };
+});
 
 export function App(): JSX.Element {
   const dispatch = useAppDispatch();
@@ -31,7 +41,7 @@ export function App(): JSX.Element {
           </RequireAuth>
         }
       >
-        <Route path="/" element={<OperationalDashboard />} />
+        <Route index element={<OperationalDashboard />} />
         <Route path="/machines" element={<MachinesPanel />} />
         <Route path="/monitoring-points" element={<MonitoringPointsPanel />} />
       </Route>

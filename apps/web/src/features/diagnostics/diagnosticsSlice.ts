@@ -1,8 +1,8 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
 import { api, type HealthStatus } from '../../api/client';
-
-export type RequestStatus = 'idle' | 'loading' | 'succeeded' | 'failed';
+import type { RootState } from '../../store';
+import type { RequestStatus } from '../../store/requestStatus';
 
 export interface DiagnosticsState {
   healthStatus: RequestStatus;
@@ -41,3 +41,5 @@ const diagnosticsSlice = createSlice({
 });
 
 export const diagnosticsReducer = diagnosticsSlice.reducer;
+
+export const selectDiagnostics = (state: RootState): DiagnosticsState => state.diagnostics;

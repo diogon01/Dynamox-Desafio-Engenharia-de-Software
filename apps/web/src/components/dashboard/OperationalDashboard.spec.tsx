@@ -1,14 +1,10 @@
-import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider } from '@mui/material/styles';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TimeSeriesSampleDto, TimeSeriesSummary } from '@dynamox/domain';
 
-import { createStore } from '../../store';
-import { theme } from '../../theme';
+import { renderWithProviders } from '../../test/renderWithProviders';
 import { OperationalDashboard } from './OperationalDashboard';
 
 const USER = { id: 'u1', email: 'operador@dynamox.local', name: 'Operador' };
@@ -89,7 +85,6 @@ function okJson(payload: unknown): Response {
 
 function fixtureFetch(
   options: {
-    healthFails?: boolean;
     pointsFail?: boolean;
     emptyInventory?: boolean;
     seriesEmpty?: boolean;
@@ -98,14 +93,12 @@ function fixtureFetch(
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.endsWith('/health')) {
-      return options.healthFails
-        ? new Response(JSON.stringify({ message: 'API fora do ar' }), { status: 503 })
-        : okJson({
-            status: 'ok',
-            database: 'up',
-            version: '0.1.0',
-            timestamp: new Date().toISOString(),
-          });
+      return okJson({
+        status: 'ok',
+        database: 'up',
+        version: '0.1.0',
+        timestamp: new Date().toISOString(),
+      });
     }
     if (url.endsWith('/machines')) return okJson(options.emptyInventory ? [] : MACHINES);
     if (url.includes('/monitoring-points')) {
@@ -146,20 +139,9 @@ function fixtureFetch(
 
 function renderDashboard(fetcher = fixtureFetch()) {
   vi.stubGlobal('fetch', fetcher);
-  const store = createStore({
-    auth: { status: 'authenticated', user: USER, error: null },
+  return renderWithProviders(<OperationalDashboard />, {
+    preloadedState: { auth: { status: 'authenticated', user: USER, error: null } },
   });
-  return {
-    store,
-    ...render(
-      <Provider store={store}>
-        <ThemeProvider theme={theme}>
-          <CssBaseline />
-          <OperationalDashboard />
-        </ThemeProvider>
-      </Provider>,
-    ),
-  };
 }
 
 afterEach(() => {
@@ -261,16 +243,6 @@ describe('OperationalDashboard', () => {
     expect(await screen.findByLabelText('Sensores: 2')).toBeDefined();
     expect(screen.getAllByText('Sem dados').length).toBeGreaterThan(0);
     expect(screen.getByText(/Nenhuma série persistida/i)).toBeDefined();
-  });
-
-  it('mostra API indisponível com texto, mantendo usuário e logout no card de sistema', async () => {
-    renderDashboard(fixtureFetch({ healthFails: true }));
-    const heading = await screen.findByRole('heading', { name: /Estado do sistema/i });
-    const card = heading.closest('section');
-    expect(card).not.toBeNull();
-    expect(within(card!).getByText(/API indisponível/i)).toBeDefined();
-    expect(within(card!).getByText(USER.email)).toBeDefined();
-    expect(within(card!).getByRole('button', { name: /Sair da sessão/i })).toBeDefined();
   });
 
   it('abre o explorador com quatro filtros hierárquicos e métricas da série', async () => {

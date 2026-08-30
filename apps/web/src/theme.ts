@@ -78,7 +78,7 @@ export const theme = createTheme({
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          backgroundColor: '#FAFBFC',
+          backgroundColor: BRAND.surfaceAlt,
           borderRight: 'none',
           boxShadow: '24px 0 48px rgba(17, 24, 39, 0.06)',
         },

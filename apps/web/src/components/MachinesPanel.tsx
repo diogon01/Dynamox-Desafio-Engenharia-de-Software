@@ -17,7 +17,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useEffect, useState, type FormEvent } from 'react';
 
-import { MACHINE_TYPES, type MachineType } from '@dynamox/domain';
+import { MACHINE_TYPES, isMachineType, type MachineType } from '@dynamox/domain';
 import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
 
 import type { MachineDto } from '../api/client';
@@ -25,6 +25,7 @@ import {
   createMachine,
   deleteMachine,
   fetchMachines,
+  selectMachines,
   updateMachine,
 } from '../features/machines/machinesSlice';
 import { fetchMonitoringPoints } from '../features/monitoringPoints/monitoringPointsSlice';
@@ -32,6 +33,13 @@ import { useAppDispatch, useAppSelector } from '../store';
 
 /** Mesmo teto aplicado pela API; a validação local só antecipa a mensagem. */
 const NAME_MAX_LENGTH = 120;
+
+function validateMachineName(value: string): string | null {
+  if (value === '') return 'Informe o nome da máquina.';
+  return value.length > NAME_MAX_LENGTH
+    ? `O nome deve ter no máximo ${NAME_MAX_LENGTH} caracteres.`
+    : null;
+}
 
 export function MachinesPanel(): JSX.Element {
   const dispatch = useAppDispatch();
@@ -45,7 +53,7 @@ export function MachinesPanel(): JSX.Element {
     updateError,
     deleteStatus,
     deleteError,
-  } = useAppSelector((state) => state.machines);
+  } = useAppSelector(selectMachines);
 
   const [name, setName] = useState('');
   const [type, setType] = useState<MachineType>('Pump');
@@ -69,16 +77,9 @@ export function MachinesPanel(): JSX.Element {
   const saving = updateStatus === 'loading';
   const removing = deleteStatus === 'loading';
 
-  const validateName = (value: string): string | null =>
-    value === ''
-      ? 'Informe o nome da máquina.'
-      : value.length > NAME_MAX_LENGTH
-        ? `O nome deve ter no máximo ${NAME_MAX_LENGTH} caracteres.`
-        : null;
-
-  const nameError = validateName(trimmedName);
+  const nameError = validateMachineName(trimmedName);
   const trimmedEditName = editName.trim();
-  const editNameError = validateName(trimmedEditName);
+  const editNameError = validateMachineName(trimmedEditName);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -161,7 +162,9 @@ export function MachinesPanel(): JSX.Element {
                 select
                 label="Tipo"
                 value={type}
-                onChange={(event) => setType(event.target.value as MachineType)}
+                onChange={(event) => {
+                  if (isMachineType(event.target.value)) setType(event.target.value);
+                }}
                 disabled={submitting}
                 helperText=" "
                 sx={{ minWidth: { sm: 180 }, width: { xs: '100%', sm: 'auto' } }}
@@ -220,7 +223,9 @@ export function MachinesPanel(): JSX.Element {
                   select
                   label="Novo tipo"
                   value={editType}
-                  onChange={(event) => setEditType(event.target.value as MachineType)}
+                  onChange={(event) => {
+                    if (isMachineType(event.target.value)) setEditType(event.target.value);
+                  }}
                   disabled={saving}
                   helperText=" "
                   sx={{ minWidth: { sm: 180 }, width: { xs: '100%', sm: 'auto' } }}

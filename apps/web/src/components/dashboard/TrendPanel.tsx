@@ -6,6 +6,7 @@ import Chip from '@mui/material/Chip';
 import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { useTheme } from '@mui/material/styles';
 import { useMemo } from 'react';
 import {
   CartesianGrid,
@@ -27,12 +28,13 @@ import {
 } from '../../features/dashboard/dashboardAggregations';
 import {
   formatDateTime,
+  formatChartTick,
   formatNumber,
   formatRange,
   seriesMetricLabel,
 } from '../../features/dashboard/dashboardFormatters';
 import type { DashboardPeriod } from '../../features/dashboard/dashboardSlice';
-import type { RequestStatus } from '../../features/diagnostics/diagnosticsSlice';
+import type { RequestStatus } from '../../store/requestStatus';
 import { SeriesHierarchyFilters } from './SeriesHierarchyFilters';
 
 const PERIOD_LABELS: Record<DashboardPeriod, string> = {
@@ -64,6 +66,7 @@ export function TrendPanel({
   onSelectSeries,
   onRetry,
 }: TrendPanelProps): JSX.Element {
+  const muiTheme = useTheme();
   const selected = series.find((item) => item.id === selectedSeriesId) ?? null;
   const trend = useMemo(
     () => buildTrendView(samples, period, nowMs),
@@ -147,20 +150,22 @@ export function TrendPanel({
               sx={{ width: '100%', height: { xs: 260, md: 320 }, mt: 1.5, minWidth: 0 }}
             >
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trend.points} margin={{ top: 12, right: 16, bottom: 8, left: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#D6E0E8" />
+                <LineChart
+                  data={trend.points}
+                  margin={{ top: 12, right: 16, bottom: 8, left: 4 }}
+                  accessibilityLayer
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke={muiTheme.palette.divider}
+                  />
                   <XAxis
                     dataKey="timestamp"
                     type="number"
                     scale="time"
                     domain={['dataMin', 'dataMax']}
-                    tickFormatter={(value: number) =>
-                      new Intl.DateTimeFormat('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        hour: '2-digit',
-                      }).format(new Date(value))
-                    }
+                    tickFormatter={formatChartTick}
                     fontSize={11}
                     minTickGap={28}
                   />
@@ -171,6 +176,7 @@ export function TrendPanel({
                     tickFormatter={(value: number) => formatNumber(value, 3)}
                   />
                   <Tooltip
+                    accessibilityLayer
                     labelFormatter={(label) => formatDateTime(Number(label))}
                     formatter={(value) => [
                       `${formatNumber(Number(value), 4)} ${selected.unit}`,
@@ -180,7 +186,7 @@ export function TrendPanel({
                   {baseline !== null ? (
                     <ReferenceLine
                       y={baseline}
-                      stroke="#D49B16"
+                      stroke={muiTheme.palette.warning.main}
                       strokeDasharray="5 4"
                       label={{ value: 'baseline demo', position: 'insideTopRight', fontSize: 11 }}
                     />
@@ -189,7 +195,7 @@ export function TrendPanel({
                     type="monotone"
                     dataKey="value"
                     name={trend.mode === 'raw' ? 'Dado bruto' : 'Média agregada'}
-                    stroke="#0C6E92"
+                    stroke={muiTheme.palette.primary.main}
                     strokeWidth={2}
                     dot={trend.filteredSamples.length < 40 ? { r: 2 } : false}
                     activeDot={{ r: 4 }}

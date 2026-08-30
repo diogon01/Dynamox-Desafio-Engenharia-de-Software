@@ -1,14 +1,10 @@
-import CssBaseline from '@mui/material/CssBaseline';
-import { ThemeProvider } from '@mui/material/styles';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Provider } from 'react-redux';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { MachinesPanel } from './MachinesPanel';
 import { setToken } from '../api/client';
-import { createStore } from '../store';
-import { theme } from '../theme';
+import { renderWithProviders } from '../test/renderWithProviders';
 
 const P101 = {
   id: '1',
@@ -19,14 +15,7 @@ const P101 = {
 };
 
 function renderPanel() {
-  return render(
-    <Provider store={createStore()}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <MachinesPanel />
-      </ThemeProvider>
-    </Provider>,
-  );
+  return renderWithProviders(<MachinesPanel />);
 }
 
 /** Deferred permite manter o POST pendente e observar o estado de envio. */

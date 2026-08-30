@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 
 import { LoadingState } from '@dynamox/ui';
 
+import { selectAuthStatus } from '../features/auth/authSlice';
 import { useAppSelector } from '../store';
 
 /**
@@ -10,7 +11,7 @@ import { useAppSelector } from '../store';
  * (toda rota da API exige JWT); aqui só se evita renderizar telas privadas sem sessão.
  */
 export function RequireAuth({ children }: { children: ReactNode }): JSX.Element {
-  const status = useAppSelector((state) => state.auth.status);
+  const status = useAppSelector(selectAuthStatus);
   const location = useLocation();
 
   if (status === 'idle' || status === 'loading') {

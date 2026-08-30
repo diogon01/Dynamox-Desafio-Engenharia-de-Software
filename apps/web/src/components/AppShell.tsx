@@ -16,11 +16,14 @@ import ListSubheader from '@mui/material/ListSubheader';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
-import { useTheme } from '@mui/material/styles';
-import { useState, type ReactNode } from 'react';
-import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
+import { alpha, useTheme } from '@mui/material/styles';
+import { Suspense, useState, type ReactNode } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
+
+import { LoadingState } from '@dynamox/ui';
 
 import { API_BASE_URL } from '../api/client';
+import { SystemStatusBar } from './SystemStatusBar';
 
 const DRAWER_WIDTH = 288;
 
@@ -54,8 +57,6 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Element {
-  const location = useLocation();
-
   return (
     <Box sx={{ width: DRAWER_WIDTH, display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ p: 2.5, pb: 2 }}>
@@ -94,38 +95,35 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Elemen
           </ListSubheader>
         }
       >
-        {NAV_ITEMS.map((item) => {
-          const selected = location.pathname === item.to;
-          return (
+        {NAV_ITEMS.map((item) => (
             <ListItemButton
               key={item.to}
-              component={RouterLink}
+              component={NavLink}
               to={item.to}
-              selected={selected}
+              end={item.to === '/'}
               onClick={onNavigate}
-              sx={{
+              sx={(theme) => ({
                 mb: 0.5,
-                // Trilho esquerdo do item ativo, como no design de referência.
-                ...(selected
-                  ? {
-                      boxShadow: (muiTheme) =>
-                        `inset 3px 0 0 ${muiTheme.palette.primary.main}`,
-                    }
-                  : {}),
-              }}
+                '&.active': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.1),
+                  boxShadow: `inset 3px 0 0 ${theme.palette.primary.main}`,
+                  '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.16) },
+                  '& .MuiListItemIcon-root': { color: 'primary.main' },
+                  '& .MuiListItemText-primary': { fontWeight: 700 },
+                },
+              })}
             >
-              <ListItemIcon sx={{ minWidth: 40, color: selected ? 'primary.main' : undefined }}>
+              <ListItemIcon sx={{ minWidth: 40 }}>
                 {item.icon}
               </ListItemIcon>
               <ListItemText
                 primary={item.label}
                 secondary={item.description}
-                primaryTypographyProps={{ fontWeight: selected ? 700 : 600 }}
+                primaryTypographyProps={{ fontWeight: 600 }}
                 secondaryTypographyProps={{ variant: 'caption' }}
               />
             </ListItemButton>
-          );
-        })}
+          ))}
 
         <ListSubheader disableSticky sx={{ bgcolor: 'transparent', lineHeight: 2.4 }}>
           Ferramentas
@@ -195,7 +193,12 @@ export function AppShell(): JSX.Element {
               <MenuIcon />
             </IconButton>
           ) : null}
-          <Outlet />
+          <Stack spacing={1.5}>
+            <SystemStatusBar />
+            <Suspense fallback={<LoadingState label="Carregando página…" />}>
+              <Outlet />
+            </Suspense>
+          </Stack>
         </Box>
       </Box>
     </Box>

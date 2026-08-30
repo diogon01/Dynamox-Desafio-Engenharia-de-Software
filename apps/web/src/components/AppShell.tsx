@@ -25,7 +25,7 @@ import { LoadingState } from '@dynamox/ui';
 import { API_BASE_URL } from '../api/client';
 import { SystemStatusBar } from './SystemStatusBar';
 
-const DRAWER_WIDTH = 288;
+
 
 interface NavItem {
   to: string;
@@ -58,7 +58,7 @@ const NAV_ITEMS: NavItem[] = [
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Element {
   return (
-    <Box sx={{ width: DRAWER_WIDTH, display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <Box sx={(muiTheme) => ({ width: muiTheme.dashboard.sidebarWidth, display: 'flex', flexDirection: 'column', height: '100%' })}>
       <Stack direction="row" spacing={1.5} alignItems="center" sx={{ p: 2.5, pb: 2 }}>
         <Avatar
           variant="rounded"
@@ -165,7 +165,11 @@ export function AppShell(): JSX.Element {
       {isDesktop ? (
         <Drawer
           variant="permanent"
-          sx={{ width: DRAWER_WIDTH, flexShrink: 0, '& .MuiDrawer-paper': { width: DRAWER_WIDTH } }}
+          sx={(muiTheme) => ({
+            width: muiTheme.dashboard.sidebarWidth,
+            flexShrink: 0,
+            '& .MuiDrawer-paper': { width: muiTheme.dashboard.sidebarWidth },
+          })}
         >
           <SidebarContent />
         </Drawer>
@@ -175,7 +179,7 @@ export function AppShell(): JSX.Element {
           open={mobileOpen}
           onClose={() => setMobileOpen(false)}
           ModalProps={{ keepMounted: true }}
-          sx={{ '& .MuiDrawer-paper': { width: DRAWER_WIDTH } }}
+          sx={(muiTheme) => ({ '& .MuiDrawer-paper': { width: muiTheme.dashboard.sidebarWidth } })}
         >
           <SidebarContent onNavigate={() => setMobileOpen(false)} />
         </Drawer>

@@ -38,7 +38,7 @@ export function SystemStatusBar(): JSX.Element {
       aria-labelledby="system-status-title"
       sx={{ bgcolor: 'background.paper' }}
     >
-      <CardContent sx={{ py: 1.25, px: { xs: 1.5, sm: 2 }, '&:last-child': { pb: 1.25 } }}>
+      <CardContent sx={{ py: 0.75, px: { xs: 1.5, sm: 2 }, '&:last-child': { pb: 0.75 } }}>
         <Stack
           direction={{ xs: 'column', sm: 'row' }}
           alignItems={{ xs: 'stretch', sm: 'center' }}
@@ -108,7 +108,12 @@ export function SystemStatusBar(): JSX.Element {
             <Typography
               variant="caption"
               color={healthStatus === 'failed' ? 'error.main' : 'text.secondary'}
-              sx={{ display: 'block', mt: 0.5, overflowWrap: 'anywhere' }}
+              sx={{
+                // A barra não compete com o header do dashboard: detalhe só em telas largas.
+                display: { xs: 'none', lg: 'block' },
+                mt: 0.25,
+                overflowWrap: 'anywhere',
+              }}
             >
               {healthStatus === 'failed'
                 ? `${healthError ?? 'A API local não respondeu.'} · ${API_BASE_URL}`
@@ -127,14 +132,18 @@ export function SystemStatusBar(): JSX.Element {
               pt: { xs: 1, sm: 0 },
             }}
           >
-            <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: '0.82rem' }}>
+            <Avatar sx={{ width: 28, height: 28, bgcolor: 'primary.main', fontSize: '0.78rem' }}>
               {(user?.name ?? user?.email ?? '?').charAt(0).toUpperCase()}
             </Avatar>
             <Box sx={{ minWidth: 0, flex: 1 }}>
               <Typography variant="body2" noWrap sx={{ maxWidth: { xs: 210, md: 280 } }}>
                 {user?.email ?? 'Usuário autenticado'}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: { xs: 'none', md: 'block' } }}
+              >
                 Sessão autenticada
               </Typography>
             </Box>

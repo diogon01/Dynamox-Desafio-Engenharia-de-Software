@@ -86,9 +86,16 @@ distribuição, tendências). Os selectors memoizam esse cálculo por instância
 referência. Semântica e limites desse modelo:
 [`condition-monitoring.md`](./condition-monitoring.md).
 
-Componentes do painel: `DashboardHeader`, `KpiGrid`, `SensorConditionMatrix`,
-`OperationalInsights`, `TrendPanel` (Recharts), `SeriesExplorer` e
-`SeriesHierarchyFilters`.
+Componentes do painel, na ordem em que a página responde às perguntas do operador
+(atenção → ativo → ponto → sensor → sinal → evidência → histórico): `DashboardHeader`,
+`KpiGrid` (três indicadores independentes), `InspectionQueue` (fila de exceções),
+`TrendPanel` (Recharts, alvo do drill-down), `SensorConditionMatrix` + `FleetFreshness`
+(frota, secundários) e `SeriesExplorer` com `SeriesHierarchyFilters`.
+
+O carregamento é em duas etapas: inventário (máquinas, pontos e séries — três requisições,
+com a última leitura já no resumo das séries) e, depois do primeiro render, a avaliação de
+condição, que baixa as amostras dos pares radiais avaliáveis. As amostras da série
+selecionada são buscadas sob demanda.
 
 ## Tema e apresentação
 

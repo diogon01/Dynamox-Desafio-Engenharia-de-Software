@@ -59,6 +59,7 @@ Todas vivem no `.env` da raiz, criado a partir do `.env.example`. O `.env` real 
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` / `POSTGRES_PORT` | não | `dynamox` / `dynamox` / `dynamox_challenge` / `5433` | container do Compose. A porta é 5433 para não colidir com um PostgreSQL local em 5432 |
 | `VITE_API_BASE_URL` | não | `http://localhost:3000/api` | base da API no frontend; domínios `dynamox.solutions`/`dynamox.net` são recusados por código |
 | `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` | não | ver abaixo | credencial fixa criada pelo seed |
+| `DEMO_DATA_ANCHOR` | não | bloco de 6 h da execução | fixa o instante de referência dos dados de demonstração (ISO 8601). Sem ela, seed e planta ancoram no início do bloco de 6 h corrente: os dados nascem no passado recente e o painel os classifica como atuais em qualquer dia |
 
 O valor `dev-only-change-me` é um placeholder de desenvolvimento — troque em qualquer
 ambiente compartilhado.
@@ -69,8 +70,8 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 431 na suíte convencional: 220 API (51 unit + 169 e2e/contrato),
-                              # 122 web e 89 do sensor twin (bônus, puro — sem API/ROS/banco)
+npm run test                  # 448 na suíte convencional: 225 API (51 unit + 174 e2e/contrato),
+                              # 134 web e 89 do sensor twin (bônus, puro — sem API/ROS/banco)
 npm run twin:integration      # BON-06: 17 testes contra a API/banco reais (fora do run acima)
 npm run twin:ros              # BON-06.F8: 5 testes de proveniência ROS (exige ROS Noetic; opcional)
 npm run test:unit -w @dynamox/api   # somente unitários isolados (sem banco, < 2 s)

@@ -54,15 +54,45 @@ desenvolvimento não vira baseline de todo mundo.
 Os dois eixos não se misturam no cálculo: um sensor pode estar "Normal demonstrativo" e
 "Desatualizado" ao mesmo tempo, e isso é informação, não contradição.
 
+## A evidência da condição
+
+Cada célula e cada linha da fila de inspeção mostram **a medição que produziu o estado**,
+não uma leitura qualquer do sensor:
+
+| Situação | O que é exibido |
+|---|---|
+| Há avaliação demonstrativa | `Aceleração radial (Y/Z)` com o RMS da aquisição mais recente, o índice (`3,49× baseline`) e o próprio baseline |
+| Não há avaliação | a leitura mais recente, sempre nomeada com grandeza e eixo (`Aceleração · eixo Y`) |
+
+Isto corrigiu um defeito real: o valor da célula vinha da série de maior `lastTimestamp` e,
+no empate, caía no **eixo X** — a célula em "Atenção demonstrativa" exibia `0,008 g` (eixo X)
+enquanto a classificação vinha do radial Y/Z, `0,057 g`. O número na tela não tinha relação
+com o rótulo ao lado dele.
+
+## Indicadores: um KPI, um conceito
+
+Os três eixos do modelo aparecem separados, e nenhum deles agrega os outros:
+
+| Indicador | Conta |
+|---|---|
+| **Em atenção** | pontos com `attention` ou `observation` — o que a medição diz |
+| **Sem leitura recente** | pontos com leitura `stale` ou `future` — recência |
+| **Cobertura** | pontos `no-sensor` ou `no-data` — o que sequer é medido |
+
+O indicador único anterior somava os três e, por construção, tendia ao total de pontos.
+
 ## Visualização
 
 - **`SensorConditionMatrix`** — máquinas nas linhas, pontos (DE/NDE) nas células, com
   condição, frescor, último valor e unidade.
-- **`OperationalInsights`** — sinais de atenção ordenados por severidade
-  (`high`/`medium`/`info`), cada um com a razão em texto: qual desvio, qual limiar, ou a
-  ausência de sensor/leitura.
-- **`TrendPanel`** (Recharts) — série ao longo de 24 h / 7 d / 30 d. Abaixo de um limite de
-  pontos, plota amostra a amostra; acima, agrega em buckets e mostra a média.
+- **`InspectionQueue`** — fila de exceções ordenada por severidade, uma linha por ponto,
+  com a evidência completa (grandeza, valor, unidade, índice, idade) e a ação de
+  investigar. Declara quantas linhas estão visíveis do total.
+- **`FleetFreshness`** — distribuição de recência das leituras, ao lado da matriz.
+- **`TrendPanel`** (Recharts) — série ao longo de 24 h / 7 d / 30 d / tudo, alvo do
+  drill-down. Plota amostra a amostra quando cabe, uma média por aquisição quando o dado é
+  em rajadas e uma média por bucket quando o volume exige. Quando o período escolhido não
+  alcança o histórico, informa o intervalo disponível e oferece ir até ele.
 - **`SeriesExplorer`** — série individual, com agregação temporal quando o volume exige.
 
 **Lacuna não é zero.** Quando duas aquisições estão separadas por um intervalo maior que o
@@ -77,11 +107,20 @@ agregadas, bucket sem amostra permanece `null` pelo mesmo motivo.
   materializá-lo) para o backend. Por isso os filtros server-side implementados são os que
   o domínio já sustenta — tipo de máquina, modelo de sensor, presença de sensor e busca
   textual ([`../02-api/backend-architecture.md`](../02-api/backend-architecture.md)).
-- **Custo de leitura.** Classificar exige baixar métricas e amostras de todas as séries no
-  cliente; não escala para uma planta grande.
+- **Custo de leitura.** O inventário e a última leitura de todas as séries chegam em três
+  requisições (`GET /time-series` traz `lastValue`/`lastTimestamp` no resumo). O índice
+  demonstrativo, porém, compara duas aquisições e exige as amostras: isso roda como
+  **segunda etapa**, depois do primeiro render, e só para os pares radiais avaliáveis.
+  Continua proporcional ao número de sensores sintéticos — não escala para uma planta
+  grande sem mover o cálculo para o servidor.
 - **Sem histórico.** Como nada é persistido, não existe "estava em atenção ontem".
-- **O KPI "Sinais de atenção" mistura os dois eixos** (condição + ausência + recência), o
-  que explica ele igualar o total de pontos quando as leituras estão fora da janela.
+- **A fila de inspeção agrupa motivos por ponto.** Um ponto com desvio *e* leitura antiga
+  aparece uma vez, com a severidade mais alta e os dois motivos no texto; antes gerava duas
+  linhas e inflava a contagem.
+- **Rajadas, não fluxo contínuo.** Cada aquisição são 60 amostras em 60 s, repetidas de
+  hora em hora. No eixo de horas, o traçado cru vira um risco vertical por aquisição, então
+  a tendência exibe **uma média medida por aquisição** (nunca interpolação) quando esse é o
+  formato do dado.
 - **Os limiares 1,5 e 2,0 são didáticos**, calibrados contra o gerador sintético. Não são
   limites industriais nem derivados de norma — ver
   [`../05-simulation/simulation-vs-real.md`](../05-simulation/simulation-vs-real.md).

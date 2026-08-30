@@ -1,5 +1,14 @@
 # SCP-05 — Aderência Sensor × API Dynamox e contrato analítico
 
+> **Análise de origem preservada.** Este relatório é o estudo do snapshot público que
+> antecedeu a implementação; ele continua correto sobre o snapshot e é a fonte da
+> taxonomia de evidência usada nesta base. Duas ressalvas de leitura: o contrato
+> analítico `NormalizedMetric` da §5 **não foi construído** — o papel de formato único
+> validado ficou com o contrato interno de telemetria — e o simulador descrito como
+> "futuro" existe hoje como `simulation/sensor-twin/`. Estado atual em
+> [`telemetry-contract.md`](./telemetry-contract.md) e
+> [`../05-simulation/sensor-twin.md`](../05-simulation/sensor-twin.md).
+
 > **Fontes desta análise.** Exclusivamente artefatos **versionados neste repositório**: o
 > snapshot `contracts/dynamox/dynamox-public-api.openapi.json` (API 2.4.7, OpenAPI 3.1.0,
 > 44 paths, 45 operações, SHA-256

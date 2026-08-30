@@ -1,5 +1,10 @@
 # SCP-05 — Auditoria de drift entre artefatos de contrato
 
+> **Anexo de contrato.** Catálogo das inconsistências internas da especificação pública
+> e das divergências deliberadas do contrato interno. Entrada pela
+> [visão do upstream](./dynamox-upstream.md); o contrato interno campo a campo está em
+> [`telemetry-contract.md`](./telemetry-contract.md).
+
 Confronto entre o snapshot público, o contrato interno, o exemplo, o schema Prisma, a
 validação em runtime e os testes. O snapshot oficial permanece byte a byte idêntico
 (`sha256 cc6e0f07f9a2c16336a30acf09acdf56d97d64a01e0e90fceac9c30c04b225dd`) e **nenhuma

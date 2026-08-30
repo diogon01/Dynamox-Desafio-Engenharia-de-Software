@@ -18,9 +18,23 @@ interface LoginDto {
 }
 
 const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+const LOGIN_KEYS = ['email', 'password'] as const;
 
 function parseLoginDto(body: unknown): LoginDto {
   const dto = (body ?? {}) as Partial<LoginDto>;
+
+  // Mesma política dos demais corpos da API (e do que o contrato publica): propriedade
+  // desconhecida é 400, não silêncio.
+  const unknown = Object.keys(dto).filter(
+    (key) => !(LOGIN_KEYS as readonly string[]).includes(key),
+  );
+  if (unknown.length > 0) {
+    throw new BadRequestException({
+      code: 'INVALID_CREDENTIALS_PAYLOAD',
+      message: `Propriedade(s) não suportada(s): ${unknown.join(', ')}. Aceitos: ${LOGIN_KEYS.join(', ')}.`,
+    });
+  }
+
   if (
     typeof dto.email !== 'string' ||
     typeof dto.password !== 'string' ||
@@ -52,7 +66,7 @@ export class AuthController {
       additionalProperties: false,
       properties: {
         email: { type: 'string', format: 'email', example: 'analista@dynamox.local' },
-        password: { type: 'string', maxLength: 256, example: 'Dynamox@2026' },
+        password: { type: 'string', minLength: 1, maxLength: 256, example: 'Dynamox@2026' },
       },
     },
     examples: {

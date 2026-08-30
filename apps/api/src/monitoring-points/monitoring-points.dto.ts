@@ -95,11 +95,26 @@ function parseRequiredString(
   return parsed;
 }
 
+/**
+ * Ids de máquina são UUID (Prisma `@default(uuid())`). Validar o formato aqui separa
+ * duas respostas que o consumidor precisa distinguir: identificador malformado é 400,
+ * identificador bem formado que não existe é 404.
+ */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseUuid(value: unknown, field: string): string {
+  const parsed = parseRequiredString(value, field, 64);
+  if (!UUID_PATTERN.test(parsed)) {
+    throw invalidPayload(`O campo "${field}" deve ser um UUID.`);
+  }
+  return parsed;
+}
+
 export function parseCreateMonitoringPointDto(body: unknown): CreateMonitoringPointDto {
   const object = asObject(body);
   assertNoUnknownKeys(object, CREATE_KEYS);
   return {
-    machineId: parseRequiredString(object.machineId, 'machineId', 64),
+    machineId: parseUuid(object.machineId, 'machineId'),
     name: parseRequiredString(object.name, 'name', MONITORING_POINT_NAME_MAX_LENGTH),
   };
 }

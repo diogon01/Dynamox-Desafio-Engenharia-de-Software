@@ -6,7 +6,7 @@
  * frase descrevendo o formato. Os tipos de domínio continuam sendo a fonte de verdade —
  * estas classes existem para descrevê-los no contrato público.
  */
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 const ISO = '2026-08-31T08:00:00.000Z';
 
@@ -22,6 +22,31 @@ export class ErrorResponse {
     example: 'Já existe uma máquina com este nome.',
   })
   message!: string;
+
+  /**
+   * Alguns erros da ingestão acrescentam contexto para que o produtor corrija o payload
+   * sem adivinhar. `code` e `message` estão sempre presentes; estes campos, não.
+   */
+  @ApiPropertyOptional({
+    description: 'Violações do contrato de telemetria (CONTRACT_VIOLATION).',
+    type: 'array',
+    items: { type: 'object', properties: { path: { type: 'string' }, message: { type: 'string' } } },
+  })
+  violations?: Array<{ path: string; message: string }>;
+
+  @ApiPropertyOptional({
+    description: 'Série envolvida no conflito (SAMPLE_TIMESTAMP_CONFLICT, SERIES_UNIT_CONFLICT).',
+    format: 'uuid',
+    type: String,
+  })
+  timeSeriesId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Instantes que já existiam na série (SAMPLE_TIMESTAMP_CONFLICT).',
+    type: [String],
+    example: ['2026-09-10T12:00:00.000Z'],
+  })
+  conflictingTimestamps?: string[];
 }
 
 export class SessionUserResponse {

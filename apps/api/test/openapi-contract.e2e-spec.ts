@@ -54,10 +54,17 @@ describe('contrato OpenAPI publicado', () => {
   it('toda resposta com corpo aponta para um schema', () => {
     const semSchema: string[] = [];
     for (const { path, method, operation } of operations()) {
-      const responses = (operation.responses ?? {}) as Record<string, { content?: unknown }>;
+      const responses = (operation.responses ?? {}) as Record<
+        string,
+        { content?: Record<string, { schema?: unknown }> }
+      >;
       for (const [status, response] of Object.entries(responses)) {
         if (STATUSES_WITHOUT_BODY.has(status)) continue;
-        if (!response.content) semSchema.push(`${method.toUpperCase()} ${path} → ${status}`);
+        // Não basta existir `content`: um media type sem `schema` deixa o consumidor
+        // sem saber o formato, que é exatamente o problema que esta suíte previne.
+        const medias = Object.entries(response.content ?? {});
+        const descrito = medias.length > 0 && medias.every(([, media]) => Boolean(media?.schema));
+        if (!descrito) semSchema.push(`${method.toUpperCase()} ${path} → ${status}`);
       }
     }
     expect(semSchema).toEqual([]);
@@ -89,18 +96,40 @@ describe('contrato OpenAPI publicado', () => {
     }
   });
 
-  it('operações de corpo trazem exemplo utilizável', () => {
-    const semExemplo: string[] = [];
+  it('operações de corpo trazem exemplo utilizável e com schema declarado', () => {
+    const problemas: string[] = [];
     for (const { path, method, operation } of operations()) {
       const body = operation.requestBody as
-        | { content?: Record<string, { schema?: unknown; examples?: unknown; example?: unknown }> }
+        | {
+            content?: Record<
+              string,
+              { schema?: unknown; examples?: Record<string, { value?: unknown }>; example?: unknown }
+            >;
+          }
         | undefined;
       if (!body?.content) continue;
-      const media = Object.values(body.content)[0];
-      const temExemplo = Boolean(media?.examples ?? media?.example);
-      if (!temExemplo) semExemplo.push(`${method.toUpperCase()} ${path}`);
+
+      for (const [mediaType, media] of Object.entries(body.content)) {
+        if (!media?.schema) problemas.push(`${method.toUpperCase()} ${path} (${mediaType}) sem schema`);
+
+        const exemplos = media?.examples;
+        const temExemplo = Boolean(exemplos ?? media?.example);
+        if (!temExemplo) {
+          problemas.push(`${method.toUpperCase()} ${path} (${mediaType}) sem exemplo`);
+          continue;
+        }
+        // Exemplo vazio passa como "existe" mas não serve para ninguém copiar.
+        for (const [nome, exemplo] of Object.entries(exemplos ?? {})) {
+          const valor = exemplo?.value;
+          const util =
+            valor !== undefined &&
+            valor !== null &&
+            (typeof valor !== 'object' || Object.keys(valor as object).length > 0);
+          if (!util) problemas.push(`${method.toUpperCase()} ${path} exemplo "${nome}" vazio`);
+        }
+      }
     }
-    expect(semExemplo).toEqual([]);
+    expect(problemas).toEqual([]);
   });
 
   it('cada operação tem resumo legível e pertence a uma seção', () => {
@@ -157,23 +186,53 @@ describe('contrato OpenAPI publicado', () => {
     }
   });
 
-  it('nenhuma propriedade primitiva é publicada como object', () => {
-    const schemas = (document.components?.schemas ?? {}) as Record<
-      string,
-      { properties?: Record<string, Record<string, unknown>> }
-    >;
+  it('nenhuma propriedade primitiva é publicada como object, em qualquer profundidade', () => {
     const suspeitas: string[] = [];
 
-    for (const [schemaName, schema] of Object.entries(schemas)) {
-      for (const [field, property] of Object.entries(schema.properties ?? {})) {
-        // Objeto de verdade traz `properties`; referência traz $ref/allOf. O que sobra
-        // como `object` puro é união com null que perdeu o tipo base.
-        const ehObjetoReal = 'properties' in property || '$ref' in property || 'allOf' in property;
-        if (property.type === 'object' && !ehObjetoReal) {
-          suspeitas.push(`${schemaName}.${field}`);
+    /** Desce por properties, items e combinadores — não só o primeiro nível. */
+    const percorrer = (node: unknown, caminho: string): void => {
+      if (Array.isArray(node)) {
+        node.forEach((item, i) => percorrer(item, `${caminho}[${i}]`));
+        return;
+      }
+      if (typeof node !== 'object' || node === null) return;
+
+      const schema = node as Record<string, unknown>;
+      const ehObjetoReal =
+        'properties' in schema ||
+        '$ref' in schema ||
+        'allOf' in schema ||
+        'anyOf' in schema ||
+        'oneOf' in schema ||
+        'additionalProperties' in schema;
+      if (schema.type === 'object' && !ehObjetoReal) suspeitas.push(caminho);
+
+      for (const [keyword, value] of Object.entries(schema)) {
+        if (keyword === 'properties' && typeof value === 'object' && value !== null) {
+          for (const [field, sub] of Object.entries(value as Record<string, unknown>)) {
+            percorrer(sub, `${caminho}.${field}`);
+          }
+          continue;
         }
+        if (keyword === 'items' || keyword === 'additionalProperties') {
+          percorrer(value, `${caminho}.${keyword}`);
+          continue;
+        }
+        if (['allOf', 'anyOf', 'oneOf'].includes(keyword)) percorrer(value, `${caminho}.${keyword}`);
+      }
+    };
+
+    for (const [name, schema] of Object.entries(document.components?.schemas ?? {})) {
+      percorrer(schema, name);
+    }
+    // Corpos de requisição também são contrato publicado.
+    for (const { path, method, operation } of operations()) {
+      const body = operation.requestBody as { content?: Record<string, { schema?: unknown }> } | undefined;
+      for (const [mediaType, media] of Object.entries(body?.content ?? {})) {
+        percorrer(media?.schema, `${method.toUpperCase()} ${path} (${mediaType})`);
       }
     }
+
     expect(suspeitas).toEqual([]);
   });
 

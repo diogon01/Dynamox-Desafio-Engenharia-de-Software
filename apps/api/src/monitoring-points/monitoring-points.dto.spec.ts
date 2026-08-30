@@ -26,24 +26,38 @@ function errorCode(fn: () => unknown): string {
 
 describe('parseCreateMonitoringPointDto', () => {
   it('aceita machineId e nome válidos, com trim no nome', () => {
-    expect(parseCreateMonitoringPointDto({ machineId: 'm-1', name: ' Mancal LA ' })).toEqual({
-      machineId: 'm-1',
+    expect(parseCreateMonitoringPointDto({ machineId: '6f3d4a1e-9c2b-4f7a-8d51-0b2f1c9e7a10', name: ' Mancal LA ' })).toEqual({
+      machineId: '6f3d4a1e-9c2b-4f7a-8d51-0b2f1c9e7a10',
       name: 'Mancal LA',
     });
   });
 
+  it('recusa machineId que não é UUID — malformado é 400, não busca inexistente', () => {
+    // A distinção importa para o consumidor: identificador malformado é erro de
+    // requisição; UUID bem formado que não existe é 404 vindo do service.
+    expect(errorCode(() => parseCreateMonitoringPointDto({ machineId: 'x', name: 'Mancal' }))).toBe(
+      'INVALID_MONITORING_POINT_PAYLOAD',
+    );
+    expect(
+      errorCode(() => parseCreateMonitoringPointDto({ machineId: '6f3d4a1e-9c2b-4f7a-8d51-0b2f1c9e7a1', name: 'Mancal' })),
+    ).toBe('INVALID_MONITORING_POINT_PAYLOAD');
+    expect(
+      parseCreateMonitoringPointDto({ machineId: '6f3d4a1e-9c2b-4f7a-8d51-0b2f1c9e7a10'.toUpperCase(), name: 'Mancal' }).machineId,
+    ).toBe('6f3d4a1e-9c2b-4f7a-8d51-0b2f1c9e7a10'.toUpperCase());
+  });
+
   it('recusa nome vazio, nome longo e propriedade desconhecida', () => {
     expect(
-      errorCode(() => parseCreateMonitoringPointDto({ machineId: 'm-1', name: '  ' })),
+      errorCode(() => parseCreateMonitoringPointDto({ machineId: '6f3d4a1e-9c2b-4f7a-8d51-0b2f1c9e7a10', name: '  ' })),
     ).toBe('INVALID_MONITORING_POINT_PAYLOAD');
     expect(
       errorCode(() =>
-        parseCreateMonitoringPointDto({ machineId: 'm-1', name: 'x'.repeat(121) }),
+        parseCreateMonitoringPointDto({ machineId: '6f3d4a1e-9c2b-4f7a-8d51-0b2f1c9e7a10', name: 'x'.repeat(121) }),
       ),
     ).toBe('INVALID_MONITORING_POINT_PAYLOAD');
     expect(
       errorCode(() =>
-        parseCreateMonitoringPointDto({ machineId: 'm-1', name: 'P', extra: 1 }),
+        parseCreateMonitoringPointDto({ machineId: '6f3d4a1e-9c2b-4f7a-8d51-0b2f1c9e7a10', name: 'P', extra: 1 }),
       ),
     ).toBe('INVALID_MONITORING_POINT_PAYLOAD');
   });

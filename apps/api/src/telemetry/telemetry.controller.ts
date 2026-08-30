@@ -29,6 +29,7 @@ import type {
   TimeSeriesSummary,
 } from '@dynamox/domain';
 
+import { telemetryCycleRequestSchema } from '../common/telemetry-request-schema';
 import {
   ErrorResponse,
   SeriesMetricsResponse,
@@ -110,118 +111,40 @@ export class TelemetryController {
   })
   @ApiBody({
     description:
-      'Ciclo de telemetria conforme contracts/dynamox/telemetry-cycle.schema.json. O exemplo abaixo é um ciclo mínimo válido: uma medição de aceleração no eixo Y com duas amostras.',
-    schema: {
-      type: 'object',
-      required: ['telemetryCycleData', 'configuration'],
-      additionalProperties: false,
-      properties: {
-        telemetryCycleData: {
-          type: 'object',
-          required: ['measuringSystemUniqueIdentifier', 'measuringSystemModel', 'measurements', 'metadata', 'tags'],
-          properties: {
-            measuringSystemUniqueIdentifier: {
-              type: 'string',
-              description: 'Série do sensor já associado a um ponto de monitoramento.',
-              example: 'SIM-HF-001',
-            },
-            measuringSystemModel: {
-              type: 'object',
-              properties: { name: { type: 'string' }, version: { type: 'integer' } },
-            },
-            measurements: {
-              type: 'array',
-              minItems: 1,
-              items: {
-                type: 'object',
-                required: ['resourceId', 'attributes', 'dataPoints'],
-                properties: {
-                  resourceId: {
-                    type: 'string',
-                    description: 'Identificador determinístico do ponto (24 hex). Divergir dele responde 422 RESOURCE_ID_MISMATCH.',
-                    example: '42d726ba50f8645df08dba9f',
-                  },
-                  attributes: {
-                    type: 'object',
-                    required: ['physicalQuantity', 'unit', 'displayName'],
-                    properties: {
-                      physicalQuantity: {
-                        type: 'string',
-                        enum: ['acceleration', 'velocity', 'temperature', 'rotationalSpeed'],
-                      },
-                      axis: {
-                        type: 'string',
-                        enum: ['x', 'y', 'z'],
-                        description: 'Obrigatório em grandezas vetoriais; proibido nas escalares (422 QUANTITY_AXIS_MISMATCH).',
-                      },
-                      unit: { type: 'string', example: 'g' },
-                      displayName: {
-                        type: 'object',
-                        properties: { pt: { type: 'string' }, en: { type: 'string' } },
-                      },
-                    },
-                  },
-                  dataPoints: {
-                    type: 'array',
-                    minItems: 1,
-                    items: {
-                      type: 'object',
-                      required: ['timestamp', 'value'],
-                      properties: {
-                        timestamp: {
-                          type: 'string',
-                          format: 'date-time',
-                          description: 'UTC canônico com milissegundos; outro formato responde 400 NON_CANONICAL_TIMESTAMP.',
-                        },
-                        value: { type: 'number' },
-                      },
-                    },
-                  },
-                },
+      'Ciclo de telemetria. O schema publicado é derivado de contracts/dynamox/telemetry-cycle.schema.json — a MESMA definição que o Ajv aplica em runtime — para que contrato e validação não possam divergir.',
+    schema: telemetryCycleRequestSchema(),
+    examples: {
+      cicloMinimo: {
+        summary: 'Ciclo mínimo: só o que o schema exige de fato',
+        description:
+          'Sem displayName, cycleId, synthetic nem os campos opcionais de configuration. O exemplo completo abaixo mostra o formato usual; ausência deles não é erro.',
+        value: {
+          telemetryCycleData: {
+            measuringSystemUniqueIdentifier: 'SIM-HF-001',
+            measuringSystemModel: { name: 'industrial-condition-sensor-sim', version: 1 },
+            measurements: [
+              {
+                resourceId: '42d726ba50f8645df08dba9f',
+                attributes: { physicalQuantity: 'acceleration', axis: 'y', unit: 'g' },
+                dataPoints: [{ timestamp: '2026-09-10T12:00:00.000Z', value: 0.024681 }],
               },
-            },
+            ],
             metadata: {
-              type: 'object',
-              required: ['origin', 'generator', 'cycleId', 'synthetic'],
-              properties: {
-                origin: { type: 'string', enum: ['simulation', 'rosbag-replay', 'seed', 'manual'] },
-                generator: {
-                  type: 'object',
-                  properties: { name: { type: 'string' }, version: { type: 'string' } },
-                },
-                profile: { type: 'string', enum: ['TcAg', 'TcAs', 'HF+'] },
-                cycleId: { type: 'string' },
-                seed: { type: 'integer' },
-                synthetic: { type: 'boolean' },
-              },
+              origin: 'simulation',
+              generator: { name: 'industrial-condition-sensor-sim', version: '0.2.0' },
             },
-            tags: { type: 'array', items: { type: 'string' } },
+            tags: ['simulated'],
           },
-        },
-        configuration: {
-          type: 'object',
-          required: ['monitoringLocationMap', 'rpm', 'loadPercent', 'scenario', 'seed', 'durationSeconds', 'publishRateHz'],
-          properties: {
-            monitoringLocationMap: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: { mapLabel: { type: 'string' }, mapValue: { type: 'string' } },
-              },
-            },
-            rpm: { type: 'number', example: 1750 },
-            loadPercent: { type: 'number', example: 70 },
-            scenario: { type: 'string', enum: ['normal', 'imbalance'] },
-            seed: { type: 'integer', example: 42 },
-            durationSeconds: { type: 'number', example: 60 },
-            publishRateHz: { type: 'number', example: 1 },
+          configuration: {
+            monitoringLocationMap: [
+              { mapLabel: 'P-101 / Mancal lado acoplamento', mapValue: '42d726ba50f8645df08dba9f' },
+            ],
           },
         },
       },
-    },
-    examples: {
-      cicloMinimo: {
-        summary: 'Ciclo mínimo válido (aceleração, eixo Y, 2 amostras)',
+      cicloCompleto: {
+        summary: 'Ciclo completo, como o simulador produz',
+        description: 'Inclui os campos opcionais; nenhum deles é exigido pelo schema.',
         value: {
           telemetryCycleData: {
             measuringSystemUniqueIdentifier: 'SIM-HF-001',
@@ -235,9 +158,12 @@ export class TelemetryController {
                   unit: 'g',
                   displayName: { pt: 'Aceleração RMS — eixo Y', en: 'Acceleration RMS — Y axis' },
                 },
+                // Janela distinta da do exemplo mínimo: dois ciclos diferentes não podem
+                // gravar o mesmo instante na mesma série, então executar ambos pelo
+                // Swagger, em qualquer ordem, precisa funcionar.
                 dataPoints: [
-                  { timestamp: '2026-09-02T12:00:00.000Z', value: 0.024681 },
-                  { timestamp: '2026-09-02T12:00:01.000Z', value: 0.025102 },
+                  { timestamp: '2026-09-10T13:00:00.000Z', value: 0.024681 },
+                  { timestamp: '2026-09-10T13:00:01.000Z', value: 0.025102 },
                 ],
               },
             ],
@@ -245,7 +171,7 @@ export class TelemetryController {
               origin: 'simulation',
               generator: { name: 'industrial-condition-sensor-sim', version: '0.2.0' },
               profile: 'HF+',
-              cycleId: 'exemplo.swagger.001',
+              cycleId: 'exemplo.swagger.completo',
               seed: 42,
               synthetic: true,
             },
@@ -322,7 +248,11 @@ export class TelemetryController {
     description: 'Resposta { items, total, limit, offset }: a série inteira é recuperável, nada é truncado em silêncio.',
   })
   @ApiQuery({ name: 'limit', required: false, schema: { type: 'integer', minimum: 1, maximum: 5000, default: 500 } })
-  @ApiQuery({ name: 'offset', required: false, schema: { type: 'integer', minimum: 0, default: 0 } })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    schema: { type: 'integer', minimum: 0, maximum: MAX_SAMPLES_OFFSET, default: 0 },
+  })
   @ApiResponse({
     status: 200,
     description: 'Página de amostras; `total` é o tamanho da série inteira.',

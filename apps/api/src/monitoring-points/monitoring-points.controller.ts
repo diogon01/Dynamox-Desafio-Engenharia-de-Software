@@ -8,6 +8,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 
+import { MAX_PAGE } from './monitoring-points.dto';
 import {
   ErrorResponse,
   MonitoringPointPageResponse,
@@ -85,7 +86,11 @@ export class MonitoringPointsController {
     description:
       'Ordena pelo vocabulário público exibido na tabela (ex.: HF+ < TcAg < TcAs), pontos sem sensor ao final. Parâmetros desconhecidos são 400.',
   })
-  @ApiQuery({ name: 'page', required: false, schema: { type: 'integer', minimum: 1, default: 1 } })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: MAX_PAGE, default: 1 },
+  })
   @ApiQuery({ name: 'pageSize', required: false, schema: { type: 'integer', minimum: 1, maximum: 50, default: 5 } })
   @ApiQuery({
     name: 'sortBy',

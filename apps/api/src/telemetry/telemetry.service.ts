@@ -437,6 +437,13 @@ export class TelemetryService {
       include: {
         sensor: { include: { monitoringPoint: { include: { machine: true } } } },
         _count: { select: { samples: true } },
+        // Última amostra junto do resumo: sem isso, um painel de frota precisa de uma
+        // chamada de métricas POR SÉRIE só para saber o valor e o instante mais recentes.
+        samples: {
+          orderBy: { timestamp: 'desc' },
+          take: 1,
+          select: { timestamp: true, value: true },
+        },
       },
       orderBy: [{ physicalQuantity: 'asc' }, { axis: 'asc' }],
     });
@@ -456,6 +463,8 @@ export class TelemetryService {
         unit: item.unit,
         displayName: (item.displayName as Record<string, string> | null) ?? null,
         sampleCount: item._count.samples,
+        lastValue: item.samples[0]?.value ?? null,
+        lastTimestamp: item.samples[0]?.timestamp.toISOString() ?? null,
       };
     });
   }

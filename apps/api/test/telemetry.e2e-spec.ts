@@ -405,7 +405,7 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
     expect(samples.body.items.length).toBe(series!.sampleCount);
     expect(samples.body.limit).toBe(500);
     expect(samples.body.offset).toBe(0);
-    const items = samples.body.items as Array<{ timestamp: string }>;
+    const items = samples.body.items as Array<{ timestamp: string; value: number }>;
     expect(items[0].timestamp < items[items.length - 1].timestamp).toBe(true);
 
     const metrics = await authed
@@ -413,6 +413,15 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
       .expect(200);
 
     expect(metrics.body.count).toBe(series!.sampleCount);
+
+    // A última leitura vem no RESUMO da coleção, e não só em /metrics: é o que permite a
+    // um painel de frota desenhar todas as séries sem uma chamada por série. Precisa
+    // coincidir com a métrica e com a última amostra paginada — mesma fonte, mesmo valor.
+    const ultima = items[items.length - 1] as { timestamp: string; value: number };
+    expect(series!.lastTimestamp).toBe(ultima.timestamp);
+    expect(series!.lastValue).toBe(ultima.value);
+    expect(series!.lastTimestamp).toBe(metrics.body.lastTimestamp);
+    expect(series!.lastValue).toBe(metrics.body.last);
   });
 
   it('responde 404 ao consultar série inexistente', async () => {

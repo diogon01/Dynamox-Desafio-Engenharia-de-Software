@@ -155,6 +155,13 @@ export interface TimeSeriesSummary {
   unit: string;
   displayName: Record<string, string> | null;
   sampleCount: number;
+  /**
+   * Última leitura da série. Vem no resumo — e não só em `/metrics` — porque um painel
+   * de frota precisa do valor e do instante de TODAS as séries para desenhar a matriz;
+   * buscar métrica por série transformava uma tela em dezenas de requisições.
+   */
+  lastValue: number | null;
+  lastTimestamp: string | null;
 }
 
 export interface TimeSeriesSampleDto {

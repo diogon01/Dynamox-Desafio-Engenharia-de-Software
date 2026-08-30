@@ -252,6 +252,24 @@ export class TimeSeriesSummaryResponse {
 
   @ApiProperty({ description: 'Quantidade de amostras armazenadas na série.', example: 270 })
   sampleCount!: number;
+
+  @ApiProperty({
+    description:
+      'Valor da amostra mais recente da série; null quando a série ainda não tem amostras.',
+    type: Number,
+    nullable: true,
+    example: 0.0575,
+  })
+  lastValue!: number | null;
+
+  @ApiProperty({
+    description: 'Instante da amostra mais recente (UTC). null quando a série está vazia.',
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    example: ISO,
+  })
+  lastTimestamp!: string | null;
 }
 
 export class SeriesMetricsResponse {

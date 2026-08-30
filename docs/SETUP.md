@@ -69,8 +69,8 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 354 na suíte convencional: 152 API (47 unit + 105 e2e/contrato),
-                              # 113 web e 89 do sensor twin (bônus, puro — sem API/ROS/banco)
+npm run test                  # 403 na suíte convencional: 192 API (50 unit + 142 e2e/contrato),
+                              # 122 web e 89 do sensor twin (bônus, puro — sem API/ROS/banco)
 npm run twin:integration      # BON-06: 17 testes contra a API/banco reais (fora do run acima)
 npm run twin:ros              # BON-06.F8: 5 testes de proveniência ROS (exige ROS Noetic; opcional)
 npm run test:unit -w @dynamox/api   # somente unitários isolados (sem banco, < 2 s)

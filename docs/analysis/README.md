@@ -1,64 +1,111 @@
-# Comece aqui — Análises do desafio Dynamox
+# Engineering Knowledge Base — Desafio Full-Stack Dynamox
 
-Esta pasta reúne a análise de domínio (SCP-05, era de planejamento) e a **rastreabilidade
-da entrega real**. Estado do repositório na última auditoria (**29/08/2026**, HEAD
-`196d4dd`, branch `diogo-fragoso`, 28 commits locais ainda sem push):
+Esta pasta é a **base de conhecimento de engenharia** do projeto: arquitetura, domínio,
+contratos, decisões, fronteiras e limitações do sistema **como ele é hoje**. Um
+engenheiro que nunca viu o repositório deve conseguir entender o sistema aqui, sem
+precisar de nenhuma outra ferramenta.
 
-- **Entrega convencional completa**: autenticação JWT, CRUD de máquinas, pontos e
-  sensores com regra Pump⇒HF+, paginação 5 e ordenação bidirecional, séries temporais
-  idempotentes com métricas/exclusão/recuperação completa, gráfico, Swagger.
-- **Validação executada** (pós `npx nx reset`): build/lint/typecheck verdes nos 6
-  projetos; **323 testes convencionais** (152 API + 82 web + 89 sensor twin) **+ 17 de
-  integração da planta + 5 de integração ROS**; latência pior caso ~34 ms (limite 350 ms).
-- **Reprodução em clone limpo** (DEL-01/DEL-03): só conteúdo versionado + PostgreSQL
-  novo → migrações do zero, seed, smoke completo de API e UI, bateria verde e bônus
-  reproduzido com **fingerprints determinísticos idênticos entre bancos**.
-- **Auditoria de segredos e histórico** (DEL-02): zero segredos versionados; `.env`
-  nunca commitado; 28 commits todos do autor, Conventional Commits, sem marcas de IA.
-- **Bônus BON-06** — terminologia honesta: *sensor twin determinístico com frota
-  sintética e uma sombra digital dos estados simulados persistidos* (não é gêmeo digital
-  operacional bidirecional). 6 máquinas / 12 pontos / 12 sensores; supervisor
-  OBSERVE→RANK→ACT→RE-OBSERVE→RECOMMEND decidindo só por séries persistidas
-  (P-101/NDE ≈3,49× vs ≈1,00×; SUSPECT→CONFIRMED_ATTENTION); proveniência ROS opcional
-  com replay `duplicate:true`. Blender/Xacro/Gazebo cortados; **nenhum Fuzzy ou
-  forecast implementado**; o core não depende do bônus.
+## Notion × esta base
 
-## Rastreabilidade
+| Pergunta | Onde se responde |
+|---|---|
+| O que ainda falta? Qual o status? De quem é a tarefa? Qual o prazo? | **Notion** (board operacional) |
+| Como o sistema funciona? Por que foi feito assim? O que ele não faz? | **Aqui** |
 
-➡️ **[Matriz de evidências requisito × código × teste × execução × Notion](./dynamox-evidence-matrix.md)** —
-fonte única do estado de cada requisito (SCP, FND, AUT, MAC, MON, FE, API, TS, TST, QLT,
-DOC, DEL, BON e BON-06.F1–F9), com limitações declaradas.
+O board do Notion é a verdade **operacional** (tarefas, sprint, status, prioridades,
+blockers, user stories, checklist de entrega). Esta base é a verdade **técnica durável**.
+Nada aqui repete o board: não há status de tarefa, sprint, responsável ou data de
+entrega nesta pasta — e os documentos técnicos não são relatórios de progresso.
 
-Guia do bônus: [`simulation/sensor-twin/README.md`](../../simulation/sensor-twin/README.md).
-Guia operacional: [`docs/SETUP.md`](../SETUP.md). README de entrega: [`README.md`](../../README.md).
+## Como navegar
 
-## Análise de domínio (SCP-05 — histórico vivo)
+| Pasta | Conteúdo | Comece por |
+|---|---|---|
+| [`00-overview/`](./00-overview/) | visão geral do sistema, jornada ponta a ponta e FAQ técnico | [`architecture-map.md`](./00-overview/architecture-map.md) |
+| [`01-dashboard/`](./01-dashboard/) | frontend React/Redux e o modelo de condição exibido | [`frontend-architecture.md`](./01-dashboard/frontend-architecture.md) |
+| [`02-api/`](./02-api/) | backend NestJS: módulos, autenticação/RBAC, ingestão, OpenAPI | [`backend-architecture.md`](./02-api/backend-architecture.md) |
+| [`03-domain/`](./03-domain/) | modelo de domínio e persistência (Prisma/PostgreSQL) | [`domain-and-persistence.md`](./03-domain/domain-and-persistence.md) |
+| [`04-contracts/`](./04-contracts/) | API pública Dynamox (snapshot) × contrato interno de telemetria | [`telemetry-contract.md`](./04-contracts/telemetry-contract.md) |
+| [`05-simulation/`](./05-simulation/) | sensor twin, ponte ROS e a fronteira simulação × mundo real | [`simulation-vs-real.md`](./05-simulation/simulation-vs-real.md) |
+| [`06-decisions/`](./06-decisions/) | ADRs — por que cada decisão estrutural foi tomada | [`README.md`](./06-decisions/README.md) |
+| [`07-validation/`](./07-validation/) | o que as suítes provam e rastreabilidade requisito → código | [`testing-strategy.md`](./07-validation/testing-strategy.md) |
+| [`archive/`](./archive/) | material histórico; **não** descreve o sistema atual | [`README.md`](./archive/README.md) |
 
-A análise abaixo foi feita **antes** da implementação e continua válida como registro de
-engenharia reversa do snapshot público (nunca da API produtiva). Atenção: o simulador
-descrito no blueprint evoluiu — **o que existe de verdade é `simulation/sensor-twin/`**
-(ver banner em cada documento quando aplicável).
+Fora desta pasta: [`docs/SETUP.md`](../SETUP.md) (guia operacional — como subir, rodar e
+verificar), [`README.md`](../../README.md) da raiz (entrega),
+[`contracts/dynamox/README.md`](../../contracts/dynamox/README.md) (proveniência do
+snapshot público) e [`simulation/sensor-twin/README.md`](../../simulation/sensor-twin/README.md)
+(guia de operação do twin).
 
-1. [Walkthrough visual da P-101](./dynamox-p101-visual-walkthrough.md) — o sistema num
-   exemplo concreto.
-2. [Mapa mental](./dynamox-digital-sensor-map.md) — a paisagem num diagrama.
-3. [Mapeamento Sensor × API](./dynamox-sensor-api-mapping.md) — inventário, perfis,
-   contrato analítico e decisão (GO com restrições, 2 revisões factuais).
-4. [Blueprint do sensor digital](./dynamox-digital-sensor-blueprint.md) — plano da era
-   SCP-05; **superado pela implementação real** (banner no topo).
-5. [Auditoria de drift](./dynamox-contract-drift.md) — divergências da spec pública e as
-   nossas, deliberadas.
-6. [Inventário de endpoints](./dynamox-endpoint-inventory.json) — evidência bruta
-   (`npm run analysis:inventory`).
-7. [Arquitetura de autenticação](./dynamox-authentication-architecture.md) — AUT-01/02/03
-   (números daquele documento são do ciclo de 27/08; estado atual na matriz).
+## Convenções
 
-## Conceitos em uma frase
+### 1. Estado: CURRENT · FUTURE · HISTORICAL
 
-- **API Dynamox** — usamos apenas o *documento* público (snapshot OpenAPI 2.4.7,
-  versionado com hash), nunca a API em si; o simulador recusa domínios Dynamox por código.
-- **Sensor twin** — gerador determinístico que imita o *formato* dos dados (TcAg, TcAs,
-  HF+), sem fingir ser o dispositivo real; amplitudes pedagógicas, limiar 2,0 didático.
-- **Normalização** — conceito da análise SCP-05; na implementação, o contrato interno de
-  telemetria (`libs/contracts`) cumpre o papel de formato único validado por Ajv.
-- **Fuzzy / forecast** — **não implementados**; registrados apenas como evolução futura.
+Todo componente citado carrega um destes rótulos quando há qualquer risco de confusão:
+
+| Rótulo | Significado |
+|---|---|
+| **CURRENT** | existe no repositório, roda e é coberto por teste |
+| **FUTURE / NÃO IMPLEMENTADO** | descrito apenas como caminho de evolução; **não existe código** |
+| **HISTORICAL** | descreve um desenho anterior; foi superado |
+
+O dono canônico dessa separação é
+[`05-simulation/simulation-vs-real.md`](./05-simulation/simulation-vs-real.md): Gazebo,
+sensor físico Dynamox e realtime/WebSocket são discutidos lá, sempre marcados como não
+implementados. Os demais documentos referenciam esse documento em vez de repetir a
+narrativa.
+
+### 2. Taxonomia de evidência
+
+Herdada da análise de origem
+([`04-contracts/dynamox-sensor-api-mapping.md`](./04-contracts/dynamox-sensor-api-mapping.md))
+e usada sempre que houver ambiguidade:
+
+| Nível | Significado |
+|---|---|
+| `CONFIRMADO` | declarado diretamente pelo código, schema, migração, teste ou contrato versionado |
+| `DERIVADO` | deduzido de algo confirmado, com a derivação explícita |
+| `HIPÓTESE` | escolha nossa de projeto, sem fonte externa que a imponha |
+| `DESCONHECIDO` | não é possível concluir com as fontes disponíveis — e isso é dito |
+
+Racional histórico que não pode ser recuperado com segurança é registrado como
+`DESCONHECIDO`. Não se inventa justificativa retroativa.
+
+### 3. Números voláteis
+
+Contagens de teste **não** aparecem nesta base. Elas mudam a cada suíte nova e
+apodrecem em silêncio dentro de documentos que ninguém revisita. O número atual vive em
+um lugar só: [`docs/SETUP.md`](../SETUP.md) (seção *Verificações*).
+
+Aqui documenta-se **o que cada suíte prova** — ver
+[`07-validation/testing-strategy.md`](./07-validation/testing-strategy.md). O mesmo vale
+para hashes de commit, datas de auditoria e métricas de execução: cita-se o método e a
+ordem de grandeza, nunca uma tabela congelada.
+
+### 4. ADR × documento arquitetural
+
+- **ADR** ([`06-decisions/`](./06-decisions/)) responde **por quê**: contexto,
+  alternativas rejeitadas e consequências.
+- **Documento arquitetural** responde **como** e **o que é hoje**.
+
+Quando os dois tratam do mesmo assunto, o documento arquitetural descreve o mecanismo e
+linka o ADR; o ADR não repete o mecanismo.
+
+### 5. Links e caminhos
+
+Links são sempre relativos e apontam para arquivos versionados. Todo caminho citado como
+evidência (`apps/api/src/...`) existe no repositório — é verificável com um `ls`.
+
+### 6. Casa única por assunto
+
+Cada limitação tem um dono: limitações de **fronteira** (o que não é real) ficam em
+[`simulation-vs-real.md`](./05-simulation/simulation-vs-real.md); limitações de
+**verificação** (o que não é testado) ficam em
+[`testing-strategy.md`](./07-validation/testing-strategy.md); limitações **por requisito**
+ficam em [`traceability.md`](./07-validation/traceability.md).
+
+### 7. Arquivo histórico
+
+Nada é apagado. Documentos superados vão para [`archive/`](./archive/) com um banner
+`HISTÓRICO` no topo. Estar no arquivo não significa estar errado — significa que aquele
+texto descreve uma etapa anterior do projeto.

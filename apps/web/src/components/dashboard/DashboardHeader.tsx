@@ -17,6 +17,7 @@ const PERIOD_LABELS: Record<DashboardPeriod, string> = {
   all: 'Tudo',
 };
 
+/** Períodos oferecidos no seletor. `all` é alcançado pela ação do painel de tendência. */
 const PERIODS: DashboardPeriod[] = ['24h', '7d', '30d'];
 
 export interface DashboardHeaderProps {
@@ -27,56 +28,41 @@ export interface DashboardHeaderProps {
   onPeriodChange: (period: DashboardPeriod) => void;
 }
 
-/** Cabeçalho operacional: título, janela ativa e a troca de período — nada de inventário. */
+/**
+ * Cabeçalho da página — apenas identificação e período. Sem card, sem borda e sem um
+ * terceiro nível de título: a barra da aplicação já está acima e os painéis vêm abaixo.
+ */
 export function DashboardHeader({
   period,
   loadedAt,
   latestReading,
-  nowMs: _nowMs,
   onPeriodChange,
 }: DashboardHeaderProps): JSX.Element {
   return (
-    <Box
-      component="header"
-      sx={(muiTheme) => ({
-        px: `${muiTheme.dashboard.cardPadding + 5}px`,
-        py: 1,
-        borderRadius: `${muiTheme.dashboard.cardRadius}px`,
-        border: 1,
-        borderColor: 'divider',
-        bgcolor: 'background.paper',
-        boxShadow: 1,
-      })}
-    >
+    // Um <div>, não outro <header>: o único landmark de cabeçalho é a barra da aplicação.
+    <Box sx={{ pt: 2, pb: 1.5 }}>
       <Stack
         direction={{ xs: 'column', md: 'row' }}
         justifyContent="space-between"
-        alignItems={{ xs: 'stretch', md: 'center' }}
-        gap={1}
+        alignItems={{ xs: 'stretch', md: 'flex-start' }}
+        gap={1.5}
       >
         <Box sx={{ minWidth: 0 }}>
-          <Typography variant="overline" color="primary.main" component="div">
-            Central de condição
-          </Typography>
-          <Typography variant="h1" component="h1" sx={{ lineHeight: 1.15 }}>
+          <Typography variant="h1" component="h1">
             Visão geral operacional
           </Typography>
-          <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.1 }}>
+          <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.25 }}>
             Priorização de inspeção, tendência e saúde dos sensores com dados persistidos pela API.
           </Typography>
-          <Stack direction="row" gap={0.6} flexWrap="wrap" useFlexGap sx={{ mt: 0.7 }}>
-            <Chip
-              icon={<CalendarMonthOutlinedIcon />}
-              label={`Período: ${PERIOD_LABELS[period]}`}
-              size="small"
-              variant="outlined"
-            />
-            <Chip
-              icon={<ScheduleOutlinedIcon />}
-              label={`Última leitura: ${formatDateTime(latestReading)}`}
-              size="small"
-              variant="outlined"
-            />
+          <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+            {latestReading ? (
+              <Chip
+                icon={<ScheduleOutlinedIcon />}
+                label={`Última leitura: ${formatDateTime(latestReading)}`}
+                size="small"
+                variant="outlined"
+              />
+            ) : null}
             {loadedAt ? (
               <Chip
                 icon={<ScheduleOutlinedIcon />}
@@ -86,46 +72,35 @@ export function DashboardHeader({
                 sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
               />
             ) : null}
+            {/* Sem botão no seletor: o período completo só aparece quando está ativo. */}
+            {period === 'all' ? (
+              <Chip
+                icon={<CalendarMonthOutlinedIcon />}
+                label="Período: Tudo"
+                size="small"
+                color="primary"
+                variant="outlined"
+              />
+            ) : null}
           </Stack>
         </Box>
 
-        <Stack alignItems={{ xs: 'stretch', md: 'flex-end' }} alignSelf={{ md: 'flex-start' }} sx={{ pt: { md: 1.8 } }}>
-          <ToggleButtonGroup
-            exclusive
-            size="small"
-            value={period}
-            aria-label="Período global do dashboard"
-            onChange={(_event, next: DashboardPeriod | null) => {
-              if (next) onPeriodChange(next);
-            }}
-          >
-            {PERIODS.map((key) => (
-              <ToggleButton key={key} value={key} aria-label={PERIOD_LABELS[key]} sx={{ flex: 1, px: 2 }}>
-                {PERIOD_LABELS[key]}
-              </ToggleButton>
-            ))}
-          </ToggleButtonGroup>
-          <Box
-            component="button"
-            type="button"
-            aria-label="Tudo"
-            aria-pressed={period === 'all'}
-            onClick={() => onPeriodChange('all')}
-            sx={{
-              position: 'absolute',
-              width: 1,
-              height: 1,
-              p: 0,
-              m: -1,
-              overflow: 'hidden',
-              clip: 'rect(0 0 0 0)',
-              whiteSpace: 'nowrap',
-              border: 0,
-            }}
-          >
-            Tudo
-          </Box>
-        </Stack>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={period}
+          aria-label="Período global do dashboard"
+          onChange={(_event, next: DashboardPeriod | null) => {
+            if (next) onPeriodChange(next);
+          }}
+          sx={{ flexShrink: 0, alignSelf: { xs: 'stretch', md: 'flex-start' } }}
+        >
+          {PERIODS.map((key) => (
+            <ToggleButton key={key} value={key} aria-label={PERIOD_LABELS[key]} sx={{ flex: 1, px: 2 }}>
+              {PERIOD_LABELS[key]}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
       </Stack>
     </Box>
   );

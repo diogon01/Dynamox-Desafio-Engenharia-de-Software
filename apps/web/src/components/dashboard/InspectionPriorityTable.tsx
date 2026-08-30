@@ -42,6 +42,10 @@ export interface InspectionPriorityTableProps {
 function DeviationCell({ cell }: { cell: SensorCellView }): JSX.Element {
   const muiTheme = useTheme();
   const ratio = cell.assessment?.deviationRatio ?? null;
+  // O valor medido acompanha a barra: em telas estreitas a coluna própria não cabe.
+  const medida = cell.evidence
+    ? `${cell.evidence.label}: ${formatMeasurement(cell.evidence.value, cell.evidence.unit)}`
+    : undefined;
   if (ratio === null) {
     return (
       <Typography variant="caption" color="text.secondary">
@@ -53,7 +57,7 @@ function DeviationCell({ cell }: { cell: SensorCellView }): JSX.Element {
   const width = Math.min(1, ratio / 4) * 100;
   const color = statusColor(cell.condition, muiTheme.palette);
   return (
-    <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 96 }}>
+    <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 96 }} title={medida}>
       <Box
         aria-hidden="true"
         sx={{ flexGrow: 1, height: 6, borderRadius: 999, bgcolor: 'action.hover', overflow: 'hidden' }}
@@ -83,7 +87,7 @@ function Sparkline({
     );
   }
   return (
-    <Box sx={{ width: 66, height: 13 }} aria-hidden="true">
+    <Box sx={{ width: 72, height: 22 }} aria-hidden="true">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={points} margin={{ top: 3, right: 2, bottom: 3, left: 2 }}>
           <Line
@@ -152,9 +156,7 @@ export function InspectionPriorityTable({
             aria-label="Ranking de prioridade de inspeção"
             // Densidade industrial: menos padding lateral para a tabela caber em 6 colunas.
             sx={{
-              '& .MuiTableCell-root': { px: 0.65, py: 0, height: 15, lineHeight: 1 },
-              '& .MuiTableRow-root': { height: 15 },
-              '& .MuiIconButton-root': { width: 13, height: 13, p: 0 },
+              '& .MuiTableCell-root': { px: 0.85, py: 0.5, lineHeight: 1.25, borderColor: 'divider' },
               '& .MuiIconButton-root svg': { fontSize: 12 },
             }}
           >
@@ -164,7 +166,9 @@ export function InspectionPriorityTable({
                 <TableCell>Máquina</TableCell>
                 <TableCell>Ponto · Sensor</TableCell>
                 <TableCell>Severidade</TableCell>
-                <TableCell align="right">Valor atual</TableCell>
+                <TableCell align="right" sx={{ display: { xs: 'none', xl: 'table-cell' } }}>
+                  Valor atual
+                </TableCell>
                 <TableCell sx={{ whiteSpace: 'normal', lineHeight: 1.25, minWidth: 96 }}>
                   Desvio vs. baseline
                 </TableCell>
@@ -209,7 +213,14 @@ export function InspectionPriorityTable({
                     <TableCell>
                       <StatusTag kind={cell.condition} />
                     </TableCell>
-                    <TableCell align="right" sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
+                    <TableCell
+                      align="right"
+                      sx={{
+                        display: { xs: 'none', xl: 'table-cell' },
+                        whiteSpace: 'nowrap',
+                        fontWeight: 600,
+                      }}
+                    >
                       {cell.evidence
                         ? formatMeasurement(cell.evidence.value, cell.evidence.unit)
                         : '—'}

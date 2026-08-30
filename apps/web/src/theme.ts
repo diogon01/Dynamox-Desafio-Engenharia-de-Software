@@ -44,21 +44,34 @@ const CONDITION = {
 /** Tokens de layout do dashboard: uma fonte só para dimensões repetidas. */
 const DASHBOARD = {
   sidebarWidth: 232,
-  pagePaddingX: { xs: 10, md: 14 },
-  gridGap: 5,
-  sectionGap: 5,
-  cardPadding: 10,
-  cardRadius: 9,
-  headerHeight: 42,
+  appBarHeight: 56,
+  pagePaddingX: { xs: 16, md: 24 },
+  gridGap: 14,
+  sectionGap: 14,
+  cardPadding: 16,
+  cardRadius: 10,
+  headerHeight: 44,
+  /**
+   * Altura mínima por categoria de painel. Cards da mesma linha esticam pelo grid;
+   * o mínimo evita que um card com pouco conteúdo desalinhe a linha inteira.
+   */
+  cardMinHeight: {
+    kpi: 96,
+    compact: 164,
+    medium: 180,
+    heatmap: 220,
+    primaryChart: 340,
+    explorer: 360,
+  },
   chart: {
-    tickFontSize: 9.5,
+    tickFontSize: 11,
     axisColor: '#556676',
     gridColor: alpha('#556676', 0.14),
     tooltip: {
       background: '#FFFFFF',
       border: '#D6E0E8',
-      radius: 7,
-      fontSize: 11,
+      radius: 8,
+      fontSize: 11.5,
       shadow: '0 4px 12px rgba(23, 37, 46, 0.12)',
     },
   },
@@ -97,17 +110,17 @@ export const theme = createTheme({
     background: { default: BRAND.background, paper: BRAND.surface },
     text: { primary: BRAND.onSurface, secondary: BRAND.muted },
   },
-  shape: { borderRadius: 9 },
+  shape: { borderRadius: 10 },
   typography: {
     fontFamily: ['Inter', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'].join(','),
-    h1: { fontSize: '1.42rem', fontWeight: 750, lineHeight: 1.18, letterSpacing: -0.25 },
-    h2: { fontSize: '0.77rem', fontWeight: 750, lineHeight: 1.2 },
+    h1: { fontSize: '1.5rem', fontWeight: 750, lineHeight: 1.2, letterSpacing: -0.25 },
+    h2: { fontSize: '0.85rem', fontWeight: 700, lineHeight: 1.25 },
     h4: { fontSize: '1.8rem', fontWeight: 750 },
-    subtitle2: { fontSize: '0.78rem', fontWeight: 700 },
-    body2: { fontSize: '0.72rem' },
+    subtitle2: { fontSize: '0.82rem', fontWeight: 700 },
+    body2: { fontSize: '0.76rem' },
     button: { textTransform: 'none', fontWeight: 600 },
-    caption: { fontWeight: 500, fontSize: '0.61rem', lineHeight: 1.28 },
-    overline: { fontSize: '0.59rem', fontWeight: 750, lineHeight: 1.5, letterSpacing: 0.75 },
+    caption: { fontWeight: 500, fontSize: '0.68rem', lineHeight: 1.35 },
+    overline: { fontSize: '0.64rem', fontWeight: 750, lineHeight: 1.5, letterSpacing: 0.7 },
   },
   components: {
     MuiCard: {

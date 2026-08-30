@@ -79,9 +79,14 @@ export function SensorHealthDonut({
       ) : null}
 
       {!loading && total > 0 ? (
-        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mt: -1.5 }}>
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={1.5}
+          sx={{ flexGrow: 1, minHeight: 0 }}
+        >
           <Box
-            sx={{ position: 'relative', width: 124, height: 104, flexShrink: 0 }}
+            sx={{ position: 'relative', width: 138, height: '100%', minHeight: 116, flexShrink: 0 }}
             role="img"
             aria-label={slices.map((slice) => `${slice.label}: ${slice.value}`).join('; ')}
           >

@@ -66,7 +66,21 @@ export function SeriesExplorer({
     <Accordion
       component="section"
       disableGutters
-      sx={{ border: 1, borderColor: 'divider', borderRadius: '12px !important', overflow: 'hidden' }}
+      // Aberto por padrão: é um painel do dashboard, não uma gaveta escondida.
+      defaultExpanded
+      sx={(theme) => ({
+        display: 'flex',
+        flexDirection: 'column',
+        width: '100%',
+        height: '100%',
+        minHeight: theme.dashboard.cardMinHeight.explorer,
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: `${theme.dashboard.cardRadius}px !important`,
+        overflow: 'hidden',
+        '&::before': { display: 'none' },
+        '& .MuiAccordionSummary-root': { minHeight: 52, px: `${theme.dashboard.cardPadding}px` },
+      })}
     >
       <AccordionSummary expandIcon={<ExpandMoreIcon />} aria-controls="series-explorer-content">
         <Box>
@@ -78,14 +92,24 @@ export function SeriesExplorer({
           </Typography>
         </Box>
       </AccordionSummary>
-      <AccordionDetails id="series-explorer-content" sx={{ pt: 0 }}>
+      <AccordionDetails
+        id="series-explorer-content"
+        sx={(theme) => ({
+          pt: 0,
+          px: `${theme.dashboard.cardPadding}px`,
+          pb: 2,
+          flexGrow: 1,
+          display: 'flex',
+          flexDirection: 'column',
+        })}
+      >
         {series.length === 0 ? (
           <EmptyState
             title="Nenhuma série persistida"
             description="Sensores instalados aparecerão aqui após a primeira ingestão de telemetria."
           />
         ) : (
-          <Stack spacing={2}>
+          <Stack spacing={1.5}>
             <SeriesHierarchyFilters
               series={series}
               selectedSeriesId={selectedSeriesId}
@@ -116,7 +140,7 @@ export function SeriesExplorer({
               />
             ) : null}
             {status === 'succeeded' && samples.length > 0 && selected ? (
-              <>
+              <Stack spacing={1.5}>
                 <Box
                   sx={{
                     display: 'grid',
@@ -155,7 +179,7 @@ export function SeriesExplorer({
                 <Box
                   role="img"
                   aria-label={`Detalhe da série ${seriesMetricLabel(selected.physicalQuantity, selected.axis)}`}
-                  sx={{ width: '100%', height: { xs: 240, md: 300 }, minWidth: 0 }}
+                  sx={{ width: '100%', height: { xs: 220, md: 260 }, minWidth: 0 }}
                 >
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart
@@ -200,7 +224,7 @@ export function SeriesExplorer({
                     </LineChart>
                   </ResponsiveContainer>
                 </Box>
-              </>
+              </Stack>
             ) : null}
           </Stack>
         )}

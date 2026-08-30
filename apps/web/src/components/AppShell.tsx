@@ -1,5 +1,4 @@
 import ApiOutlinedIcon from '@mui/icons-material/ApiOutlined';
-import MenuIcon from '@mui/icons-material/Menu';
 import PrecisionManufacturingOutlinedIcon from '@mui/icons-material/PrecisionManufacturingOutlined';
 import SensorsOutlinedIcon from '@mui/icons-material/SensorsOutlined';
 import SpaceDashboardOutlinedIcon from '@mui/icons-material/SpaceDashboardOutlined';
@@ -7,7 +6,6 @@ import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
 import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
-import IconButton from '@mui/material/IconButton';
 import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
@@ -23,7 +21,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { LoadingState } from '@dynamox/ui';
 
 import { API_BASE_URL } from '../api/client';
-import { SystemStatusBar } from './SystemStatusBar';
+import { AppHeader } from './AppHeader';
 
 
 
@@ -189,31 +187,22 @@ export function AppShell(): JSX.Element {
       )}
 
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        {/* Uma única barra de aplicação; a página começa imediatamente abaixo dela. */}
+        <AppHeader onOpenNavigation={isDesktop ? undefined : () => setMobileOpen(true)} />
+
         <Box
           component="main"
           sx={(theme) => ({
             px: `${theme.dashboard.pagePaddingX.xs}px`,
-            py: 1,
+            pb: 3,
             flexGrow: 1,
+            minWidth: 0,
             [theme.breakpoints.up('md')]: { px: `${theme.dashboard.pagePaddingX.md}px` },
           })}
         >
-          {!isDesktop ? (
-            <IconButton
-              aria-label="Abrir menu de navegação"
-              onClick={() => setMobileOpen(true)}
-              edge="start"
-              sx={{ mb: 1 }}
-            >
-              <MenuIcon />
-            </IconButton>
-          ) : null}
-          <Stack spacing={0.75}>
-            <SystemStatusBar />
-            <Suspense fallback={<LoadingState label="Carregando página…" />}>
-              <Outlet />
-            </Suspense>
-          </Stack>
+          <Suspense fallback={<LoadingState label="Carregando página…" />}>
+            <Outlet />
+          </Suspense>
         </Box>
       </Box>
     </Box>

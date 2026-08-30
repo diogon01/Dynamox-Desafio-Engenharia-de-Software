@@ -50,7 +50,7 @@ export function AcquisitionActivity({
         />
       ) : null}
       {!loading && hasSamples ? (
-        <Box sx={{ width: '100%', height: 84 }}>
+        <Box sx={{ width: '100%', flexGrow: 1, minHeight: 132 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -8 }}>
               <CartesianGrid vertical={false} stroke={chartGridStroke(muiTheme)} />

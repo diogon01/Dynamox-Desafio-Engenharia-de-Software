@@ -22,6 +22,7 @@ import {
   chartGridStroke,
   chartTooltipStyles,
 } from './chartTheme';
+import { FleetConditionStrip } from './FleetConditionStrip';
 import { statusColor } from './StatusTag';
 
 /** Nome curto da máquina para o eixo X (antes do primeiro separador). */
@@ -73,14 +74,16 @@ export function AssetConditionColumns({
     <DashboardCard
       title="Condição por ativo"
       titleId="asset-condition-title"
-      subtitle="Proporção da condição dos pontos em cada máquina."
+      subtitle="Distribuição da frota e proporção da condição em cada máquina."
+      info="Classificação demonstrativa por ponto. Recência e cobertura têm painéis próprios."
     >
-      {loading ? <Skeleton variant="rounded" height={200} /> : null}
+      {loading ? <Skeleton variant="rounded" height={180} /> : null}
+      {!loading ? <FleetConditionStrip view={view} /> : null}
       {!loading && data.length === 0 ? (
         <EmptyState title="Sem ativos com pontos" description="Cadastre pontos de monitoramento." />
       ) : null}
       {!loading && data.length > 0 ? (
-        <Box sx={{ width: '100%', height: 84 }}>
+        <Box sx={{ width: '100%', flexGrow: 1, minHeight: 132 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} stackOffset="expand" margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
               <CartesianGrid vertical={false} stroke={chartGridStroke(muiTheme)} />

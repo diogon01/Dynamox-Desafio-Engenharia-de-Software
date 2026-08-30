@@ -55,7 +55,10 @@ export function RecentOccurrences({
           <Table
             size="small"
             aria-label="Ocorrências recentes"
-            sx={{ minWidth: 520, '& .MuiTableCell-root': { py: 0, px: 0.65, height: 16, lineHeight: 1.05 } }}
+            sx={{
+              // Colunas densas mas legíveis; a mensagem só aparece quando há largura.
+              '& .MuiTableCell-root': { py: 0.5, px: 0.85, lineHeight: 1.25, borderColor: 'divider' },
+            }}
           >
             <TableHead>
               <TableRow>
@@ -63,7 +66,7 @@ export function RecentOccurrences({
                 <TableCell>Máquina</TableCell>
                 <TableCell>Ponto / sensor</TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell>Mensagem</TableCell>
+                <TableCell sx={{ display: { xs: 'none', xl: 'table-cell' } }}>Mensagem</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -98,9 +101,20 @@ export function RecentOccurrences({
                       {row.machineName.split(' — ')[0]} · {row.pointLabel} · {row.sensorSerial}
                     </Box>
                   </TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>{row.pointLabel} · {row.sensorSerial}</TableCell>
+                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                    {row.pointLabel} · {row.sensorSerial}
+                  </TableCell>
                   <TableCell><StatusTag kind={row.statusKind} label={row.statusLabel} /></TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <TableCell
+                    sx={{
+                      display: { xs: 'none', xl: 'table-cell' },
+                      whiteSpace: 'nowrap',
+                      maxWidth: 220,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                    title={row.message}
+                  >
                     {row.message}
                   </TableCell>
                 </TableRow>

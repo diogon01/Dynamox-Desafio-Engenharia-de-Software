@@ -82,7 +82,7 @@ export function DayProfilePanel({
             sx={{
               mb: 1,
               display: 'flex',
-              '& .MuiToggleButton-root': { flex: 1, px: 0.25, py: 0.1, minHeight: 22, fontSize: 9.5 },
+              '& .MuiToggleButton-root': { flex: 1, px: 0.5, py: 0.35, minHeight: 26, fontSize: 10.5 },
             }}
           >
             {weekMap.days.map((day) => (
@@ -99,7 +99,7 @@ export function DayProfilePanel({
             />
           ) : (
             <>
-              <Box sx={{ width: '100%', height: 58 }}>
+              <Box sx={{ width: '100%', flexGrow: 1, minHeight: 118 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data} margin={{ top: 4, right: 2, bottom: 0, left: -14 }}>
                     <CartesianGrid vertical={false} stroke={chartGridStroke(muiTheme)} />

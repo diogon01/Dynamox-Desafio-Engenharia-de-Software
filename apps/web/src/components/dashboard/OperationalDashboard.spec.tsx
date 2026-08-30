@@ -315,7 +315,8 @@ describe('OperationalDashboard', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Ver período disponível/i }));
     await waitFor(() => expect(screen.queryByText(/Sem dados em/i)).toBeNull());
-    expect(screen.getByRole('button', { name: /^Tudo$/i }).getAttribute('aria-pressed')).toBe('true');
+    // O seletor mostra só as três janelas usuais; o período completo aparece como estado.
+    expect(screen.getByText(/Período: Tudo/i)).toBeDefined();
   });
 
   it('mantém dados parciais e orienta nova tentativa quando pontos falham', async () => {

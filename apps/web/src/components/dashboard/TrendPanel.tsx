@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Skeleton from '@mui/material/Skeleton';
+import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useTheme } from '@mui/material/styles';
 import { useMemo, type RefObject } from 'react';
@@ -95,19 +96,18 @@ export function TrendPanel({
           ? `${selected.machineName ?? 'Máquina não associada'} · ${selected.monitoringPointName ?? 'Sem ponto'} · ${selected.sensorSerialNumber} · ${seriesMetricLabel(selected.physicalQuantity, selected.axis)}`
           : 'Selecione um item na prioridade de inspeção ou na matriz da frota.'
       }
-      action={
-        series.length > 0 ? (
-          <Box sx={{ width: { sm: 420, lg: 520 }, maxWidth: '58vw' }}>
-            <SeriesHierarchyFilters
-              series={series}
-              selectedSeriesId={selectedSeriesId}
-              onSelect={onSelectSeries}
-              compact
-            />
-          </Box>
-        ) : undefined
-      }
     >
+      {series.length > 0 ? (
+        <Box sx={{ mb: 1.25 }}>
+          <SeriesHierarchyFilters
+            series={series}
+            selectedSeriesId={selectedSeriesId}
+            onSelect={onSelectSeries}
+            compact
+          />
+        </Box>
+      ) : null}
+
       {/* Alvo de foco do drill-down; invisível, não altera o layout. */}
       <Typography
         component="h3"
@@ -146,10 +146,48 @@ export function TrendPanel({
 
       {status === 'succeeded' && trend.filteredSamples.length > 0 && selected ? (
         <>
+          {/* Legenda antes do gráfico: as linhas de referência ficam sem rótulo sobreposto. */}
+          <Stack direction="row" flexWrap="wrap" useFlexGap gap={1.5} sx={{ mb: 0.75 }}>
+            {[
+              { label: 'Valor atual', color: muiTheme.palette.primary.main, dashed: false },
+              baseline !== null
+                ? {
+                    label: `Baseline (média): ${formatMeasurement(baseline, selected.unit)}`,
+                    color: muiTheme.palette.condition.observation,
+                    dashed: true,
+                  }
+                : null,
+              baseline !== null
+                ? {
+                    label: `Limiar didático 2×: ${formatMeasurement(baseline * 2, selected.unit)}`,
+                    color: muiTheme.palette.condition.attention,
+                    dashed: true,
+                  }
+                : null,
+            ]
+              .flatMap((entry) => (entry ? [entry] : []))
+              .map((entry) => (
+                <Stack key={entry.label} direction="row" alignItems="center" spacing={0.6}>
+                  <Box
+                    aria-hidden="true"
+                    sx={{
+                      width: 16,
+                      height: 0,
+                      borderTop: entry.dashed ? '2px dashed' : '2px solid',
+                      borderColor: entry.color,
+                    }}
+                  />
+                  <Typography variant="caption" color="text.secondary" noWrap>
+                    {entry.label}
+                  </Typography>
+                </Stack>
+              ))}
+          </Stack>
+
           <Box
             role="img"
             aria-label={`Gráfico de ${seriesMetricLabel(selected.physicalQuantity, selected.axis)} em ${selected.unit}`}
-            sx={{ width: '100%', height: { xs: 190, md: 80 }, minWidth: 0 }}
+            sx={{ width: '100%', flexGrow: 1, minHeight: { xs: 200, md: 240 }, minWidth: 0 }}
           >
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend.points} margin={{ top: 8, right: 10, bottom: 0, left: -4 }} accessibilityLayer>
@@ -185,12 +223,6 @@ export function TrendPanel({
                     y={baseline}
                     stroke={muiTheme.palette.condition.observation}
                     strokeDasharray="5 4"
-                    label={{
-                      value: `Baseline: ${formatMeasurement(baseline, selected.unit)}`,
-                      position: 'insideBottomRight',
-                      fontSize: 10.5,
-                      fill: muiTheme.palette.condition.observation,
-                    }}
                   />
                 ) : null}
                 {baseline !== null ? (
@@ -198,12 +230,6 @@ export function TrendPanel({
                     y={baseline * 2}
                     stroke={muiTheme.palette.condition.attention}
                     strokeDasharray="5 4"
-                    label={{
-                      value: `Limiar didático 2×: ${formatMeasurement(baseline * 2, selected.unit)}`,
-                      position: 'insideTopRight',
-                      fontSize: 10.5,
-                      fill: muiTheme.palette.condition.attention,
-                    }}
                   />
                 ) : null}
                 <Line

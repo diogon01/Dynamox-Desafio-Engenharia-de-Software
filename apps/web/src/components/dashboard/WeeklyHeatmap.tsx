@@ -56,8 +56,9 @@ export function WeeklyHeatmap({
       ) : null}
 
       {!loading && hasData ? (
-        <Box sx={{ overflowX: 'auto' }}>
-          <Box sx={{ minWidth: 560 }}>
+        <Box sx={{ overflowX: 'auto', flexGrow: 1, display: 'flex' }}>
+          {/* As linhas dividem a altura disponível: o mapa acompanha o card vizinho. */}
+          <Box sx={{ minWidth: 560, flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
             {/* Cabeçalho de horas (rótulo a cada 2 h para reduzir ruído). */}
             <Box
               sx={{
@@ -74,7 +75,7 @@ export function WeeklyHeatmap({
                   key={hour}
                   variant="caption"
                   color="text.secondary"
-                  sx={{ fontSize: 9.5, textAlign: 'center', lineHeight: 1 }}
+                  sx={{ fontSize: 10, textAlign: 'center', lineHeight: 1 }}
                 >
                   {hour % 2 === 0 ? `${String(hour).padStart(2, '0')}h` : ''}
                 </Typography>
@@ -89,6 +90,10 @@ export function WeeklyHeatmap({
                   gridTemplateColumns: '44px repeat(24, minmax(0, 1fr))',
                   gap: '1px',
                   mb: '1px',
+                  flex: 1,
+                  minHeight: 16,
+                  // Teto: dias sem leitura não viram faixas gigantes de vazio.
+                  maxHeight: 38,
                 }}
               >
                 <Box
@@ -100,7 +105,7 @@ export function WeeklyHeatmap({
                   sx={{
                     all: 'unset',
                     cursor: 'pointer',
-                    fontSize: 9.5,
+                    fontSize: 10,
                     lineHeight: 1,
                     fontWeight: 700,
                     color: selectedDay === dayRow.day ? 'primary.main' : 'text.secondary',
@@ -134,7 +139,8 @@ export function WeeklyHeatmap({
                         all: 'unset',
                         cursor: 'pointer',
                         display: 'block',
-                        height: 10,
+                        height: '100%',
+                        minHeight: 14,
                         borderRadius: '2px',
                         bgcolor: cellColor(hour.share),
                         outline:
@@ -151,7 +157,13 @@ export function WeeklyHeatmap({
               </Box>
             ))}
 
-            <Stack direction="row" justifyContent="flex-end" alignItems="center" spacing={0.55} sx={{ mt: 0.55 }}>
+            <Stack
+              direction="row"
+              justifyContent="flex-end"
+              alignItems="center"
+              spacing={0.55}
+              sx={{ mt: 'auto', pt: 1 }}
+            >
               <Typography variant="caption" color="text.secondary">
                 Baixa atividade
               </Typography>

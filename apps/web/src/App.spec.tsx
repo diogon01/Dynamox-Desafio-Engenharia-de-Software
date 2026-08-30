@@ -35,7 +35,7 @@ describe('App — autenticação e proteção de rotas', () => {
   it('sem sessão, acesso direto à rota privada cai no login', async () => {
     renderApp();
     expect(await screen.findByRole('heading', { name: /Entrar/i })).toBeDefined();
-    expect(screen.queryByRole('heading', { name: /Estado da API/i })).toBeNull();
+    expect(screen.queryByRole('heading', { name: /Estado do sistema/i })).toBeNull();
   });
 
   it('reload em rota privada com token restaura a sessão via /auth/me com Bearer', async () => {
@@ -51,7 +51,7 @@ describe('App — autenticação e proteção de rotas', () => {
         }
         if (url.endsWith('/health'))
           return new Response(
-            JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: 't' }),
+            JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: '2026-08-29T12:00:00.000Z' }),
             { status: 200 },
           );
         if (url.includes('/monitoring-points'))
@@ -72,8 +72,13 @@ describe('App — autenticação e proteção de rotas', () => {
 
     renderApp();
 
-    expect(await screen.findByRole('heading', { name: /Estado da API/i })).toBeDefined();
-    expect(await screen.findByText(USER.email)).toBeDefined();
+    const statusHeading = await screen.findByRole('heading', { name: /Estado do sistema/i });
+    const statusCard = statusHeading.closest('section');
+    expect(statusCard).not.toBeNull();
+    expect(within(statusCard!).getByText(USER.email)).toBeDefined();
+    expect(within(statusCard!).getByRole('button', { name: /Sair da sessão/i })).toBeDefined();
+    expect(screen.getAllByText(USER.email)).toHaveLength(1);
+    expect(screen.queryByText('MONITORAMENTO DE ATIVOS')).toBeNull();
     expect(meAuthorization).toBe('Bearer jwt-valido');
   });
 
@@ -92,7 +97,7 @@ describe('App — autenticação e proteção de rotas', () => {
         }
         if (url.endsWith('/health'))
           return new Response(
-            JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: 't' }),
+            JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: '2026-08-29T12:00:00.000Z' }),
             { status: 200 },
           );
         if (url.includes('/monitoring-points'))
@@ -118,7 +123,7 @@ describe('App — autenticação e proteção de rotas', () => {
     await userEvent.type(screen.getByLabelText(/Senha/i), 'Dynamox@2026');
     await userEvent.click(screen.getByRole('button', { name: /^Entrar$/i }));
 
-    expect(await screen.findByRole('heading', { name: /Série temporal/i })).toBeDefined();
+    expect(await screen.findByRole('heading', { name: /Visão geral operacional/i })).toBeDefined();
     expect(loginCalls).toBe(1);
     expect(getToken()).toBe('jwt-do-form');
 
@@ -127,7 +132,7 @@ describe('App — autenticação e proteção de rotas', () => {
     // De volta ao login, token limpo, e a rota privada não renderiza mais.
     expect(await screen.findByRole('heading', { name: /Entrar/i })).toBeDefined();
     await waitFor(() => expect(getToken()).toBeNull());
-    expect(screen.queryByRole('heading', { name: /Série temporal/i })).toBeNull();
+    expect(screen.queryByRole('heading', { name: /Visão geral operacional/i })).toBeNull();
   });
 
   it('formulário de login autentica contra a API e entra no painel', async () => {
@@ -139,7 +144,7 @@ describe('App — autenticação e proteção de rotas', () => {
           return new Response(JSON.stringify({ token: 'jwt-novo', user: USER }), { status: 200 });
         if (url.endsWith('/health'))
           return new Response(
-            JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: 't' }),
+            JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: '2026-08-29T12:00:00.000Z' }),
             { status: 200 },
           );
         if (url.includes('/monitoring-points'))
@@ -165,7 +170,7 @@ describe('App — autenticação e proteção de rotas', () => {
     await userEvent.type(screen.getByLabelText(/Senha/i), 'Dynamox@2026');
     await userEvent.click(screen.getByRole('button', { name: /^Entrar$/i }));
 
-    expect(await screen.findByRole('heading', { name: /Estado da API/i })).toBeDefined();
+    expect(await screen.findByRole('heading', { name: /Estado do sistema/i })).toBeDefined();
     expect(getToken()).toBe('jwt-novo');
   });
 
@@ -198,7 +203,7 @@ describe('AppShell — navegação lateral', () => {
         if (url.endsWith('/auth/me')) return new Response(JSON.stringify(USER), { status: 200 });
         if (url.endsWith('/health'))
           return new Response(
-            JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: 't' }),
+            JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: '2026-08-29T12:00:00.000Z' }),
             { status: 200 },
           );
         if (url.includes('/monitoring-points'))
@@ -220,7 +225,7 @@ describe('AppShell — navegação lateral', () => {
     renderApp();
 
     // Visão geral carregada. No viewport de teste (mobile) o menu abre pelo botão.
-    expect(await screen.findByRole('heading', { name: /Estado da API/i })).toBeDefined();
+    expect(await screen.findByRole('heading', { name: /Estado do sistema/i })).toBeDefined();
 
     const openNav = async () => {
       await userEvent.click(screen.getByRole('button', { name: /Abrir menu de navegação/i }));
@@ -230,9 +235,9 @@ describe('AppShell — navegação lateral', () => {
     // Máquinas.
     let nav = await openNav();
     await userEvent.click(within(nav).getByText('Máquinas'));
-    // Título da página (toolbar) e título do painel: os dois exibem 'Máquinas'.
-    expect(await screen.findAllByRole('heading', { name: /^Máquinas$/i })).toHaveLength(2);
-    expect(screen.queryByRole('heading', { name: /Estado da API/i })).toBeNull();
+    // A toolbar duplicada foi removida; existe apenas o título próprio do painel.
+    expect(await screen.findAllByRole('heading', { name: /^Máquinas$/i })).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: /Estado do sistema/i })).toBeNull();
 
     // Pontos e sensores.
     nav = await openNav();

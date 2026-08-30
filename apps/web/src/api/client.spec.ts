@@ -139,3 +139,55 @@ describe('api.machines / api.createMachine', () => {
     );
   });
 });
+
+describe('paginação completa usada pelo dashboard', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setToken(null);
+  });
+
+  it('percorre todas as páginas de pontos sem alterar o contrato da API', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const page = Number(url.searchParams.get('page'));
+      return new Response(
+        JSON.stringify({
+          items: [{ id: `p${page}` }],
+          total: 51,
+          page,
+          pageSize: 50,
+          sortBy: 'machineName',
+          sortDir: 'asc',
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await api.allMonitoringPoints();
+
+    expect(result.map((point) => point.id)).toEqual(['p1', 'p2']);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('page=2');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('pageSize=50');
+  });
+
+  it('recupera todas as páginas de amostras e respeita o offset real', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const offset = Number(url.searchParams.get('offset'));
+      const item = { timestamp: `2026-08-29T00:00:0${offset}.000Z`, value: offset + 1 };
+      return new Response(
+        JSON.stringify({ items: [item], total: 2, limit: 5000, offset }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await api.allSamples('series-1');
+
+    expect(result.map((sample) => sample.value)).toEqual([1, 2]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('offset=1');
+  });
+});

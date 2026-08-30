@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Frontend React + Vite + Material UI 5 do desafio Dynamox. Nesta fase, painel de diagnóstico da API e visualização mínima da série temporal.",
+  "description": "Frontend React + Vite + Material UI 5 do desafio Dynamox, com dashboard operacional de monitoramento de condição.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",

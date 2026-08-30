@@ -2,12 +2,14 @@ import { configureStore } from '@reduxjs/toolkit';
 import { useDispatch, useSelector } from 'react-redux';
 
 import { authReducer } from '../features/auth/authSlice';
+import { dashboardReducer } from '../features/dashboard/dashboardSlice';
 import { diagnosticsReducer } from '../features/diagnostics/diagnosticsSlice';
 import { machinesReducer } from '../features/machines/machinesSlice';
 import { monitoringPointsReducer } from '../features/monitoringPoints/monitoringPointsSlice';
 
 const rootReducer = {
   auth: authReducer,
+  dashboard: dashboardReducer,
   diagnostics: diagnosticsReducer,
   machines: machinesReducer,
   monitoringPoints: monitoringPointsReducer,

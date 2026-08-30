@@ -40,6 +40,7 @@ export interface MonitoringPointPageDto {
 
 export interface MonitoringPointListParams {
   page: number;
+  pageSize?: number;
   sortBy: MonitoringPointSortColumn;
   sortDir: 'asc' | 'desc';
 }
@@ -156,6 +157,45 @@ async function requestJson<T>(path: string, options: RequestOptions = {}): Promi
   return (await response.json()) as T;
 }
 
+async function getAllMonitoringPoints(): Promise<MonitoringPointDto[]> {
+  const pageSize = 50;
+  const readPage = (page: number) => {
+    const query = new URLSearchParams({
+      page: String(page),
+      pageSize: String(pageSize),
+      sortBy: 'machineName',
+      sortDir: 'asc',
+    });
+    return requestJson<MonitoringPointPageDto>(`/monitoring-points?${query.toString()}`);
+  };
+
+  const first = await readPage(1);
+  const items = [...first.items];
+  const pageCount = Math.ceil(first.total / first.pageSize);
+  for (let page = 2; page <= pageCount; page += 1) {
+    items.push(...(await readPage(page)).items);
+  }
+  return items;
+}
+
+async function getAllSamples(id: string): Promise<TimeSeriesSamplePage['items']> {
+  const limit = 5000;
+  const readPage = (offset: number) =>
+    requestJson<TimeSeriesSamplePage>(
+      `/time-series/${id}/samples?${new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+      }).toString()}`,
+    );
+
+  const first = await readPage(0);
+  const items = [...first.items];
+  for (let offset = first.items.length; offset < first.total; offset += limit) {
+    items.push(...(await readPage(offset)).items);
+  }
+  return items;
+}
+
 export const api = {
   health: () => requestJson<HealthStatus>('/health'),
   login: (email: string, password: string) =>
@@ -178,8 +218,15 @@ export const api = {
       sortBy: params.sortBy,
       sortDir: params.sortDir,
     });
+    if (params.pageSize !== undefined) query.set('pageSize', String(params.pageSize));
     return requestJson<MonitoringPointPageDto>(`/monitoring-points?${query.toString()}`);
   },
+  /**
+   * O cadastro usa paginação de cinco itens, mas o dashboard precisa do inventário
+   * completo. Percorremos o contrato público existente em páginas de até 50, sem
+   * pressupor que a primeira resposta contenha toda a planta.
+   */
+  allMonitoringPoints: getAllMonitoringPoints,
   createMonitoringPoint: (machineId: string, name: string) =>
     requestJson<MonitoringPointDto>('/monitoring-points', {
       method: 'POST',
@@ -198,6 +245,8 @@ export const api = {
     const suffix = query.size > 0 ? `?${query.toString()}` : '';
     return requestJson<TimeSeriesSamplePage>(`/time-series/${id}/samples${suffix}`);
   },
+  /** Recupera a série inteira usando a paginação existente; nunca trunca em silêncio. */
+  allSamples: getAllSamples,
   deleteTimeSeries: (id: string) =>
     requestJson<void>(`/time-series/${id}`, { method: 'DELETE' }),
   metrics: (id: string) => requestJson<SeriesMetrics>(`/time-series/${id}/metrics`),

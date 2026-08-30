@@ -1,12 +1,10 @@
 import ApiOutlinedIcon from '@mui/icons-material/ApiOutlined';
 import MenuIcon from '@mui/icons-material/Menu';
-import LogoutIcon from '@mui/icons-material/Logout';
 import PrecisionManufacturingOutlinedIcon from '@mui/icons-material/PrecisionManufacturingOutlined';
 import SensorsOutlinedIcon from '@mui/icons-material/SensorsOutlined';
 import SpaceDashboardOutlinedIcon from '@mui/icons-material/SpaceDashboardOutlined';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
 import IconButton from '@mui/material/IconButton';
@@ -17,15 +15,12 @@ import ListItemText from '@mui/material/ListItemText';
 import ListSubheader from '@mui/material/ListSubheader';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { alpha } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import { useState, type ReactNode } from 'react';
 import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
 
 import { API_BASE_URL } from '../api/client';
-import { logout } from '../features/auth/authSlice';
-import { useAppDispatch, useAppSelector } from '../store';
 
 const DRAWER_WIDTH = 288;
 
@@ -41,7 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     to: '/',
     label: 'Visão geral',
-    description: 'Estado da API e série temporal',
+    description: 'Condição, prioridade e tendência',
     icon: <SpaceDashboardOutlinedIcon />,
   },
   {
@@ -57,12 +52,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: <SensorsOutlinedIcon />,
   },
 ];
-
-const PAGE_TITLES: Record<string, string> = {
-  '/': 'Visão geral',
-  '/machines': 'Máquinas',
-  '/monitoring-points': 'Pontos e sensores',
-};
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Element {
   const location = useLocation();
@@ -169,14 +158,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Elemen
 }
 
 export function AppShell(): JSX.Element {
-  const dispatch = useAppDispatch();
-  const user = useAppSelector((state) => state.auth.user);
-  const location = useLocation();
   const muiTheme = useTheme();
   const isDesktop = useMediaQuery(muiTheme.breakpoints.up('lg'));
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  const title = PAGE_TITLES[location.pathname] ?? 'Visão geral';
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -200,66 +184,17 @@ export function AppShell(): JSX.Element {
       )}
 
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        {/* Toolbar flutuante em card, não uma AppBar chapada. */}
-        <Box sx={{ px: { xs: 1.5, md: 3 }, pt: 1.5, position: 'sticky', top: 0, zIndex: 10 }}>
-          <Stack
-            direction="row"
-            alignItems="center"
-            spacing={1.5}
-            sx={{
-              px: 2,
-              py: 1.25,
-              borderRadius: 4,
-              border: 1,
-              borderColor: 'divider',
-              bgcolor: (t) => alpha(t.palette.background.paper, 0.85),
-              backdropFilter: 'blur(8px)',
-              boxShadow: '0 12px 32px rgba(0,0,0,0.06)',
-            }}
-          >
-            {!isDesktop ? (
-              <IconButton
-                aria-label="Abrir menu de navegação"
-                onClick={() => setMobileOpen(true)}
-                edge="start"
-              >
-                <MenuIcon />
-              </IconButton>
-            ) : null}
-
-            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: 0.6 }}>
-                MONITORAMENTO DE ATIVOS
-              </Typography>
-              <Typography variant="h1" component="h1" sx={{ fontSize: '1.2rem', lineHeight: 1.2 }}>
-                {title}
-              </Typography>
-            </Box>
-
-            <Stack direction="row" spacing={1.25} alignItems="center">
-              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main', fontSize: '0.85rem' }}>
-                {(user?.name ?? user?.email ?? '?').charAt(0).toUpperCase()}
-              </Avatar>
-              <Typography
-                variant="body2"
-                sx={{ display: { xs: 'none', sm: 'block' } }}
-                color="text.secondary"
-              >
-                {user?.email}
-              </Typography>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<LogoutIcon />}
-                onClick={() => void dispatch(logout())}
-              >
-                Sair
-              </Button>
-            </Stack>
-          </Stack>
-        </Box>
-
         <Box component="main" sx={{ px: { xs: 1.5, md: 3 }, py: 3, flexGrow: 1 }}>
+          {!isDesktop ? (
+            <IconButton
+              aria-label="Abrir menu de navegação"
+              onClick={() => setMobileOpen(true)}
+              edge="start"
+              sx={{ mb: 1 }}
+            >
+              <MenuIcon />
+            </IconButton>
+          ) : null}
           <Outlet />
         </Box>
       </Box>

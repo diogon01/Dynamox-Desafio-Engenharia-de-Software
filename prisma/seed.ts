@@ -6,7 +6,7 @@
 import { randomBytes, scryptSync } from 'node:crypto';
 
 import { PrismaClient } from '@prisma/client';
-import { deterministicResourceId } from '@dynamox/contracts';
+import { demoAnchorMs, deterministicResourceId } from '@dynamox/contracts';
 
 const prisma = new PrismaClient();
 
@@ -33,14 +33,19 @@ const MONITORING_POINTS = [
 ] as const;
 
 /**
- * Amostras da demonstração: 30 pontos a cada 10 s, terminando em um instante fixo.
- * A janela começa às 12:10 UTC de propósito, depois do exemplo de ingestão em
- * contracts/dynamox/examples (12:00:00–12:00:20): sobreposição entre seed e exemplo
- * faria a ingestão legítima do exemplo ser recusada por conflito de instante.
+ * Amostras da demonstração: 30 pontos a cada 10 s, terminando na âncora do bloco de 6 h
+ * da execução (ver `demoAnchorMs`). Instantes relativos, e não uma data fixa: o painel
+ * classifica recência contra o relógio, então uma data absoluta envelhece e o dashboard
+ * abre vazio dias depois. Reexecutar o seed dentro do mesmo bloco recalcula exatamente os
+ * mesmos instantes — `skipDuplicates` os reconhece e nada é duplicado.
+ *
+ * A janela é curta (≈5 min) e termina na âncora, sem sobreposição com as janelas da planta
+ * do BON-06 (âncora −3 h, −2 h e −1 h) nem com o exemplo versionado em
+ * contracts/dynamox/examples, cujos instantes são fixos em 2026-08-26.
  */
 const SAMPLE_COUNT = 30;
 const SAMPLE_INTERVAL_MS = 10_000;
-const SERIES_END = Date.UTC(2026, 7, 26, 12, 15, 0);
+const SERIES_END = demoAnchorMs();
 
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');

@@ -8,6 +8,11 @@ import {
   loadTelemetryCycleSchema,
   validateTelemetryCycle,
   type TelemetryCyclePayload,
+  DEMO_ANCHOR_BLOCK_MS,
+  DEMO_ANCHOR_ENV,
+  DEMO_HOUR_MS,
+  demoAnchorMs,
+  demoWindowIso,
 } from '@dynamox/contracts';
 import { isAxisValidForQuantity, isSensorModelAllowedForMachine } from '@dynamox/domain';
 
@@ -220,5 +225,53 @@ describe('Invariantes de domínio', () => {
     expect(isAxisValidForQuantity('temperature', 'y')).toBe(false);
     expect(isAxisValidForQuantity('rotationalSpeed', undefined)).toBe(true);
     expect(isAxisValidForQuantity('rotationalSpeed', 'x')).toBe(false);
+  });
+});
+
+
+/**
+ * Ancoragem dos dados de demonstração. O defeito que originou estes testes: seed e planta
+ * gravavam instantes ABSOLUTOS, então o painel — que classifica recência contra o relógio —
+ * passava a mostrar leituras "no futuro" e tendência vazia assim que a data passava.
+ */
+describe('Âncora temporal dos dados de demonstração', () => {
+  const semOverride: Record<string, string | undefined> = {};
+
+  it('é estável dentro do bloco: duas execuções na mesma janela produzem o mesmo instante', () => {
+    const inicio = Date.UTC(2026, 8, 20, 12, 0, 0);
+    const fim = inicio + DEMO_ANCHOR_BLOCK_MS - 1;
+    expect(demoAnchorMs(inicio, semOverride)).toBe(demoAnchorMs(fim, semOverride));
+  });
+
+  it('muda no bloco seguinte — aquisição nova, não repetição da anterior', () => {
+    const inicio = Date.UTC(2026, 8, 20, 12, 0, 0);
+    expect(demoAnchorMs(inicio + DEMO_ANCHOR_BLOCK_MS, semOverride)).toBe(
+      demoAnchorMs(inicio, semOverride) + DEMO_ANCHOR_BLOCK_MS,
+    );
+  });
+
+  it('nunca está no futuro do instante informado', () => {
+    for (const minuto of [0, 1, 59, 359]) {
+      const agora = Date.UTC(2026, 8, 20, 3, 0, 0) + minuto * 60_000;
+      expect(demoAnchorMs(agora, semOverride)).toBeLessThanOrEqual(agora);
+      expect(agora - demoAnchorMs(agora, semOverride)).toBeLessThan(DEMO_ANCHOR_BLOCK_MS);
+    }
+  });
+
+  it('janelas derivadas são canônicas e ficam no passado', () => {
+    const agora = Date.UTC(2026, 8, 20, 14, 37, 12);
+    for (const horas of [-3, -2, -1]) {
+      const janela = demoWindowIso(horas * DEMO_HOUR_MS, agora, semOverride);
+      expect(isCanonicalMillisecondTimestamp(janela)).toBe(true);
+      expect(Date.parse(janela)).toBeLessThan(agora);
+    }
+  });
+
+  it('a variável de ambiente fixa a âncora para reproduzir uma demonstração', () => {
+    const env = { [DEMO_ANCHOR_ENV]: '2026-08-31T08:00:00.000Z' };
+    expect(demoWindowIso(0, Date.now(), env)).toBe('2026-08-31T08:00:00.000Z');
+    expect(() => demoAnchorMs(Date.now(), { [DEMO_ANCHOR_ENV]: 'ontem' })).toThrow(
+      new RegExp(DEMO_ANCHOR_ENV),
+    );
   });
 });

@@ -70,13 +70,25 @@ describe('plant manifest — resourceId e janelas', () => {
     expect(sensors.filter((s) => s.resourceIdStrategy === 'api-machine-id')).toHaveLength(10);
   });
 
-  it('janelas canônicas, crescentes e disjuntas dos dados existentes (26/08 e 30/08)', () => {
+  it('janelas canônicas, crescentes, no passado e dentro das últimas 24 h', () => {
     const { baseline, condition, confirm } = PLANT.windows;
     for (const ts of [baseline, condition, confirm]) {
       expect(ts).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
     }
     expect(baseline < condition && condition < confirm).toBe(true);
-    expect(baseline > '2026-08-30T23:59:59.999Z').toBe(true);
+
+    // O painel classifica recência contra o relógio: janela no futuro vira "relógio
+    // divergente" e janela antiga demais some da tendência. As duas coisas quebraram
+    // quando as janelas eram datas fixas.
+    const now = Date.now();
+    const starts = [baseline, condition, confirm].map((ts) => Date.parse(ts));
+    for (const at of starts) {
+      expect(at).toBeLessThanOrEqual(now);
+      expect(now - at).toBeLessThan(24 * 60 * 60 * 1000);
+    }
+    // Aquisições de 60 s não podem se sobrepor.
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(60_000);
+    expect(starts[2] - starts[1]).toBeGreaterThanOrEqual(60_000);
   });
 
   it('fans a 1180 rpm mantêm 2×f_rot bem abaixo do Nyquist do stream', () => {

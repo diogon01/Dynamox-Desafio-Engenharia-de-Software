@@ -255,6 +255,55 @@ export function computePayloadFingerprint(payload: TelemetryCyclePayload): strin
   return createHash('sha256').update(canonicalJson(canonical), 'utf8').digest('hex');
 }
 
+/**
+ * ————— Ancoragem temporal dos DADOS DE DEMONSTRAÇÃO —————
+ *
+ * Seed e sensor twin geram amostras sintéticas. Se os instantes forem absolutos, eles
+ * envelhecem: o painel filtra por janelas relativas ao relógio e, dias depois, o mesmo
+ * comando produz um dashboard vazio (ou, antes da data, leituras "no futuro").
+ *
+ * A âncora é o início do bloco de 6 h em que a execução acontece. Duas propriedades:
+ *  - **determinismo dentro do bloco**: qualquer comando rodado na mesma janela de 6 h
+ *    calcula o MESMO instante, então o payload é idêntico, o fingerprint é idêntico e a
+ *    reingestão é reconhecida como duplicata;
+ *  - **sempre no passado e recente**: a âncora nunca é futura e fica, no pior caso, 6 h
+ *    atrás — dentro da janela de recência do painel.
+ *
+ * `DEMO_DATA_ANCHOR` (ISO 8601) fixa a âncora explicitamente, para reproduzir uma
+ * demonstração ou um teste em um instante conhecido.
+ */
+export const DEMO_ANCHOR_BLOCK_MS = 6 * 60 * 60 * 1000;
+export const DEMO_ANCHOR_ENV = 'DEMO_DATA_ANCHOR';
+
+export function demoAnchorMs(
+  now: number = Date.now(),
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const override = env[DEMO_ANCHOR_ENV];
+  if (override !== undefined && override.trim() !== '') {
+    const parsed = Date.parse(override);
+    if (!Number.isFinite(parsed)) {
+      throw new Error(`${DEMO_ANCHOR_ENV} inválida: "${override}" não é uma data ISO 8601.`);
+    }
+    return parsed;
+  }
+  return Math.floor(now / DEMO_ANCHOR_BLOCK_MS) * DEMO_ANCHOR_BLOCK_MS;
+}
+
+/**
+ * Instante canônico (UTC com milissegundos exatos) deslocado da âncora. Offsets negativos
+ * apontam para o passado — é assim que as janelas da planta são posicionadas.
+ */
+export function demoWindowIso(
+  offsetMs: number,
+  now?: number,
+  env?: Record<string, string | undefined>,
+): string {
+  return new Date(demoAnchorMs(now, env) + offsetMs).toISOString();
+}
+
+export const DEMO_HOUR_MS = 60 * 60 * 1000;
+
 export const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~:-]{1,128}$/;
 
 export function isValidIdempotencyKey(value: string): boolean {

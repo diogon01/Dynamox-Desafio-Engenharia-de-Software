@@ -12,6 +12,7 @@
  *    recomputa com a MESMA função compartilhada de @dynamox/contracts após descobrir o
  *    id pelo bootstrap ('api-machine-id').
  */
+import { DEMO_HOUR_MS, demoWindowIso } from '@dynamox/contracts';
 import {
   isSensorModelAllowedForMachine,
   type MachineType,
@@ -79,10 +80,14 @@ const point = (
 export const PLANT: PlantManifest = {
   plantId: 'sbe-01',
   plantName: 'Planta Sintética de Bioenergia',
+  // Janelas RELATIVAS à execução (âncora do bloco de 6 h, ver @dynamox/contracts):
+  // −3 h baseline, −2 h condition, −1 h confirm. Sempre no passado e dentro das últimas
+  // 24 h, para que o painel classifique as leituras como recentes; estáveis dentro do
+  // bloco, para que reingerir a mesma fase continue sendo reconhecido como duplicata.
   windows: {
-    baseline: '2026-08-31T08:00:00.000Z',
-    condition: '2026-08-31T09:00:00.000Z',
-    confirm: '2026-08-31T10:00:00.000Z',
+    baseline: demoWindowIso(-3 * DEMO_HOUR_MS),
+    condition: demoWindowIso(-2 * DEMO_HOUR_MS),
+    confirm: demoWindowIso(-1 * DEMO_HOUR_MS),
   },
   conditionTarget: { sensorSerial: 'SIM-HF-002' },
   assets: [
@@ -158,6 +163,11 @@ export function plantSensors(plant: PlantManifest = PLANT): PlantSensor[] {
 
 const CANONICAL_TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
+/** Duração de uma aquisição (60 janelas RMS de 1 s). */
+const WINDOW_SPAN_MS = 60_000;
+/** Recência máxima aceita para os dados de demonstração (mesmo limite do painel). */
+const MAX_WINDOW_AGE_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Invariantes da planta — falhar cedo e alto. A quantidade 12 é canônica da demo, mas
  * a validação aceita qualquer manifest coerente (a engine não depende magicamente de 12).
@@ -213,9 +223,23 @@ export function validatePlantManifest(plant: PlantManifest = PLANT): void {
   if (!(baseline < condition && condition < confirm)) {
     problems.push('janelas precisam ser estritamente crescentes (baseline < condition < confirm)');
   }
-  // Disjunção com os dados históricos conhecidos (seed 26/08 e ciclos single-sensor 30/08).
-  if (baseline <= '2026-08-30T23:59:59.999Z') {
-    problems.push('janelas da planta precisam começar após 30/08 (dados existentes)');
+  // Cada aquisição ocupa 60 s: janelas mais próximas do que isso se sobreporiam e a
+  // segunda ingestão bateria em conflito de instante na mesma série.
+  const starts = [baseline, condition, confirm].map((ts) => Date.parse(ts));
+  for (let i = 1; i < starts.length; i += 1) {
+    if (starts[i] - starts[i - 1] < WINDOW_SPAN_MS) {
+      problems.push('janelas precisam estar separadas por pelo menos a duração da aquisição');
+    }
+  }
+  // Regra que substituiu a disjunção por data fixa: o dado de demonstração precisa ser
+  // passado (senão o painel o marca como relógio divergente) e recente (senão some da
+  // janela de tendência). As duas condições são o que o QA final encontrou quebrado.
+  const now = Date.now();
+  if (starts.some((at) => at > now)) {
+    problems.push('janelas da planta não podem estar no futuro do relógio');
+  }
+  if (starts.some((at) => now - at > MAX_WINDOW_AGE_MS)) {
+    problems.push('janelas da planta precisam estar dentro das últimas 24 h');
   }
 
   if (problems.length > 0) {

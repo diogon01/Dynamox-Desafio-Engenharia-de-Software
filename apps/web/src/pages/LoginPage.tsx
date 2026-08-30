@@ -12,6 +12,14 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { login, selectAuth } from '../features/auth/authSlice';
 import { useAppDispatch, useAppSelector } from '../store';
 
+/**
+ * Credencial da seed de demonstração (`prisma/seed.ts`, documentada em `docs/SETUP.md`).
+ * Os dados são 100% sintéticos, então o formulário já abre preenchido — para entrar como
+ * outro perfil basta digitar o e-mail dele. `VITE_DEMO_LOGIN=off` desliga o preenchimento.
+ */
+const DEMO_LOGIN = { email: 'analista@dynamox.local', password: 'Dynamox@2026' };
+const DEMO_LOGIN_ENABLED = import.meta.env.VITE_DEMO_LOGIN !== 'off';
+
 function requestedPrivatePath(state: unknown): string {
   if (
     typeof state === 'object' &&
@@ -29,8 +37,8 @@ export function LoginPage(): JSX.Element {
   const dispatch = useAppDispatch();
   const { status, error } = useAppSelector(selectAuth);
   const location = useLocation();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState(DEMO_LOGIN_ENABLED ? DEMO_LOGIN.email : '');
+  const [password, setPassword] = useState(DEMO_LOGIN_ENABLED ? DEMO_LOGIN.password : '');
 
   if (status === 'authenticated') {
     return <Navigate to={requestedPrivatePath(location.state)} replace />;
@@ -70,6 +78,7 @@ export function LoginPage(): JSX.Element {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
+                placeholder={DEMO_LOGIN_ENABLED ? DEMO_LOGIN.email : undefined}
                 autoComplete="username"
                 autoFocus
                 required
@@ -80,6 +89,7 @@ export function LoginPage(): JSX.Element {
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
+                placeholder={DEMO_LOGIN_ENABLED ? DEMO_LOGIN.password : undefined}
                 autoComplete="current-password"
                 required
                 fullWidth

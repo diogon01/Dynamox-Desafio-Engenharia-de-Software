@@ -31,7 +31,7 @@ describe('App — autenticação e proteção de rotas', () => {
   it('sem sessão, acesso direto à rota privada cai no login', async () => {
     renderApp();
     expect(await screen.findByRole('heading', { name: /Entrar/i })).toBeDefined();
-    expect(screen.queryByRole('heading', { name: /Estado do sistema/i })).toBeNull();
+    expect(screen.queryByRole('banner')).toBeNull();
   });
 
   it('reload em rota privada com token restaura a sessão via /auth/me com Bearer', async () => {
@@ -68,11 +68,10 @@ describe('App — autenticação e proteção de rotas', () => {
 
     renderApp();
 
-    const statusHeading = await screen.findByRole('heading', { name: /Estado do sistema/i });
-    const statusCard = statusHeading.closest('section');
-    expect(statusCard).not.toBeNull();
-    expect(within(statusCard!).getByText(USER.email)).toBeDefined();
-    expect(within(statusCard!).getByRole('button', { name: /Sair da sessão/i })).toBeDefined();
+    // Uma única barra de aplicação carrega estado do sistema e sessão.
+    const appHeader = await screen.findByRole('banner');
+    expect(within(appHeader).getByText(USER.email)).toBeDefined();
+    expect(within(appHeader).getByRole('button', { name: /Sair da sessão/i })).toBeDefined();
     expect(screen.getAllByText(USER.email)).toHaveLength(1);
     expect(screen.queryByText('MONITORAMENTO DE ATIVOS')).toBeNull();
     expect(meAuthorization).toBe('Bearer jwt-valido');
@@ -115,7 +114,10 @@ describe('App — autenticação e proteção de rotas', () => {
     renderApp();
     await screen.findByRole('heading', { name: /Entrar/i });
 
+    // O formulário abre preenchido com a conta de demonstração; o teste substitui.
+    await userEvent.clear(screen.getByLabelText(/E-mail/i));
     await userEvent.type(screen.getByLabelText(/E-mail/i), USER.email);
+    await userEvent.clear(screen.getByLabelText(/Senha/i));
     await userEvent.type(screen.getByLabelText(/Senha/i), 'Dynamox@2026');
     await userEvent.click(screen.getByRole('button', { name: /^Entrar$/i }));
 
@@ -162,12 +164,42 @@ describe('App — autenticação e proteção de rotas', () => {
     renderApp();
     await screen.findByRole('heading', { name: /Entrar/i });
 
+    // O formulário abre preenchido com a conta de demonstração; o teste substitui.
+    await userEvent.clear(screen.getByLabelText(/E-mail/i));
     await userEvent.type(screen.getByLabelText(/E-mail/i), USER.email);
+    await userEvent.clear(screen.getByLabelText(/Senha/i));
     await userEvent.type(screen.getByLabelText(/Senha/i), 'Dynamox@2026');
     await userEvent.click(screen.getByRole('button', { name: /^Entrar$/i }));
 
-    expect(await screen.findByRole('heading', { name: /Estado do sistema/i })).toBeDefined();
+    expect(await screen.findByRole('banner')).toBeDefined();
     expect(getToken()).toBe('jwt-novo');
+  });
+
+  it('login abre preenchido com a conta da seed e entra sem digitação', async () => {
+    let enviado: { email: string; password: string } | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith('/auth/login')) {
+          enviado = JSON.parse(String(init?.body)) as { email: string; password: string };
+          return new Response(JSON.stringify({ token: 'jwt-demo', user: USER }), { status: 200 });
+        }
+        return new Response('[]', { status: 200 });
+      }),
+    );
+
+    renderApp();
+    await screen.findByRole('heading', { name: /Entrar/i });
+
+    const email = screen.getByLabelText(/E-mail/i) as HTMLInputElement;
+    const senha = screen.getByLabelText(/Senha/i) as HTMLInputElement;
+    expect(email.value).toBe('analista@dynamox.local');
+    expect(senha.value).not.toBe('');
+
+    await userEvent.click(screen.getByRole('button', { name: /^Entrar$/i }));
+    await waitFor(() => expect(enviado).not.toBeNull());
+    expect(enviado).toEqual({ email: 'analista@dynamox.local', password: 'Dynamox@2026' });
   });
 
   it('erro de credencial aparece no formulário', async () => {
@@ -181,7 +213,10 @@ describe('App — autenticação e proteção de rotas', () => {
     renderApp();
     await screen.findByRole('heading', { name: /Entrar/i });
 
+    // O formulário abre preenchido com a conta de demonstração; o teste substitui.
+    await userEvent.clear(screen.getByLabelText(/E-mail/i));
     await userEvent.type(screen.getByLabelText(/E-mail/i), USER.email);
+    await userEvent.clear(screen.getByLabelText(/Senha/i));
     await userEvent.type(screen.getByLabelText(/Senha/i), 'errada');
     await userEvent.click(screen.getByRole('button', { name: /^Entrar$/i }));
 
@@ -221,7 +256,7 @@ describe('AppShell — navegação lateral', () => {
     renderApp();
 
     // Visão geral carregada. No viewport de teste (mobile) o menu abre pelo botão.
-    expect(await screen.findByRole('heading', { name: /Estado do sistema/i })).toBeDefined();
+    expect(await screen.findByRole('banner')).toBeDefined();
 
     const openNav = async () => {
       await userEvent.click(screen.getByRole('button', { name: /Abrir menu de navegação/i }));
@@ -234,7 +269,7 @@ describe('AppShell — navegação lateral', () => {
     await userEvent.click(within(nav).getByText('Máquinas'));
     // A toolbar duplicada foi removida; existe apenas o título próprio do painel.
     expect(await screen.findAllByRole('heading', { name: /^Máquinas$/i })).toHaveLength(1);
-    expect(screen.getByRole('heading', { name: /Estado do sistema/i })).toBeDefined();
+    expect(screen.getByRole('banner')).toBeDefined();
     expect(screen.getByRole('button', { name: /Sair da sessão/i })).toBeDefined();
 
     // Pontos e sensores.

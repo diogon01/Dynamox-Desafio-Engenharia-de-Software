@@ -14,6 +14,12 @@ import { validateTelemetryCycle } from '@dynamox/contracts';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { OpenAPIObject } from '@nestjs/swagger';
+import type {
+  ExampleObject,
+  OperationObject,
+  RequestBodyObject,
+  SchemaObject,
+} from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 
@@ -80,11 +86,69 @@ function cicloMinimo(): Record<string, unknown> {
   };
 }
 
+/**
+ * Forma MUTÁVEL do ciclo usada só nesta suíte: os casos inválidos trocam tipos de
+ * propósito (número onde o contrato pede string, propriedade extra, campo removido),
+ * então as folhas são `unknown` e os contêineres ficam abertos — sem `any`, que
+ * desligaria a verificação inteira em vez de afrouxar só as folhas.
+ */
+interface MedicaoMutavel extends Record<string, unknown> {
+  resourceId?: unknown;
+  attributes: Record<string, unknown>;
+  dataPoints: Array<Record<string, unknown>>;
+}
+
+interface CicloMutavel {
+  telemetryCycleData: Record<string, unknown> & {
+    measuringSystemUniqueIdentifier?: unknown;
+    measuringSystemModel: Record<string, unknown>;
+    measurements: MedicaoMutavel[];
+    metadata: Record<string, unknown>;
+    tags?: unknown;
+  };
+  configuration: Record<string, unknown> & {
+    monitoringLocationMap?: Array<Record<string, unknown>>;
+  };
+}
+
 /** Aplica uma alteração pontual sobre uma cópia profunda do ciclo mínimo. */
-function comMudanca(mutate: (cycle: any) => void): Record<string, unknown> {
-  const cycle = JSON.parse(JSON.stringify(cicloMinimo()));
+function comMudanca(mutate: (cycle: CicloMutavel) => void): Record<string, unknown> {
+  const cycle = JSON.parse(JSON.stringify(cicloMinimo())) as CicloMutavel;
   mutate(cycle);
-  return cycle as Record<string, unknown>;
+  return cycle as unknown as Record<string, unknown>;
+}
+
+/**
+ * Acesso tipado ao corpo publicado. O documento do Swagger permite `$ref`, que este
+ * projeto não usa no corpo da ingestão; o cast é para a forma concreta, não para `any`.
+ */
+function corpoDaIngestao(document: OpenAPIObject): RequestBodyObject {
+  const operacao = document.paths['/api/telemetry-cycles']?.post as OperationObject | undefined;
+  const corpo = operacao?.requestBody as RequestBodyObject | undefined;
+  if (!corpo) {
+    throw new Error('POST /api/telemetry-cycles não publicou requestBody no documento.');
+  }
+  return corpo;
+}
+
+function schemaDaIngestao(document: OpenAPIObject): SchemaObject {
+  return corpoDaIngestao(document).content['application/json'].schema as SchemaObject;
+}
+
+function exemplosDaIngestao(document: OpenAPIObject): Record<string, ExampleObject> {
+  const examples = corpoDaIngestao(document).content['application/json'].examples ?? {};
+  return examples as Record<string, ExampleObject>;
+}
+
+/** Leitura tipada do exemplo publicado (só o que o teste de colisão percorre). */
+interface CicloDeExemplo {
+  telemetryCycleData: {
+    measuringSystemUniqueIdentifier: string;
+    measurements: Array<{
+      attributes: { physicalQuantity: string; axis?: string };
+      dataPoints: Array<{ timestamp: string }>;
+    }>;
+  };
 }
 
 describe('paridade entre o schema publicado e o validador real', () => {
@@ -99,9 +163,7 @@ describe('paridade entre o schema publicado e o validador real', () => {
     await app.init();
     document = buildOpenApiDocument(app);
 
-    const publicado = (document.paths['/api/telemetry-cycles'] as any).post.requestBody.content[
-      'application/json'
-    ].schema;
+    const publicado = schemaDaIngestao(document);
 
     // O documento publicado é OpenAPI 3.0; traduzir de volta o dialeto permite exercitá-lo
     // com o mesmo motor de validação usado em produção.
@@ -190,7 +252,9 @@ describe('paridade entre o schema publicado e o validador real', () => {
       esperarConcordancia(
         'mapValue null',
         comMudanca((c) => {
-          c.configuration.monitoringLocationMap[0].mapValue = null;
+          c.configuration.monitoringLocationMap = [
+            { mapLabel: 'P-101 / Mancal', mapValue: null },
+          ];
         }),
         true,
       );
@@ -271,9 +335,7 @@ describe('paridade entre o schema publicado e o validador real', () => {
 
   describe('exemplos publicados no Swagger', () => {
     it('todo exemplo do corpo é aceito pelo validador real', () => {
-      const exemplos = (document.paths['/api/telemetry-cycles'] as any).post.requestBody.content[
-        'application/json'
-      ].examples as Record<string, { value: unknown }>;
+      const exemplos = exemplosDaIngestao(document);
 
       expect(Object.keys(exemplos).length).toBeGreaterThan(0);
       for (const [nome, exemplo] of Object.entries(exemplos)) {
@@ -286,15 +348,14 @@ describe('paridade entre o schema publicado e o validador real', () => {
     });
 
     it('os exemplos não colidem entre si na mesma série', () => {
-      const exemplos = (document.paths['/api/telemetry-cycles'] as any).post.requestBody.content[
-        'application/json'
-      ].examples as Record<string, { value: any }>;
+      const exemplos = exemplosDaIngestao(document);
 
       // Instantes repetidos na mesma série fariam o segundo "Try it out" responder 409.
       const vistos = new Map<string, string>();
       for (const [nome, exemplo] of Object.entries(exemplos)) {
-        const sensor = exemplo.value.telemetryCycleData.measuringSystemUniqueIdentifier;
-        for (const measurement of exemplo.value.telemetryCycleData.measurements) {
+        const ciclo = exemplo.value as CicloDeExemplo;
+        const sensor = ciclo.telemetryCycleData.measuringSystemUniqueIdentifier;
+        for (const measurement of ciclo.telemetryCycleData.measurements) {
           const serie = `${sensor}|${measurement.attributes.physicalQuantity}|${measurement.attributes.axis ?? '—'}`;
           for (const ponto of measurement.dataPoints) {
             const chave = `${serie}@${ponto.timestamp}`;

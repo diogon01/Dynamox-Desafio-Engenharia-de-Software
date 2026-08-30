@@ -1,5 +1,11 @@
 # BON-06 v2 — Plano executável do gêmeo digital (pós-freeze do P0)
 
+> **HISTÓRICO — este documento descreve uma etapa anterior do projeto e não
+> representa a arquitetura atual.** É o plano de execução do bônus; o resultado entregue está
+> descrito em [`../../05-simulation/sensor-twin.md`](../../05-simulation/sensor-twin.md).
+> Para o sistema como ele é hoje, comece por
+> [`../../00-overview/architecture-map.md`](../../00-overview/architecture-map.md).
+
 > Substitui as partes operacionais de `BON-06_SENSOR_TWIN_IMPLEMENTATION_PLAN.md` (v1).
 > O v1 permanece como registro histórico das decisões de contrato e de PI, que continuam
 > válidas. Este documento é o plano de execução real, auditado contra o código em

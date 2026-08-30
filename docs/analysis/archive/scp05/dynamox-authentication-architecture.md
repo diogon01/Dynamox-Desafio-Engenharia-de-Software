@@ -1,8 +1,15 @@
 # Autenticação — arquitetura implementada (AUT-01 · AUT-02 · AUT-03)
 
+> **HISTÓRICO — este documento descreve uma etapa anterior do projeto e não
+> representa a arquitetura atual.** Seu conteúdo técnico ainda válido foi migrado para
+> [`../../02-api/auth-and-rbac.md`](../../02-api/auth-and-rbac.md), que também cobre os
+> perfis de acesso — inexistentes quando este texto foi escrito.
+> Para o sistema como ele é hoje, comece por
+> [`../../00-overview/architecture-map.md`](../../00-overview/architecture-map.md).
+
 > **Nota de auditoria (29/08/2026).** Documento fiel ao ciclo de 27/08; a arquitetura
 > descrita segue em produção no repo. Contagens atuais (152 API + 82 web, tudo verde,
-> revalidado em clone limpo) na [matriz de evidências](./dynamox-evidence-matrix.md).
+> revalidado em clone limpo) na [matriz de evidências](../../07-validation/traceability.md).
 
 Registro do que **está implementado e testado** — não é proposta.
 

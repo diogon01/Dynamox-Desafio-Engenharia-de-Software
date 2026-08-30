@@ -25,7 +25,7 @@ import { findRepositoryRoot } from '@dynamox/contracts';
 const SNAPSHOT = join('contracts', 'dynamox', 'dynamox-public-api.openapi.json');
 const OUTPUT = join('docs', 'analysis', '04-contracts', 'dynamox-endpoint-inventory.json');
 const MAPPING_MD = join('docs', 'analysis', '04-contracts', 'dynamox-sensor-api-mapping.md');
-const BLUEPRINT_MD = join('docs', 'analysis', 'dynamox-digital-sensor-blueprint.md');
+const BLUEPRINT_MD = join('docs', 'analysis', 'archive', 'scp05', 'dynamox-digital-sensor-blueprint.md');
 const SOURCE_CONSULTED_AT = '2026-08-26';
 
 type Json = Record<string, unknown>;

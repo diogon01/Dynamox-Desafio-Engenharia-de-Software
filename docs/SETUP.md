@@ -296,7 +296,7 @@ prisma       schema, migrações e seed
 - **Autenticação end-to-end**: login com credencial fixa, JWT emitido e validado pela
   própria API, guard global, `GET /auth/me`, sessão Redux restaurada após reload, logout e
   proteção das rotas privadas no frontend. Detalhes e decisões em
-  [`docs/analysis/dynamox-authentication-architecture.md`](./analysis/dynamox-authentication-architecture.md).
+  [`docs/analysis/02-api/auth-and-rbac.md`](./analysis/02-api/auth-and-rbac.md).
 - **CRUD autenticado de máquinas no backend**: criação e edição aceitando somente `Pump` e
   `Fan`, listagem determinística (ordenada por nome), exclusão, e os erros `400` (payload
   ou tipo inválido), `404` (máquina inexistente) e `409` (nome duplicado, garantido pelo
@@ -325,7 +325,7 @@ reproducible challenge delivery guide`), testes unitários isolados de backend, 
 reproduzível de latência (`npm run perf:latency`) e validação integral em clone limpo.
 O que resta é da entrega em si (revisão final, PR e e-mail) e os bônus.
 
-## Estado do bônus BON-06 (concluído; ver `docs/analysis/dynamox-evidence-matrix.md`)
+## Estado do bônus BON-06 (concluído; ver `docs/analysis/07-validation/traceability.md`)
 
 O bônus foi entregue como **sensor twin determinístico com frota sintética** (não um
 gêmeo digital operacional bidirecional): 6 máquinas / 12 pontos / 12 sensores criados

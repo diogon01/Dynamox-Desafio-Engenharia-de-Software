@@ -1,11 +1,17 @@
 # Blueprint — Sensor digital determinístico (TcAg · TcAs · HF+)
 
+> **HISTÓRICO — este documento descreve uma etapa anterior do projeto e não
+> representa a arquitetura atual.** O simulador real é `simulation/sensor-twin/`; `NormalizedMetric`,
+> `libs/sensor-sim` e o motor Fuzzy descritos aqui **nunca foram construídos**.
+> Para o sistema como ele é hoje, comece por
+> [`../../00-overview/architecture-map.md`](../../00-overview/architecture-map.md).
+
 > **⚠️ SUPERADO (29/08/2026).** Este blueprint é o plano da era SCP-05 e foi substituído
 > pela implementação real do BON-06 v3.1: o simulador vivo é `simulation/sensor-twin/`
 > (engine determinística, frota de 12 sensores, supervisor deliberativo e proveniência
 > ROS opcional). `NormalizedMetric`/`libs/sensor-sim` e o motor Fuzzy **não foram
-> construídos**. Estado atual: [matriz de evidências](./dynamox-evidence-matrix.md) e
-> [README do sensor twin](../../simulation/sensor-twin/README.md). O texto abaixo
+> construídos**. Estado atual: [matriz de evidências](../../07-validation/traceability.md) e
+> [README do sensor twin](../../../../simulation/sensor-twin/README.md). O texto abaixo
 > permanece como registro histórico da análise.
 
 > **Status:** blueprint. Nada daqui está implementado. Este documento congela o contrato do
@@ -18,7 +24,7 @@
 > DynaDetect**.
 
 Níveis de evidência: `CONFIRMADO` · `DERIVADO` · `HIPÓTESE_DE_SIMULAÇÃO` · `DESCONHECIDO`
-(definidos em [`dynamox-sensor-api-mapping.md`](./dynamox-sensor-api-mapping.md)).
+(definidos em [`dynamox-sensor-api-mapping.md`](../../04-contracts/dynamox-sensor-api-mapping.md)).
 
 ## 1. Objetivo e não objetivos
 

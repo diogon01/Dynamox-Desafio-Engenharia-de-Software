@@ -1,15 +1,22 @@
 # Walkthrough visual — Bomba P-101 com sensor digital HF+
 
+> **HISTÓRICO — este documento descreve uma etapa anterior do projeto e não
+> representa a arquitetura atual.** Todos os números desta página são ilustrativos, escritos à mão
+> antes de o simulador existir; a jornada real está em
+> [`../../00-overview/end-to-end-flow.md`](../../00-overview/end-to-end-flow.md).
+> Para o sistema como ele é hoje, comece por
+> [`../../00-overview/architecture-map.md`](../../00-overview/architecture-map.md).
+
 > **Nota de auditoria (29/08/2026).** Walkthrough conceitual da análise SCP-05. A P-101
 > real do produto hoje tem 2 pontos com SIM-HF-001/002 (seed) e faz parte da frota
-> sintética do BON-06 — ver [matriz de evidências](./dynamox-evidence-matrix.md).
+> sintética do BON-06 — ver [matriz de evidências](../../07-validation/traceability.md).
 
 Uma passada concreta, do ativo até o futuro Fuzzy, usando o cenário de referência do
 projeto. **Todos os valores numéricos desta página são ILUSTRATIVOS** (escritos à mão para
 leitura, não gerados pelo simulador — que ainda não existe); a *estrutura* de cada bloco
 segue os contratos congelados. Rótulos de evidência: `CONFIRMADO` · `DERIVADO` ·
 `HIPÓTESE_DE_SIMULAÇÃO` · `DESCONHECIDO` — definidos no
-[mapeamento](./dynamox-sensor-api-mapping.md).
+[mapeamento](../../04-contracts/dynamox-sensor-api-mapping.md).
 
 ## O cenário
 

@@ -1,5 +1,11 @@
 # BON-06 — Plano de implementação do gêmeo digital de sensor industrial
 
+> **HISTÓRICO — este documento descreve uma etapa anterior do projeto e não
+> representa a arquitetura atual.** É o plano original do bônus, com ROS 1 + Gazebo 11 — **Gazebo,
+> Blender e Xacro foram cortados e nunca implementados**.
+> Para o sistema como ele é hoje, comece por
+> [`../../00-overview/architecture-map.md`](../../00-overview/architecture-map.md).
+
 > **Status**: planejamento aprovado, aguardando execução.
 > **Gate**: a implementação permanece bloqueada enquanto a fundação P0 da aplicação e os artefatos do SCP-04 não estiverem disponíveis no repositório.
 > **Posicionamento**: gêmeo digital experimental inspirado na categoria de sensores industriais de condição, **sem afiliação oficial e sem reprodução de firmware ou protocolo proprietário**.

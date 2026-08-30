@@ -6,6 +6,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { RolesGuard } from './roles.guard';
 
 @Module({
   imports: [
@@ -29,7 +30,9 @@ import { JwtAuthGuard } from './jwt-auth.guard';
   providers: [
     AuthService,
     // Guard global: toda rota exige JWT, exceto as marcadas com @Public().
+    // Ordem relevante: JwtAuthGuard popula request.user; RolesGuard decide a permissão.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
   exports: [AuthService],
 })

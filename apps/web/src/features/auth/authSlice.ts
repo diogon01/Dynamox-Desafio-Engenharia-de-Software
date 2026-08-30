@@ -1,5 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 
+import { canMutate } from '@dynamox/domain';
+
 import { api, getToken, setToken, UnauthorizedError, type SessionUser } from '../../api/client';
 import type { RootState } from '../../store';
 
@@ -122,3 +124,10 @@ export const authReducer = authSlice.reducer;
 export const selectAuth = (state: RootState): AuthState => state.auth;
 export const selectAuthenticatedUser = (state: RootState): SessionUser | null => state.auth.user;
 export const selectAuthStatus = (state: RootState): AuthStatus => state.auth.status;
+
+/**
+ * Permissão de escrita da sessão. O backend continua sendo a barreira real (responde 403);
+ * isto existe para não oferecer ao usuário uma ação que ele não pode concluir.
+ */
+export const selectCanMutate = (state: { auth: AuthState }): boolean =>
+  state.auth.user !== null && canMutate(state.auth.user.role);

@@ -13,6 +13,13 @@ const prisma = new PrismaClient();
 const SEED_USER_EMAIL = process.env.SEED_USER_EMAIL ?? 'analista@dynamox.local';
 const SEED_USER_PASSWORD = process.env.SEED_USER_PASSWORD ?? 'Dynamox@2026';
 
+/**
+ * Segunda credencial fixa, somente leitura. Existe para demonstrar a autorização por
+ * perfil sem administração de usuários: o desafio continua usando credenciais fixas.
+ */
+const SEED_VIEWER_EMAIL = process.env.SEED_VIEWER_EMAIL ?? 'consulta@dynamox.local';
+const SEED_VIEWER_PASSWORD = process.env.SEED_VIEWER_PASSWORD ?? 'Consulta@2026';
+
 const MACHINE_NAME = 'P-101';
 
 /**
@@ -59,11 +66,33 @@ async function main(): Promise<void> {
   // mesmo que o registro já exista com outra senha.
   const user = await prisma.user.upsert({
     where: { email: SEED_USER_EMAIL },
-    update: { name: 'Analista de Manutenção', passwordHash: hashPassword(SEED_USER_PASSWORD) },
+    update: {
+      name: 'Analista de Manutenção',
+      passwordHash: hashPassword(SEED_USER_PASSWORD),
+      role: 'ADMIN',
+    },
     create: {
       email: SEED_USER_EMAIL,
       name: 'Analista de Manutenção',
       passwordHash: hashPassword(SEED_USER_PASSWORD),
+      role: 'ADMIN',
+    },
+  });
+
+  // O perfil é reafirmado no update para que reexecutar o seed não deixe as credenciais
+  // anunciadas com privilégio diferente do documentado.
+  const viewer = await prisma.user.upsert({
+    where: { email: SEED_VIEWER_EMAIL },
+    update: {
+      name: 'Consulta (somente leitura)',
+      passwordHash: hashPassword(SEED_VIEWER_PASSWORD),
+      role: 'VIEWER',
+    },
+    create: {
+      email: SEED_VIEWER_EMAIL,
+      name: 'Consulta (somente leitura)',
+      passwordHash: hashPassword(SEED_VIEWER_PASSWORD),
+      role: 'VIEWER',
     },
   });
 
@@ -146,7 +175,8 @@ async function main(): Promise<void> {
   });
 
   console.log('Seed concluído (dados sintéticos de demonstração):');
-  console.log(`  usuário............: ${user.email}`);
+  console.log(`  usuário............: ${user.email} (${user.role})`);
+  console.log(`  usuário............: ${viewer.email} (${viewer.role})`);
   console.log(`  máquina............: ${machine.name} (${machine.type})`);
   for (const point of points) {
     console.log(

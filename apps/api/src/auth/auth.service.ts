@@ -3,12 +3,15 @@ import { scryptSync, timingSafeEqual } from 'node:crypto';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 
+import type { UserRole } from '@dynamox/domain';
+
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface PublicUser {
   id: string;
   email: string;
   name: string;
+  role: UserRole;
 }
 
 /** Verifica o formato `scrypt$salt$hash` produzido pelo seed, em tempo constante. */
@@ -42,8 +45,15 @@ export class AuthService {
       throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Credenciais inválidas.' });
     }
 
-    const token = await this.jwtService.signAsync({ sub: user.id, email: user.email });
-    return { token, user: { id: user.id, email: user.email, name: user.name } };
+    const token = await this.jwtService.signAsync({
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    });
+    return {
+      token,
+      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+    };
   }
 
   async me(userId: string): Promise<PublicUser> {
@@ -51,6 +61,6 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Sessão inválida ou expirada.' });
     }
-    return { id: user.id, email: user.email, name: user.name };
+    return { id: user.id, email: user.email, name: user.name, role: user.role };
   }
 }

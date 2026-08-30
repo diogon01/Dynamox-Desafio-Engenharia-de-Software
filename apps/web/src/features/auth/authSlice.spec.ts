@@ -7,11 +7,12 @@ import {
   login,
   logout,
   restoreSession,
+  selectCanMutate,
   sessionExpired,
 } from './authSlice';
 import { createStore } from '../../store';
 
-const USER = { id: 'u1', email: 'analista@dynamox.local', name: 'Analista' };
+const USER = { id: 'u1', email: 'analista@dynamox.local', name: 'Analista', role: 'ADMIN' as const };
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -152,5 +153,50 @@ describe('authSlice — thunks contra a API', () => {
 
     expect(store.getState().auth.status).toBe('unauthenticated');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('perfil da sessão', () => {
+  it('o login guarda o perfil devolvido pela API', async () => {
+    const store = createStore();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ token: 't', user: { ...USER, role: 'VIEWER' } }), { status: 201 })),
+    );
+
+    await store.dispatch(login({ email: USER.email, password: 'x' }));
+
+    expect(store.getState().auth.user?.role).toBe('VIEWER');
+    expect(selectCanMutate(store.getState())).toBe(false);
+  });
+
+  it('restaurar a sessão recupera o perfil — um refresh não rebaixa nem promove ninguém', async () => {
+    setToken('token-existente');
+    const store = createStore();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ ...USER, role: 'VIEWER' }), { status: 200 })),
+    );
+
+    await store.dispatch(restoreSession());
+
+    expect(store.getState().auth.status).toBe('authenticated');
+    expect(store.getState().auth.user?.role).toBe('VIEWER');
+  });
+
+  it('ADMIN pode mutar; sem sessão, ninguém pode', async () => {
+    const store = createStore();
+    expect(selectCanMutate(store.getState())).toBe(false);
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ token: 't', user: USER }), { status: 201 })),
+    );
+    await store.dispatch(login({ email: USER.email, password: 'x' }));
+    expect(selectCanMutate(store.getState())).toBe(true);
+
+    await store.dispatch(logout());
+    expect(store.getState().auth.user).toBeNull();
+    expect(selectCanMutate(store.getState())).toBe(false);
   });
 });

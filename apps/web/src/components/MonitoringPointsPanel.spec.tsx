@@ -40,7 +40,14 @@ const POINT_WITH_SENSOR = {
 };
 
 function pageDto(items: unknown[], total = items.length) {
-  return { items, total, page: 1, pageSize: 5, sortBy: 'machineName', sortDir: 'asc' };
+  return {
+    items,
+    total,
+    page: 1,
+    pageSize: 5,
+    sortBy: 'machineName',
+    sortDir: 'asc',
+  };
 }
 
 /**
@@ -139,7 +146,7 @@ describe('MonitoringPointsPanel', () => {
     renderPanel();
     await screen.findByText(/Nenhum ponto de monitoramento/i);
 
-    await userEvent.click(screen.getByRole('combobox', { name: /Máquina/i }));
+    await userEvent.click(screen.getByLabelText('Máquina'));
     await userEvent.click(await screen.findByRole('option', { name: /P-101/i }));
     const nameField = screen.getByRole('textbox', { name: /Nome do ponto/i });
     await userEvent.type(nameField, 'Mancal LA');
@@ -167,7 +174,7 @@ describe('MonitoringPointsPanel', () => {
     renderPanel();
     await screen.findByRole('table', { name: /Pontos de monitoramento cadastrados/i });
 
-    await userEvent.click(screen.getByRole('combobox', { name: /Máquina/i }));
+    await userEvent.click(screen.getByLabelText('Máquina'));
     await userEvent.click(await screen.findByRole('option', { name: /P-101/i }));
     const nameField = screen.getByRole('textbox', { name: /Nome do ponto/i });
     await userEvent.type(nameField, 'Mancal LA');
@@ -223,7 +230,7 @@ describe('MonitoringPointsPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /Associar sensor/i }));
     expect(await screen.findByText(/Associar sensor ao ponto/i)).toBeDefined();
 
-    await userEvent.click(screen.getByRole('combobox', { name: /Modelo/i }));
+    await userEvent.click(screen.getByLabelText('Modelo'));
     const options = await screen.findAllByRole('option');
     const byName = Object.fromEntries(options.map((o) => [o.textContent, o]));
     // A máquina do ponto é Pump: TcAg e TcAs não podem ser escolhidos.
@@ -295,3 +302,4 @@ describe('MonitoringPointsPanel', () => {
     ).toBeDefined();
   });
 });
+

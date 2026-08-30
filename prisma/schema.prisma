@@ -7,6 +7,13 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// Perfis de acesso. VIEWER é o default por princípio de menor privilégio:
+/// quem for criado sem perfil explícito só consulta.
+enum UserRole {
+  ADMIN
+  VIEWER
+}
+
 enum MachineType {
   PUMP
   FAN
@@ -48,6 +55,7 @@ model User {
   email        String   @unique
   passwordHash String
   name         String
+  role         UserRole @default(VIEWER)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

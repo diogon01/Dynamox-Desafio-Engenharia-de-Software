@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../test/renderWithProviders';
 import { SystemStatusBar } from './SystemStatusBar';
 
-const USER = { id: 'u1', email: 'operador@dynamox.local', name: 'Operador' };
+const USER = { id: 'u1', email: 'operador@dynamox.local', name: 'Operador', role: 'ADMIN' as const };
 
 afterEach(() => {
   vi.unstubAllGlobals();

@@ -1,3 +1,22 @@
+/**
+ * Perfis de acesso do desafio. Deliberadamente mínimos: o enunciado usa credenciais
+ * fixas, então não há administração de usuários — apenas a distinção entre quem pode
+ * alterar o estado persistido (ADMIN) e quem só consulta (VIEWER).
+ */
+export const USER_ROLES = ['ADMIN', 'VIEWER'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export function isUserRole(value: unknown): value is UserRole {
+  return typeof value === 'string' && (USER_ROLES as readonly string[]).includes(value);
+}
+
+/** Perfis autorizados a alterar estado persistido (POST/PATCH/PUT/DELETE). */
+export const ROLES_ALLOWED_TO_MUTATE: readonly UserRole[] = ['ADMIN'];
+
+export function canMutate(role: UserRole): boolean {
+  return ROLES_ALLOWED_TO_MUTATE.includes(role);
+}
+
 export const MACHINE_TYPES = ['Pump', 'Fan'] as const;
 export type MachineType = (typeof MACHINE_TYPES)[number];
 

@@ -7,7 +7,7 @@ import type { TimeSeriesSampleDto, TimeSeriesSummary } from '@dynamox/domain';
 import { renderWithProviders } from '../../test/renderWithProviders';
 import { OperationalDashboard } from './OperationalDashboard';
 
-const USER = { id: 'u1', email: 'operador@dynamox.local', name: 'Operador' };
+const USER = { id: 'u1', email: 'operador@dynamox.local', name: 'Operador', role: 'ADMIN' as const };
 const baseMs = Date.now() - 2 * 24 * 60 * 60 * 1000;
 
 function windowAt(offsetMs: number, value: number): TimeSeriesSampleDto[] {

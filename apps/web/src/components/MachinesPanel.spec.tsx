@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MachinesPanel } from './MachinesPanel';
 import { setToken } from '../api/client';
@@ -16,6 +16,10 @@ const P101 = {
 
 function renderPanel() {
   return renderWithProviders(<MachinesPanel />);
+}
+
+function renderPanelAsViewer() {
+  return renderWithProviders(<MachinesPanel />, { role: 'VIEWER' });
 }
 
 /** Deferred permite manter o POST pendente e observar o estado de envio. */
@@ -329,5 +333,36 @@ describe('MachinesPanel — edição e exclusão (MAC-03)', () => {
     await waitFor(() => expect(screen.queryByText(/Confirmar exclusão/i)).toBeNull());
     expect(fetchMock.mock.calls.some((call) => call[1]?.method === 'DELETE')).toBe(false);
     expect(within(table).getByText('V-200')).toBeDefined();
+  });
+});
+
+describe('MachinesPanel — perfil somente leitura', () => {
+  const MACHINES = JSON.stringify([
+    { id: 'm1', name: 'P-101', type: 'Pump', createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' },
+  ]);
+
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(MACHINES, { status: 200 })),
+    );
+  });
+
+  it('ADMIN vê o cadastro e as ações de cada linha', async () => {
+    renderPanel();
+    expect(await screen.findByRole('button', { name: /Cadastrar máquina/i })).toBeDefined();
+    expect(screen.getAllByRole('button', { name: /^Editar máquina/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /^Excluir máquina/ }).length).toBeGreaterThan(0);
+  });
+
+  it('VIEWER consulta a lista, mas não recebe nenhuma ação de escrita', async () => {
+    renderPanelAsViewer();
+    // A tabela (leitura) continua disponível...
+    expect(await screen.findByRole('table')).toBeDefined();
+    // ...e nenhuma porta de mutação é oferecida.
+    expect(screen.queryByRole('button', { name: /Cadastrar máquina/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Editar máquina/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Excluir máquina/ })).toBeNull();
+    expect(screen.getByText(/somente leitura/i)).toBeDefined();
   });
 });

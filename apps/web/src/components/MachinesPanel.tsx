@@ -29,6 +29,7 @@ import {
   updateMachine,
 } from '../features/machines/machinesSlice';
 import { fetchMonitoringPoints } from '../features/monitoringPoints/monitoringPointsSlice';
+import { selectCanMutate } from '../features/auth/authSlice';
 import { useAppDispatch, useAppSelector } from '../store';
 
 /** Mesmo teto aplicado pela API; a validação local só antecipa a mensagem. */
@@ -54,6 +55,8 @@ export function MachinesPanel(): JSX.Element {
     deleteStatus,
     deleteError,
   } = useAppSelector(selectMachines);
+  // Backend é a barreira real (403); a UI apenas não oferece o que o perfil não pode fazer.
+  const canMutate = useAppSelector(selectCanMutate);
 
   const [name, setName] = useState('');
   const [type, setType] = useState<MachineType>('Pump');
@@ -140,6 +143,14 @@ export function MachinesPanel(): JSX.Element {
           persistidos pela API no PostgreSQL.
         </Typography>
 
+        {!canMutate ? (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Seu perfil é somente leitura: as máquinas abaixo podem ser consultadas, mas criar,
+            editar e excluir exigem um perfil administrador.
+          </Alert>
+        ) : null}
+
+        {canMutate ? (
         <Box component="form" onSubmit={handleSubmit} noValidate sx={{ mb: 3 }}>
           <Stack spacing={2}>
             {createStatus === 'failed' && createError ? (
@@ -188,6 +199,7 @@ export function MachinesPanel(): JSX.Element {
             </Stack>
           </Stack>
         </Box>
+        ) : null}
 
         {editTarget ? (
           <Box
@@ -333,6 +345,8 @@ export function MachinesPanel(): JSX.Element {
                       />
                     </TableCell>
                     <TableCell align="right">
+                      {canMutate ? (
+                      <>
                       <Button
                         size="small"
                         aria-label={`Editar máquina ${machine.name}`}
@@ -353,6 +367,8 @@ export function MachinesPanel(): JSX.Element {
                       >
                         Excluir
                       </Button>
+                      </>
+                      ) : null}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -4,6 +4,7 @@ import type {
   SeriesMetrics,
   TimeSeriesSamplePage,
   TimeSeriesSummary,
+  UserRole,
 } from '@dynamox/domain';
 
 export interface MachineDto {
@@ -56,6 +57,7 @@ export interface SessionUser {
   id: string;
   email: string;
   name: string;
+  role: UserRole;
 }
 
 const DEFAULT_BASE_URL = 'http://localhost:3000/api';

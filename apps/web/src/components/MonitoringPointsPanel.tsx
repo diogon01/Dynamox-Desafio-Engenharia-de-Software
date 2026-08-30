@@ -28,6 +28,7 @@ import {
 import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
 
 import type { MonitoringPointDto, MonitoringPointSortColumn } from '../api/client';
+import { selectCanMutate } from '../features/auth/authSlice';
 import { fetchMachines, selectMachines } from '../features/machines/machinesSlice';
 import {
   assignSensor,
@@ -52,6 +53,8 @@ const COLUMNS: Array<{ id: MonitoringPointSortColumn; label: string }> = [
 export function MonitoringPointsPanel(): JSX.Element {
   const dispatch = useAppDispatch();
   const machines = useAppSelector(selectMachines);
+  // Backend é a barreira real (403); a UI apenas não oferece o que o perfil não pode fazer.
+  const canMutate = useAppSelector(selectCanMutate);
   const {
     pageData,
     page,
@@ -158,6 +161,14 @@ export function MonitoringPointsPanel(): JSX.Element {
           HF+). Máquinas do tipo Pump não aceitam sensores TcAg ou TcAs.
         </Typography>
 
+        {!canMutate ? (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Seu perfil é somente leitura: a consulta abaixo está disponível, mas a criação de
+            pontos e a associação de sensores exigem um perfil administrador.
+          </Alert>
+        ) : null}
+
+        {canMutate ? (
         <Box component="form" onSubmit={handleCreate} noValidate sx={{ mb: 3 }}>
           <Stack spacing={2}>
             {createStatus === 'failed' && createError ? (
@@ -206,6 +217,7 @@ export function MonitoringPointsPanel(): JSX.Element {
             </Stack>
           </Stack>
         </Box>
+        ) : null}
 
         {assignTarget ? (
           <Box
@@ -349,7 +361,7 @@ export function MonitoringPointsPanel(): JSX.Element {
                           : '—'}
                       </TableCell>
                       <TableCell align="right">
-                        {point.sensor ? null : (
+                        {point.sensor || !canMutate ? null : (
                           <Button
                             size="small"
                             aria-label={`Associar sensor ao ponto ${point.name} de ${point.machine.name}`}

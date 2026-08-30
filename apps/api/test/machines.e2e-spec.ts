@@ -54,6 +54,8 @@ describe('MAC-01 — CRUD autenticado de máquinas', () => {
         email: USER_EMAIL,
         name: 'Máquinas E2E',
         passwordHash: `scrypt$${salt}$${scryptSync(USER_PASSWORD, salt, 64).toString('hex')}`,
+        // Estas suítes exercitam mutações: o usuário de fixture precisa do perfil que as permite.
+        role: 'ADMIN',
       },
     });
 

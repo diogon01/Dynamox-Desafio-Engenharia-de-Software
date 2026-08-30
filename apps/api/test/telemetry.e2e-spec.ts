@@ -139,6 +139,8 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
         email: 'telemetry-e2e@dynamox.local',
         name: 'Telemetria E2E',
         passwordHash: `scrypt$${salt}$${scryptSync('Senha-E2E@2026', salt, 64).toString('hex')}`,
+        // Estas suítes exercitam mutações: o usuário de fixture precisa do perfil que as permite.
+        role: 'ADMIN',
       },
     });
     const login = await http()

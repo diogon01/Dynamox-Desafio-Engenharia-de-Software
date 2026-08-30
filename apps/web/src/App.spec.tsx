@@ -6,16 +6,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { getToken, setToken } from './api/client';
 import type { RootState } from './store';
+import { initialAuthState } from './features/auth/authSlice';
 import { renderWithProviders } from './test/renderWithProviders';
 
-const USER = { id: 'u1', email: 'analista@dynamox.local', name: 'Analista' };
+const USER = { id: 'u1', email: 'analista@dynamox.local', name: 'Analista', role: 'ADMIN' as const };
 
 function renderApp(preloaded?: Partial<RootState>) {
   return renderWithProviders(
     <MemoryRouter initialEntries={['/']}>
       <App />
     </MemoryRouter>,
-    { preloadedState: preloaded },
+    // Estes testes cobrem a entrada e a saída da sessão: começam deslogados de propósito,
+    // em vez da sessão simulada que o utilitário oferece por padrão.
+    { preloadedState: { auth: initialAuthState, ...preloaded } },
   );
 }
 

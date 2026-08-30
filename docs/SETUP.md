@@ -40,9 +40,10 @@ npm run dev:web               # http://localhost:5173
 ```
 
 Abra <http://localhost:5173> e faça login com as credenciais da seção seguinte. A
-interface segue Material Design com menu lateral: **Visão geral** (estado da API e série
-temporal), **Máquinas** (CRUD completo) e **Pontos e sensores** (criação, associação e
-tabela paginada), além do atalho para o Swagger.
+interface segue Material Design com menu lateral: **Visão geral** (dashboard operacional
+com estado do sistema, KPIs, matriz de condição por ponto, ranking de prioridade e painel
+de tendência da série temporal), **Máquinas** (CRUD completo) e **Pontos e sensores**
+(criação, associação e tabela paginada), além do atalho para o Swagger.
 
 ### Variáveis de ambiente
 
@@ -68,8 +69,10 @@ ambiente compartilhado.
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot, exemplo x schema
 npm run lint
 npm run typecheck
-npm run test                  # 276 na suíte convencional: 152 API (47 unit + 105 e2e/contrato),
-                              # 82 web e 42 do sensor twin (bônus, puro — sem API/ROS/banco)
+npm run test                  # 354 na suíte convencional: 152 API (47 unit + 105 e2e/contrato),
+                              # 113 web e 89 do sensor twin (bônus, puro — sem API/ROS/banco)
+npm run twin:integration      # BON-06: 17 testes contra a API/banco reais (fora do run acima)
+npm run twin:ros              # BON-06.F8: 5 testes de proveniência ROS (exige ROS Noetic; opcional)
 npm run test:unit -w @dynamox/api   # somente unitários isolados (sem banco, < 2 s)
 npm run perf:latency          # TS-07: latência < 350 ms (exige a API no ar)
 ```
@@ -283,10 +286,14 @@ reproducible challenge delivery guide`), testes unitários isolados de backend, 
 reproduzível de latência (`npm run perf:latency`) e validação integral em clone limpo.
 O que resta é da entrega em si (revisão final, PR e e-mail) e os bônus.
 
-## Pendências específicas do bônus BON-06
+## Estado do bônus BON-06 (concluído; ver `docs/analysis/dynamox-evidence-matrix.md`)
 
-O gêmeo digital (Blender, ROS, Gazebo, ROS bags e gateway) **continua bloqueado**, conforme
-`docs/planning/BON-06_SENSOR_TWIN_IMPLEMENTATION_PLAN.md`. O gate exige a fundação P0
-estável, e ela ainda está incompleta. O que esta fase liberou foi apenas a dependência de
-contrato: `contracts/dynamox/` agora existe e está validado, e o TS-06 já aceita o mesmo
-payload que o futuro gateway produzirá.
+O bônus foi entregue como **sensor twin determinístico com frota sintética** (não um
+gêmeo digital operacional bidirecional): 6 máquinas / 12 pontos / 12 sensores criados
+somente pelas APIs reais, supervisor deliberativo que decide só por séries persistidas
+(`OBSERVE → RANK → ACT → RE-OBSERVE → RECOMMEND`) e proveniência ROS **opcional**
+(JSONL → rosbag → replay `duplicate:true`). Blender, Xacro e Gazebo foram **cortados**
+por decisão (value engineering); o plano antigo está preservado como histórico no cartão
+Notion BON-06. Código em `simulation/sensor-twin/` — guia completo em
+[`simulation/sensor-twin/README.md`](../simulation/sensor-twin/README.md). O core
+full-stack não depende deste bônus.

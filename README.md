@@ -77,7 +77,10 @@ cada execução, então a credencial anunciada sempre funciona.
 
 1. **Login** em `http://localhost:5173` com a credencial acima — rotas privadas são
    inacessíveis sem sessão, e **Sair** encerra a sessão.
-2. **Visão geral**: estado da API/banco e o gráfico da série temporal do seed.
+2. **Visão geral**: dashboard operacional — estado da API/banco, KPIs do inventário,
+   matriz de condição por ponto monitorado, ranking de prioridade de inspeção, recência
+   das leituras e painel de tendência com a série temporal real (seleção por máquina →
+   ponto → sensor → métrica).
 3. **Máquinas**: criar (nome + tipo `Pump`/`Fan`), editar e excluir, com os erros reais
    da API exibidos (nome duplicado, regra de sensores ao virar Pump).
 4. **Pontos e sensores**: criar pontos para uma máquina, associar sensor
@@ -166,7 +169,8 @@ Regras importantes, aplicadas na API **e** garantidas por índices/constraints n
   máximo, média, último valor e a janela temporal.
 - **Exclusão** (`DELETE /api/time-series/:id`): remove série e amostras em cascata,
   preservando o registro de auditoria da ingestão.
-- **Visualização**: gráfico Recharts na Visão geral, alimentado pela API autenticada.
+- **Visualização**: gráfico Recharts no painel de tendência da Visão geral, alimentado
+  pela API autenticada; lacunas do período aparecem sem conexão e sem zero artificial.
 
 ## Pressupostos e ambiguidades documentados
 

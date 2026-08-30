@@ -2,6 +2,12 @@ import { BadRequestException, Body, Controller, Get, Post, Req } from '@nestjs/c
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 
+import {
+  ErrorResponse,
+  LoginResponse,
+  SessionUserResponse,
+} from '../common/api-schemas';
+
 import { AuthService, type PublicUser } from './auth.service';
 import type { JwtPayload } from './jwt-auth.guard';
 import { Public } from './public.decorator';
@@ -39,18 +45,38 @@ export class AuthController {
   @Post('login')
   @ApiOperation({ summary: 'Autentica com e-mail e senha fixos e devolve o JWT da sessão' })
   @ApiBody({
+    description: 'Credenciais fixas do desafio. Há dois perfis; veja os exemplos.',
     schema: {
       type: 'object',
       required: ['email', 'password'],
+      additionalProperties: false,
       properties: {
-        email: { type: 'string', example: 'analista@dynamox.local' },
-        password: { type: 'string', example: 'Dynamox@2026' },
+        email: { type: 'string', format: 'email', example: 'analista@dynamox.local' },
+        password: { type: 'string', maxLength: 256, example: 'Dynamox@2026' },
+      },
+    },
+    examples: {
+      admin: {
+        summary: 'ADMIN — consulta e altera',
+        value: { email: 'analista@dynamox.local', password: 'Dynamox@2026' },
+      },
+      viewer: {
+        summary: 'VIEWER — somente consulta (mutações respondem 403)',
+        value: { email: 'consulta@dynamox.local', password: 'Consulta@2026' },
       },
     },
   })
-  @ApiResponse({ status: 201, description: '{ token, user } — o token vai no header Authorization' })
-  @ApiResponse({ status: 400, description: 'INVALID_CREDENTIALS_PAYLOAD' })
-  @ApiResponse({ status: 401, description: 'Credencial inválida (mensagem genérica de propósito)' })
+  @ApiResponse({
+    status: 201,
+    description: 'Sessão criada. Use o token no header Authorization: Bearer <token>.',
+    type: LoginResponse,
+  })
+  @ApiResponse({ status: 400, description: 'INVALID_CREDENTIALS_PAYLOAD', type: ErrorResponse })
+  @ApiResponse({
+    status: 401,
+    description: 'Credencial inválida — resposta genérica de propósito, sem revelar se o e-mail existe.',
+    type: ErrorResponse,
+  })
   login(@Body() body: unknown): Promise<{ token: string; user: PublicUser }> {
     const { email, password } = parseLoginDto(body);
     return this.auth.login(email, password);
@@ -59,8 +85,12 @@ export class AuthController {
   @Get('me')
   @ApiBearerAuth('bearer')
   @ApiOperation({ summary: 'Usuário da sessão atual, sem senha nem hash' })
-  @ApiResponse({ status: 200, description: 'Usuário autenticado' })
-  @ApiResponse({ status: 401, description: 'Token ausente, inválido ou expirado' })
+  @ApiResponse({ status: 200, description: 'Usuário da sessão.', type: SessionUserResponse })
+  @ApiResponse({
+    status: 401,
+    description: 'Token ausente, inválido, expirado ou sem perfil reconhecível.',
+    type: ErrorResponse,
+  })
   me(@Req() request: Request & { user: JwtPayload }): Promise<PublicUser> {
     return this.auth.me(request.user.sub);
   }

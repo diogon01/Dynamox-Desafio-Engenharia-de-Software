@@ -15,6 +15,7 @@ import {
 import type { Response } from 'express';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiHeader,
   ApiOperation,
   ApiQuery,
@@ -28,6 +29,13 @@ import type {
   TimeSeriesSummary,
 } from '@dynamox/domain';
 
+import {
+  ErrorResponse,
+  SeriesMetricsResponse,
+  TelemetryIngestionResponse,
+  TimeSeriesSamplePageResponse,
+  TimeSeriesSummaryResponse,
+} from '../common/api-schemas';
 import { TelemetryService, type IngestionResult } from './telemetry.service';
 
 const SAMPLES_QUERY_KEYS = ['limit', 'offset'] as const;
@@ -78,7 +86,12 @@ export function parseSamplesQuery(query: Record<string, unknown>): { limit: numb
 }
 
 @ApiBearerAuth('bearer')
-@ApiResponse({ status: 401, description: 'Token ausente, inválido ou expirado' })
+@ApiResponse({ status: 401, description: 'Token ausente, inválido ou expirado', type: ErrorResponse })
+@ApiResponse({
+  status: 403,
+  description: 'Perfil VIEWER: consultar séries é permitido; ingerir e excluir, não.',
+  type: ErrorResponse,
+})
 @Controller()
 export class TelemetryController {
   constructor(private readonly telemetry: TelemetryService) {}
@@ -95,17 +108,193 @@ export class TelemetryController {
     description:
       'O corpo segue contracts/dynamox/telemetry-cycle.schema.json (additionalProperties: false). Repetir o mesmo conteúdo, com ou sem a mesma chave, devolve 200 duplicate:true sem gravar nada de novo.',
   })
+  @ApiBody({
+    description:
+      'Ciclo de telemetria conforme contracts/dynamox/telemetry-cycle.schema.json. O exemplo abaixo é um ciclo mínimo válido: uma medição de aceleração no eixo Y com duas amostras.',
+    schema: {
+      type: 'object',
+      required: ['telemetryCycleData', 'configuration'],
+      additionalProperties: false,
+      properties: {
+        telemetryCycleData: {
+          type: 'object',
+          required: ['measuringSystemUniqueIdentifier', 'measuringSystemModel', 'measurements', 'metadata', 'tags'],
+          properties: {
+            measuringSystemUniqueIdentifier: {
+              type: 'string',
+              description: 'Série do sensor já associado a um ponto de monitoramento.',
+              example: 'SIM-HF-001',
+            },
+            measuringSystemModel: {
+              type: 'object',
+              properties: { name: { type: 'string' }, version: { type: 'integer' } },
+            },
+            measurements: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                type: 'object',
+                required: ['resourceId', 'attributes', 'dataPoints'],
+                properties: {
+                  resourceId: {
+                    type: 'string',
+                    description: 'Identificador determinístico do ponto (24 hex). Divergir dele responde 422 RESOURCE_ID_MISMATCH.',
+                    example: '42d726ba50f8645df08dba9f',
+                  },
+                  attributes: {
+                    type: 'object',
+                    required: ['physicalQuantity', 'unit', 'displayName'],
+                    properties: {
+                      physicalQuantity: {
+                        type: 'string',
+                        enum: ['acceleration', 'velocity', 'temperature', 'rotationalSpeed'],
+                      },
+                      axis: {
+                        type: 'string',
+                        enum: ['x', 'y', 'z'],
+                        description: 'Obrigatório em grandezas vetoriais; proibido nas escalares (422 QUANTITY_AXIS_MISMATCH).',
+                      },
+                      unit: { type: 'string', example: 'g' },
+                      displayName: {
+                        type: 'object',
+                        properties: { pt: { type: 'string' }, en: { type: 'string' } },
+                      },
+                    },
+                  },
+                  dataPoints: {
+                    type: 'array',
+                    minItems: 1,
+                    items: {
+                      type: 'object',
+                      required: ['timestamp', 'value'],
+                      properties: {
+                        timestamp: {
+                          type: 'string',
+                          format: 'date-time',
+                          description: 'UTC canônico com milissegundos; outro formato responde 400 NON_CANONICAL_TIMESTAMP.',
+                        },
+                        value: { type: 'number' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            metadata: {
+              type: 'object',
+              required: ['origin', 'generator', 'cycleId', 'synthetic'],
+              properties: {
+                origin: { type: 'string', enum: ['simulation', 'rosbag-replay', 'seed', 'manual'] },
+                generator: {
+                  type: 'object',
+                  properties: { name: { type: 'string' }, version: { type: 'string' } },
+                },
+                profile: { type: 'string', enum: ['TcAg', 'TcAs', 'HF+'] },
+                cycleId: { type: 'string' },
+                seed: { type: 'integer' },
+                synthetic: { type: 'boolean' },
+              },
+            },
+            tags: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        configuration: {
+          type: 'object',
+          required: ['monitoringLocationMap', 'rpm', 'loadPercent', 'scenario', 'seed', 'durationSeconds', 'publishRateHz'],
+          properties: {
+            monitoringLocationMap: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { mapLabel: { type: 'string' }, mapValue: { type: 'string' } },
+              },
+            },
+            rpm: { type: 'number', example: 1750 },
+            loadPercent: { type: 'number', example: 70 },
+            scenario: { type: 'string', enum: ['normal', 'imbalance'] },
+            seed: { type: 'integer', example: 42 },
+            durationSeconds: { type: 'number', example: 60 },
+            publishRateHz: { type: 'number', example: 1 },
+          },
+        },
+      },
+    },
+    examples: {
+      cicloMinimo: {
+        summary: 'Ciclo mínimo válido (aceleração, eixo Y, 2 amostras)',
+        value: {
+          telemetryCycleData: {
+            measuringSystemUniqueIdentifier: 'SIM-HF-001',
+            measuringSystemModel: { name: 'industrial-condition-sensor-sim', version: 1 },
+            measurements: [
+              {
+                resourceId: '42d726ba50f8645df08dba9f',
+                attributes: {
+                  physicalQuantity: 'acceleration',
+                  axis: 'y',
+                  unit: 'g',
+                  displayName: { pt: 'Aceleração RMS — eixo Y', en: 'Acceleration RMS — Y axis' },
+                },
+                dataPoints: [
+                  { timestamp: '2026-09-02T12:00:00.000Z', value: 0.024681 },
+                  { timestamp: '2026-09-02T12:00:01.000Z', value: 0.025102 },
+                ],
+              },
+            ],
+            metadata: {
+              origin: 'simulation',
+              generator: { name: 'industrial-condition-sensor-sim', version: '0.2.0' },
+              profile: 'HF+',
+              cycleId: 'exemplo.swagger.001',
+              seed: 42,
+              synthetic: true,
+            },
+            tags: ['simulated', 'asset:p-101'],
+          },
+          configuration: {
+            monitoringLocationMap: [
+              { mapLabel: 'P-101 / Mancal lado acoplamento', mapValue: '42d726ba50f8645df08dba9f' },
+            ],
+            rpm: 1750,
+            loadPercent: 70,
+            scenario: 'normal',
+            seed: 42,
+            durationSeconds: 2,
+            publishRateHz: 1,
+          },
+        },
+      },
+    },
+  })
   @ApiHeader({
-    name: 'Idempotency-Key',
+    // O nome precisa bater com o de @Headers() abaixo: com outra caixa, o gerador
+    // publica DOIS parâmetros — e o inferido nasce como obrigatório, que é falso.
+    name: 'idempotency-key',
     required: false,
     description: '1–128 caracteres [A-Za-z0-9._~:-]; sem o header, o fingerprint do payload vira a chave',
   })
-  @ApiResponse({ status: 201, description: 'Ciclo novo persistido' })
-  @ApiResponse({ status: 200, description: 'Repetição legítima: duplicate:true, resultado original' })
-  @ApiResponse({ status: 400, description: 'CONTRACT_VIOLATION | INVALID_IDEMPOTENCY_KEY | NON_CANONICAL_TIMESTAMP' })
-  @ApiResponse({ status: 404, description: 'SENSOR_NOT_FOUND' })
-  @ApiResponse({ status: 409, description: 'IDEMPOTENCY_KEY_REUSED | SAMPLE_TIMESTAMP_CONFLICT | SERIES_UNIT_CONFLICT' })
-  @ApiResponse({ status: 422, description: 'QUANTITY_AXIS_MISMATCH | RESOURCE_ID_MISMATCH | SENSOR_NOT_ASSOCIATED' })
+  @ApiResponse({ status: 201, description: 'Ciclo novo persistido.', type: TelemetryIngestionResponse })
+  @ApiResponse({
+    status: 200,
+    description: 'Repetição legítima do mesmo conteúdo: `duplicate: true` e o resultado original, sem gravar de novo.',
+    type: TelemetryIngestionResponse,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'CONTRACT_VIOLATION | INVALID_IDEMPOTENCY_KEY | NON_CANONICAL_TIMESTAMP',
+    type: ErrorResponse,
+  })
+  @ApiResponse({ status: 404, description: 'SENSOR_NOT_FOUND', type: ErrorResponse })
+  @ApiResponse({
+    status: 409,
+    description: 'IDEMPOTENCY_KEY_REUSED (mesma chave, conteúdo diferente) | SAMPLE_TIMESTAMP_CONFLICT | SERIES_UNIT_CONFLICT',
+    type: ErrorResponse,
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'QUANTITY_AXIS_MISMATCH | RESOURCE_ID_MISMATCH | SENSOR_NOT_ASSOCIATED',
+    type: ErrorResponse,
+  })
   async ingest(
     @Body() payload: unknown,
     @Res({ passthrough: true }) response: Response,
@@ -120,6 +309,7 @@ export class TelemetryController {
   @Get('time-series')
   @ApiTags('time-series')
   @ApiOperation({ summary: 'Séries persistidas com máquina, ponto, sensor e contagem' })
+  @ApiResponse({ status: 200, description: 'Séries existentes.', type: [TimeSeriesSummaryResponse] })
   listTimeSeries(): Promise<TimeSeriesSummary[]> {
     return this.telemetry.listTimeSeries();
   }
@@ -133,8 +323,13 @@ export class TelemetryController {
   })
   @ApiQuery({ name: 'limit', required: false, schema: { type: 'integer', minimum: 1, maximum: 5000, default: 500 } })
   @ApiQuery({ name: 'offset', required: false, schema: { type: 'integer', minimum: 0, default: 0 } })
-  @ApiResponse({ status: 400, description: 'INVALID_SAMPLES_QUERY' })
-  @ApiResponse({ status: 404, description: 'TIME_SERIES_NOT_FOUND' })
+  @ApiResponse({
+    status: 200,
+    description: 'Página de amostras; `total` é o tamanho da série inteira.',
+    type: TimeSeriesSamplePageResponse,
+  })
+  @ApiResponse({ status: 400, description: 'INVALID_SAMPLES_QUERY', type: ErrorResponse })
+  @ApiResponse({ status: 404, description: 'TIME_SERIES_NOT_FOUND', type: ErrorResponse })
   getSamples(
     @Param('id') id: string,
     @Query() query: Record<string, unknown>,
@@ -145,7 +340,12 @@ export class TelemetryController {
   @Get('time-series/:id/metrics')
   @ApiTags('time-series')
   @ApiOperation({ summary: 'count, mínimo, máximo, média, último valor e janela' })
-  @ApiResponse({ status: 404, description: 'TIME_SERIES_NOT_FOUND' })
+  @ApiResponse({
+    status: 200,
+    description: 'Métricas descritivas da série. Série vazia devolve count 0 e os demais campos null.',
+    type: SeriesMetricsResponse,
+  })
+  @ApiResponse({ status: 404, description: 'TIME_SERIES_NOT_FOUND', type: ErrorResponse })
   getMetrics(@Param('id') id: string): Promise<SeriesMetrics> {
     return this.telemetry.getMetrics(id);
   }
@@ -154,8 +354,8 @@ export class TelemetryController {
   @Delete('time-series/:id')
   @ApiTags('time-series')
   @ApiOperation({ summary: 'Exclui a série e todas as suas amostras (cascata)' })
-  @ApiResponse({ status: 204, description: 'Removida' })
-  @ApiResponse({ status: 404, description: 'TIME_SERIES_NOT_FOUND' })
+  @ApiResponse({ status: 204, description: 'Removida; resposta sem corpo.' })
+  @ApiResponse({ status: 404, description: 'TIME_SERIES_NOT_FOUND', type: ErrorResponse })
   @HttpCode(HttpStatus.NO_CONTENT)
   removeTimeSeries(@Param('id') id: string): Promise<void> {
     return this.telemetry.removeTimeSeries(id);

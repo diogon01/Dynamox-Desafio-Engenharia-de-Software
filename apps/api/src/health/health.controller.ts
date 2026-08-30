@@ -3,14 +3,10 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 
 import { Public } from '../auth/public.decorator';
+// A classe documentada no OpenAPI é também o tipo de retorno: uma definição só, sem
+// risco de o schema publicado divergir do que a rota devolve.
+import { HealthResponse } from '../common/api-schemas';
 import { PrismaService } from '../prisma/prisma.service';
-
-export interface HealthResponse {
-  status: 'ok' | 'degraded';
-  database: 'up' | 'down';
-  version: string;
-  timestamp: string;
-}
 
 /** Público de propósito: é o probe de disponibilidade usado antes de qualquer login. */
 @ApiTags('health')
@@ -21,8 +17,12 @@ export class HealthController {
 
   @Get()
   @ApiOperation({ summary: 'Estado da API e do banco (público)' })
-  @ApiResponse({ status: 200, description: 'Saudável: { status: "ok", database: "up" }' })
-  @ApiResponse({ status: 503, description: 'Degradado: banco inacessível' })
+  @ApiResponse({ status: 200, description: 'Saudável: API respondendo e banco acessível.', type: HealthResponse })
+  @ApiResponse({
+    status: 503,
+    description: 'Degradado: banco inacessível. O corpo mantém o mesmo formato, com status "degraded".',
+    type: HealthResponse,
+  })
   async check(@Res({ passthrough: true }) response: Response): Promise<HealthResponse> {
     let database: 'up' | 'down' = 'down';
 

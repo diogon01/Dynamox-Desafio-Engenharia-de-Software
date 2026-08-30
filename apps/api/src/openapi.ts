@@ -1,12 +1,13 @@
 import type { INestApplication } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { DocumentBuilder, SwaggerModule, type OpenAPIObject } from '@nestjs/swagger';
 
 /**
  * Documentação viva da API em /api/docs (UI) e /api/docs-json (OpenAPI 3).
  * O contrato rígido real é aplicado pelos parsers dos DTOs (chaves desconhecidas são
  * 400 em corpo e query); o Swagger descreve esse comportamento, não o substitui.
  */
-export function setupOpenApi(app: INestApplication): void {
+/** Configuração do documento, isolada para que os testes possam gerá-lo sem subir a UI. */
+export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
   const config = new DocumentBuilder()
     .setTitle('Dynamox Challenge API')
     .setDescription(
@@ -29,8 +30,11 @@ export function setupOpenApi(app: INestApplication): void {
     .addTag('time-series', 'Leitura paginada, métricas e exclusão de séries')
     .build();
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document, {
+  return SwaggerModule.createDocument(app, config);
+}
+
+export function setupOpenApi(app: INestApplication): void {
+  SwaggerModule.setup('api/docs', app, buildOpenApiDocument(app), {
     customSiteTitle: 'Dynamox Challenge API',
     swaggerOptions: { persistAuthorization: true },
   });

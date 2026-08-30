@@ -5,7 +5,9 @@
 > taxonomia de evidência usada nesta base. Duas ressalvas de leitura: o contrato
 > analítico `NormalizedMetric` da §5 **não foi construído** — o papel de formato único
 > validado ficou com o contrato interno de telemetria — e o simulador descrito como
-> "futuro" existe hoje como `simulation/sensor-twin/`. Estado atual em
+> "futuro" existe hoje como `simulation/sensor-twin/`. O motor **Fuzzy** citado ao longo
+> do texto como evolução também **nunca foi implementado**: não existe inferência,
+> forecast ou diagnóstico neste repositório. Estado atual em
 > [`telemetry-contract.md`](./telemetry-contract.md) e
 > [`../05-simulation/sensor-twin.md`](../05-simulation/sensor-twin.md).
 

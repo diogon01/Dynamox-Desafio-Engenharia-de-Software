@@ -46,7 +46,8 @@ O payload sai já no formato do contrato: `measuringSystemUniqueIdentifier` é o
 série do sensor, cada medição traz o `resourceId` do ponto e `metadata.origin` declara
 `simulation`. Mesma seed ⇒ mesmo payload, byte a byte.
 
-> `simulation/sensor-twin/src/{signal,windows,payload,fleet}.ts` ·
+> `simulation/sensor-twin/src/signal.ts`, `simulation/sensor-twin/src/windows.ts`,
+> `simulation/sensor-twin/src/payload.ts`, `simulation/sensor-twin/src/fleet.ts` ·
 > [`../05-simulation/sensor-twin.md`](../05-simulation/sensor-twin.md)
 
 ## 2. Autenticação

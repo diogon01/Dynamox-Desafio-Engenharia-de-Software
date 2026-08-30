@@ -35,11 +35,24 @@ export interface MonitoringPointPageDto {
   total: number;
   page: number;
   pageSize: number;
+  totalPages: number;
   sortBy: MonitoringPointSortColumn;
   sortDir: 'asc' | 'desc';
+  search: string | null;
+  machineType: MachineType | null;
+  sensorModel: SensorModel | null;
+  hasSensor: boolean | null;
 }
 
-export interface MonitoringPointListParams {
+/** Recorte da listagem resolvido pelo servidor; ausência é null, nunca string vazia. */
+export interface MonitoringPointFilters {
+  search: string | null;
+  machineType: MachineType | null;
+  sensorModel: SensorModel | null;
+  hasSensor: boolean | null;
+}
+
+export interface MonitoringPointListParams extends Partial<MonitoringPointFilters> {
   page: number;
   pageSize?: number;
   sortBy: MonitoringPointSortColumn;
@@ -239,12 +252,19 @@ export const api = {
   deleteMachine: (id: string) =>
     requestVoid(`/machines/${id}`, { method: 'DELETE' }),
   monitoringPoints: (params: MonitoringPointListParams) => {
+    // URLSearchParams codifica os valores: sem isso o '+' de "HF+" viraria espaço.
     const query = new URLSearchParams({
       page: String(params.page),
       sortBy: params.sortBy,
       sortDir: params.sortDir,
     });
     if (params.pageSize !== undefined) query.set('pageSize', String(params.pageSize));
+    if (params.search) query.set('search', params.search);
+    if (params.machineType) query.set('machineType', params.machineType);
+    if (params.sensorModel) query.set('sensorModel', params.sensorModel);
+    if (params.hasSensor !== null && params.hasSensor !== undefined) {
+      query.set('hasSensor', String(params.hasSensor));
+    }
     return requestJson<MonitoringPointPageDto>(`/monitoring-points?${query.toString()}`);
   },
   /**

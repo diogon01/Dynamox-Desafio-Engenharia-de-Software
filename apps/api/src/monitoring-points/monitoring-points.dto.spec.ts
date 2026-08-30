@@ -86,7 +86,33 @@ describe('parseListMonitoringPointsQuery — contrato rígido da listagem', () =
       pageSize: 5,
       sortBy: 'machineName',
       sortDir: 'asc',
+      // Ausência de recorte é explícita: nenhum filtro aplicado, não "filtro vazio".
+      search: null,
+      machineType: null,
+      sensorModel: null,
+      hasSensor: null,
     });
+  });
+
+  it('normaliza busca em branco para ausência de recorte', () => {
+    expect(parseListMonitoringPointsQuery({ search: '   ' }).search).toBeNull();
+    expect(parseListMonitoringPointsQuery({ search: '  P-101 ' }).search).toBe('P-101');
+  });
+
+  it('aceita os filtros do vocabulário público e recusa o resto', () => {
+    expect(parseListMonitoringPointsQuery({ machineType: 'Pump' }).machineType).toBe('Pump');
+    expect(parseListMonitoringPointsQuery({ sensorModel: 'HF+' }).sensorModel).toBe('HF+');
+    expect(parseListMonitoringPointsQuery({ hasSensor: 'false' }).hasSensor).toBe(false);
+    expect(parseListMonitoringPointsQuery({ hasSensor: 'true' }).hasSensor).toBe(true);
+
+    expect(() => parseListMonitoringPointsQuery({ machineType: 'PUMP' })).toThrow();
+    expect(() => parseListMonitoringPointsQuery({ sensorModel: 'HF ' })).toThrow();
+    expect(() => parseListMonitoringPointsQuery({ hasSensor: '1' })).toThrow();
+  });
+
+  it('recusa busca acima do limite defensivo', () => {
+    expect(() => parseListMonitoringPointsQuery({ search: 'x'.repeat(121) })).toThrow();
+    expect(parseListMonitoringPointsQuery({ search: 'x'.repeat(120) }).search).toHaveLength(120);
   });
 
   it('aceita ordenação por qualquer uma das quatro colunas, nos dois sentidos', () => {

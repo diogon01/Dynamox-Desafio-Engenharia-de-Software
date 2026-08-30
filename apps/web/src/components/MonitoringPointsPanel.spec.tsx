@@ -45,8 +45,13 @@ function pageDto(items: unknown[], total = items.length) {
     total,
     page: 1,
     pageSize: 5,
+    totalPages: Math.ceil(total / 5),
     sortBy: 'machineName',
     sortDir: 'asc',
+    search: null,
+    machineType: null,
+    sensorModel: null,
+    hasSensor: null,
   };
 }
 
@@ -303,3 +308,81 @@ describe('MonitoringPointsPanel', () => {
   });
 });
 
+describe('MonitoringPointsPanel — recorte no servidor e perfil', () => {
+  it('busca digitada vira parâmetro de consulta e volta para a primeira página', async () => {
+    const urls: string[] = [];
+    stubApi({
+      onListPoints: (url) => {
+        urls.push(url);
+        return pageDto([POINT_PUMP], 1);
+      },
+    });
+    renderPanel();
+    await screen.findByRole('table');
+
+    await userEvent.type(screen.getByLabelText(/Buscar pontos/i), 'P-101');
+
+    // O termo é enviado ao servidor (a filtragem não acontece na página já carregada).
+    await waitFor(() => {
+      expect(urls.some((url) => url.includes('search=P-101'))).toBe(true);
+    });
+    expect(urls.at(-1)).toContain('page=1');
+  });
+
+  it('filtros de tipo, modelo e presença de sensor viajam codificados', async () => {
+    const urls: string[] = [];
+    stubApi({
+      onListPoints: (url) => {
+        urls.push(url);
+        return pageDto([POINT_PUMP], 1);
+      },
+    });
+    renderPanel();
+    await screen.findByRole('table');
+
+    await userEvent.click(screen.getByLabelText('Tipo da máquina'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Pump' }));
+    await waitFor(() => expect(urls.some((url) => url.includes('machineType=Pump'))).toBe(true));
+
+    await userEvent.click(screen.getByLabelText('Modelo do sensor'));
+    await userEvent.click(await screen.findByRole('option', { name: 'HF+' }));
+    // "HF+" precisa ir codificado: '+' cru numa query string significa espaço.
+    await waitFor(() => expect(urls.some((url) => url.includes('sensorModel=HF%2B'))).toBe(true));
+
+    await userEvent.click(screen.getByLabelText('Sensor'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Sem sensor' }));
+    await waitFor(() => expect(urls.some((url) => url.includes('hasSensor=false'))).toBe(true));
+  });
+
+  it('limpar remove todo o recorte da consulta', async () => {
+    const urls: string[] = [];
+    stubApi({
+      onListPoints: (url) => {
+        urls.push(url);
+        return pageDto([POINT_PUMP], 1);
+      },
+    });
+    renderPanel();
+    await screen.findByRole('table');
+
+    await userEvent.click(screen.getByLabelText('Tipo da máquina'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Fan' }));
+    await waitFor(() => expect(urls.some((url) => url.includes('machineType=Fan'))).toBe(true));
+
+    await userEvent.click(screen.getByRole('button', { name: /Limpar/i }));
+    await waitFor(() => expect(urls.at(-1)).not.toContain('machineType'));
+  });
+
+  it('VIEWER consulta e filtra, mas não recebe ações de escrita', async () => {
+    stubApi({ points: pageDto([POINT_PUMP], 1) });
+    renderWithProviders(<MonitoringPointsPanel />, { role: 'VIEWER' });
+
+    expect(await screen.findByRole('table')).toBeDefined();
+    // O recorte continua disponível para quem só consulta...
+    expect(screen.getByLabelText(/Buscar pontos/i)).toBeDefined();
+    // ...mas nenhuma mutação é oferecida.
+    expect(screen.queryByRole('button', { name: /Criar ponto/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Associar sensor/i })).toBeNull();
+    expect(screen.getByText(/somente leitura/i)).toBeDefined();
+  });
+});

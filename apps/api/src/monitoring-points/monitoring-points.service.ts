@@ -32,8 +32,14 @@ export interface MonitoringPointPageDto {
   total: number;
   page: number;
   pageSize: number;
+  totalPages: number;
   sortBy: MonitoringPointSortColumn;
   sortDir: 'asc' | 'desc';
+  /** Eco do recorte aplicado: o cliente confirma o que o servidor de fato considerou. */
+  search: string | null;
+  machineType: MachineType | null;
+  sensorModel: SensorModel | null;
+  hasSensor: boolean | null;
 }
 
 /** Linha crua do SELECT da listagem (join de ponto, máquina e sensor). */
@@ -64,6 +70,46 @@ const SORT_EXPRESSIONS: Record<MonitoringPointSortColumn, string> = {
   sensorModel:
     "CASE s.model::text WHEN 'TC_AG' THEN 'TcAg' WHEN 'TC_AS' THEN 'TcAs' WHEN 'HF_PLUS' THEN 'HF+' END",
 };
+
+/** Vocabulário público -> enum do banco, para filtrar sem vazar o enum interno. */
+const MACHINE_TYPE_TO_DB: Record<MachineType, string> = { Pump: 'PUMP', Fan: 'FAN' };
+const SENSOR_MODEL_TO_DB: Record<SensorModel, string> = {
+  TcAg: 'TC_AG',
+  TcAs: 'TC_AS',
+  'HF+': 'HF_PLUS',
+};
+
+/**
+ * Monta o recorte da listagem. Tudo vai como parâmetro (`Prisma.sql`), nunca concatenado:
+ * o texto de busca é dado do usuário e não pode chegar ao SQL como fragmento.
+ *
+ * A busca é case-insensitive e por trecho, cobrindo os campos que a tabela exibe —
+ * máquina, ponto e série do sensor — porque são os que a pessoa tem em mãos ao procurar.
+ */
+function buildListFilter(query: ListMonitoringPointsQuery): Prisma.Sql {
+  const conditions: Prisma.Sql[] = [];
+
+  if (query.search) {
+    // escapa curingas do LIKE para que "%" digitado seja buscado literalmente
+    const term = `%${query.search.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+    conditions.push(Prisma.sql`(
+      m.name ILIKE ${term} ESCAPE '\\'
+      OR mp.name ILIKE ${term} ESCAPE '\\'
+      OR s."serialNumber" ILIKE ${term} ESCAPE '\\'
+    )`);
+  }
+  if (query.machineType) {
+    conditions.push(Prisma.sql`m.type::text = ${MACHINE_TYPE_TO_DB[query.machineType]}`);
+  }
+  if (query.sensorModel) {
+    conditions.push(Prisma.sql`s.model::text = ${SENSOR_MODEL_TO_DB[query.sensorModel]}`);
+  }
+  if (query.hasSensor !== null) {
+    conditions.push(query.hasSensor ? Prisma.sql`s.id IS NOT NULL` : Prisma.sql`s.id IS NULL`);
+  }
+
+  return conditions.length === 0 ? Prisma.empty : Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`;
+}
 
 function isUniqueViolation(error: unknown): error is Prisma.PrismaClientKnownRequestError {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -205,6 +251,9 @@ export class MonitoringPointsService {
     const sortExpression = SORT_EXPRESSIONS[query.sortBy];
     const direction = query.sortDir === 'desc' ? 'DESC' : 'ASC';
     const offset = (query.page - 1) * query.pageSize;
+    // O MESMO recorte alimenta a página e a contagem: se o WHERE divergisse entre as duas
+    // consultas, o total anunciado não corresponderia aos itens devolvidos.
+    const where = buildListFilter(query);
 
     // As duas consultas compartilham o MESMO snapshot: em Repeatable Read o PostgreSQL
     // congela a visão dos dados na primeira leitura da transação, então `total` sempre
@@ -227,16 +276,23 @@ export class MonitoringPointsService {
         FROM monitoring_points mp
         JOIN machines m ON m.id = mp."machineId"
         LEFT JOIN sensors s ON s."monitoringPointId" = mp.id
+        ${where}
         ORDER BY ${Prisma.raw(sortExpression)} ${Prisma.raw(direction)} NULLS LAST,
                  mp.name ASC, mp.id ASC
         LIMIT ${query.pageSize} OFFSET ${offset}
       `),
-        this.prisma.$queryRaw<Array<{ count: bigint }>>`
-        SELECT count(*)::bigint AS count FROM monitoring_points
-      `,
+        this.prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+        SELECT count(*)::bigint AS count
+        FROM monitoring_points mp
+        JOIN machines m ON m.id = mp."machineId"
+        LEFT JOIN sensors s ON s."monitoringPointId" = mp.id
+        ${where}
+      `),
       ],
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
+
+    const total = Number(count);
 
     return {
       items: rows.map((row) => ({
@@ -258,11 +314,18 @@ export class MonitoringPointsService {
         createdAt: row.createdAt.toISOString(),
         updatedAt: row.updatedAt.toISOString(),
       })),
-      total: Number(count),
+      total,
       page: query.page,
       pageSize: query.pageSize,
+      // Derivado aqui para que o cliente não precise repetir a regra de arredondamento
+      // (e não erre o "última página" quando o total não é múltiplo do tamanho).
+      totalPages: Math.ceil(total / query.pageSize),
       sortBy: query.sortBy,
       sortDir: query.sortDir,
+      search: query.search,
+      machineType: query.machineType,
+      sensorModel: query.sensorModel,
+      hasSensor: query.hasSensor,
     };
   }
 

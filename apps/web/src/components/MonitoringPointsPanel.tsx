@@ -39,6 +39,7 @@ import {
   sortChanged,
 } from '../features/monitoringPoints/monitoringPointsSlice';
 import { useAppDispatch, useAppSelector } from '../store';
+import { MonitoringPointFilters } from './MonitoringPointFilters';
 
 /** Mesmo teto aplicado pela API; a validação local só antecipa a mensagem. */
 const NAME_MAX_LENGTH = 120;
@@ -60,6 +61,7 @@ export function MonitoringPointsPanel(): JSX.Element {
     page,
     sortBy,
     sortDir,
+    filters,
     listStatus,
     listError,
     createStatus,
@@ -83,10 +85,10 @@ export function MonitoringPointsPanel(): JSX.Element {
     if (machines.listStatus === 'idle') void dispatch(fetchMachines());
   }, [dispatch, machines.listStatus]);
 
-  // Recarrega sempre que página ou ordenação mudam (o thunk lê page/sort do estado).
+  // Recarrega sempre que página, ordenação ou recorte mudam (o thunk lê tudo do estado).
   useEffect(() => {
     void dispatch(fetchMonitoringPoints());
-  }, [dispatch, page, sortBy, sortDir]);
+  }, [dispatch, page, sortBy, sortDir, filters]);
 
   const trimmedPointName = pointName.trim();
   const creating = createStatus === 'loading';
@@ -218,6 +220,8 @@ export function MonitoringPointsPanel(): JSX.Element {
           </Stack>
         </Box>
         ) : null}
+
+        <MonitoringPointFilters />
 
         {assignTarget ? (
           <Box

@@ -64,7 +64,27 @@ export class MonitoringPointsController {
     schema: { type: 'string', enum: ['machineName', 'machineType', 'pointName', 'sensorModel'], default: 'machineName' },
   })
   @ApiQuery({ name: 'sortDir', required: false, schema: { type: 'string', enum: ['asc', 'desc'], default: 'asc' } })
-  @ApiResponse({ status: 200, description: '{ items, total, page, pageSize, sortBy, sortDir }' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description:
+      'Busca por trecho, sem diferenciar maiúsculas, no nome da máquina, no nome do ponto e na série do sensor.',
+    schema: { type: 'string', maxLength: 120 },
+  })
+  @ApiQuery({ name: 'machineType', required: false, schema: { type: 'string', enum: ['Pump', 'Fan'] } })
+  @ApiQuery({ name: 'sensorModel', required: false, schema: { type: 'string', enum: ['TcAg', 'TcAs', 'HF+'] } })
+  @ApiQuery({
+    name: 'hasSensor',
+    required: false,
+    description: 'true devolve só pontos com sensor associado; false, só os sem sensor.',
+    schema: { type: 'string', enum: ['true', 'false'] },
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      '{ items, total, page, pageSize, totalPages, sortBy, sortDir, search, machineType, sensorModel, hasSensor }. ' +
+      'A tela do desafio usa pageSize=5; total e totalPages já refletem o recorte de busca e filtros.',
+  })
   @ApiResponse({ status: 400, description: 'INVALID_MONITORING_POINT_QUERY' })
   list(@Query() query: Record<string, unknown>): Promise<MonitoringPointPageDto> {
     return this.monitoringPoints.list(parseListMonitoringPointsQuery(query));

@@ -1,6 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 
-import { SENSOR_MODELS, isSensorModel, type SensorModel } from '@dynamox/domain';
+import {
+  MACHINE_TYPES,
+  SENSOR_MODELS,
+  isSensorModel,
+  type MachineType,
+  type SensorModel,
+} from '@dynamox/domain';
 
 export interface CreateMonitoringPointDto {
   machineId: string;
@@ -26,7 +32,16 @@ export interface ListMonitoringPointsQuery {
   pageSize: number;
   sortBy: MonitoringPointSortColumn;
   sortDir: 'asc' | 'desc';
+  /** Texto livre aplicado a nome da máquina, nome do ponto e série do sensor. */
+  search: string | null;
+  machineType: MachineType | null;
+  sensorModel: SensorModel | null;
+  /** true = só pontos com sensor; false = só pontos sem sensor; null = ambos. */
+  hasSensor: boolean | null;
 }
+
+/** Limite defensivo da busca: texto maior que isto não é consulta, é abuso de índice. */
+export const SEARCH_MAX_LENGTH = 120;
 
 /** O enunciado fixa 5 por página; o parâmetro existe para testes e usos futuros. */
 export const DEFAULT_PAGE_SIZE = 5;
@@ -116,7 +131,53 @@ function invalidQuery(message: string): BadRequestException {
 /** Teto de página: acima disso o offset deixa de ter uso real e só estressa o banco. */
 export const MAX_PAGE = 100_000;
 
-const QUERY_KEYS = ['page', 'pageSize', 'sortBy', 'sortDir'] as const;
+const QUERY_KEYS = [
+  'page',
+  'pageSize',
+  'sortBy',
+  'sortDir',
+  'search',
+  'machineType',
+  'sensorModel',
+  'hasSensor',
+] as const;
+
+/**
+ * Filtros e busca são opcionais, mas quando presentes precisam ser reconhecíveis: um
+ * valor inválido vira 400 em vez de ser ignorado silenciosamente, senão o cliente acha
+ * que filtrou e recebe a lista inteira.
+ */
+function parseOptionalString(value: unknown, field: string, maxLength: number): string | null {
+  if (value === undefined) return null;
+  if (typeof value !== 'string') {
+    throw invalidQuery(`O parâmetro "${field}" deve ser texto.`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > maxLength) {
+    throw invalidQuery(`O parâmetro "${field}" deve ter no máximo ${maxLength} caracteres.`);
+  }
+  return trimmed;
+}
+
+function parseOptionalEnum<T extends string>(
+  value: unknown,
+  field: string,
+  allowed: readonly T[],
+): T | null {
+  if (value === undefined) return null;
+  if (typeof value !== 'string' || !(allowed as readonly string[]).includes(value)) {
+    throw invalidQuery(`O parâmetro "${field}" deve ser um destes valores: ${allowed.join(', ')}.`);
+  }
+  return value as T;
+}
+
+function parseOptionalBoolean(value: unknown, field: string): boolean | null {
+  if (value === undefined) return null;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw invalidQuery(`O parâmetro "${field}" deve ser "true" ou "false".`);
+}
 
 function parseBoundedInt(
   value: unknown,
@@ -176,5 +237,9 @@ export function parseListMonitoringPointsQuery(
     pageSize,
     sortBy: sortBy as MonitoringPointSortColumn,
     sortDir,
+    search: parseOptionalString(query.search, 'search', SEARCH_MAX_LENGTH),
+    machineType: parseOptionalEnum(query.machineType, 'machineType', MACHINE_TYPES),
+    sensorModel: parseOptionalEnum(query.sensorModel, 'sensorModel', SENSOR_MODELS),
+    hasSensor: parseOptionalBoolean(query.hasSensor, 'hasSensor'),
   };
 }

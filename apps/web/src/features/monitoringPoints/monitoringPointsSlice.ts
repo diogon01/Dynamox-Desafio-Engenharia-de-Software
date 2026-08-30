@@ -10,6 +10,7 @@ import type { SensorModel } from '@dynamox/domain';
 
 import {
   api,
+  type MonitoringPointFilters,
   type MonitoringPointPageDto,
   type MonitoringPointSortColumn,
 } from '../../api/client';
@@ -22,6 +23,8 @@ export interface MonitoringPointsState {
   page: number;
   sortBy: MonitoringPointSortColumn;
   sortDir: 'asc' | 'desc';
+  /** Recorte pedido ao servidor; a filtragem não acontece sobre a página carregada. */
+  filters: MonitoringPointFilters;
   listStatus: RequestStatus;
   listError: string | null;
   createStatus: RequestStatus;
@@ -35,6 +38,7 @@ export const initialMonitoringPointsState: MonitoringPointsState = {
   page: 1,
   sortBy: 'machineName',
   sortDir: 'asc',
+  filters: { search: null, machineType: null, sensorModel: null, hasSensor: null },
   listStatus: 'idle',
   listError: null,
   createStatus: 'idle',
@@ -58,6 +62,7 @@ export const fetchMonitoringPoints = createMonitoringPointsThunk(
       page: monitoringPoints.page,
       sortBy: monitoringPoints.sortBy,
       sortDir: monitoringPoints.sortDir,
+      ...monitoringPoints.filters,
     });
   },
 );
@@ -99,6 +104,18 @@ const monitoringPointsSlice = createSlice({
         state.sortBy = action.payload;
         state.sortDir = 'asc';
       }
+      state.page = 1;
+    },
+    /**
+     * Qualquer mudança de recorte volta para a primeira página: manter a página atual
+     * deixaria o usuário numa página que talvez não exista mais no novo total.
+     */
+    filtersChanged(state, action: PayloadAction<Partial<MonitoringPointFilters>>) {
+      state.filters = { ...state.filters, ...action.payload };
+      state.page = 1;
+    },
+    filtersCleared(state) {
+      state.filters = initialMonitoringPointsState.filters;
       state.page = 1;
     },
   },
@@ -149,8 +166,13 @@ const monitoringPointsSlice = createSlice({
   },
 });
 
-export const { pageChanged, sortChanged } = monitoringPointsSlice.actions;
+export const { pageChanged, sortChanged, filtersChanged, filtersCleared } =
+  monitoringPointsSlice.actions;
 export const monitoringPointsReducer = monitoringPointsSlice.reducer;
 
 export const selectMonitoringPoints = (state: RootState): MonitoringPointsState =>
   state.monitoringPoints;
+
+/** Há algum recorte ativo? Usado para oferecer "limpar" só quando faz sentido. */
+export const selectHasActiveFilters = (state: RootState): boolean =>
+  Object.values(state.monitoringPoints.filters).some((value) => value !== null);

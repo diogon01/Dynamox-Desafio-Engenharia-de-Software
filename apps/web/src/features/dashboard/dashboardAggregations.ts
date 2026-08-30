@@ -13,10 +13,11 @@ export const SYNTHETIC_OBSERVATION_RATIO = 1.5;
 export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
 const ACQUISITION_GAP_MS = 5 * 60 * 1000;
-const MIN_BASELINE_SAMPLES = 3;
+/** Amostras mínimas para uma janela de aquisição valer como baseline. */
+export const MIN_BASELINE_SAMPLES = 3;
 const MIN_SERIES_BASELINE_SAMPLES = 60;
 
-export const PERIOD_MS: Record<DashboardPeriod, number> = {
+export const PERIOD_MS: Record<Exclude<DashboardPeriod, 'all'>, number> = {
   '24h': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
   '30d': 30 * 24 * 60 * 60 * 1000,
@@ -42,6 +43,24 @@ export interface SyntheticAssessment {
   sampleCount: number;
 }
 
+/**
+ * A medição que SUSTENTA o estado exibido. Existe porque a matriz antes mostrava o último
+ * valor de uma série qualquer do sensor (o desempate caía no eixo X) enquanto a condição
+ * vinha do RMS radial Y/Z: o número na tela não era o número que classificava.
+ */
+export interface ConditionEvidence {
+  /** Série que o usuário abre ao investigar (eixo Y do par radial, quando há avaliação). */
+  seriesId: string | null;
+  /** Rótulo da grandeza medida — "Aceleração radial (Y/Z)", "Temperatura"… */
+  label: string;
+  value: number | null;
+  unit: string | null;
+  timestamp: string | null;
+  /** Índice em relação ao baseline demonstrativo; null quando não há avaliação. */
+  deviationRatio: number | null;
+  baseline: number | null;
+}
+
 export interface SensorCellView {
   key: string;
   machineId: string;
@@ -57,6 +76,7 @@ export interface SensorCellView {
   lastValue: number | null;
   lastUnit: string | null;
   lastTimestamp: string | null;
+  evidence: ConditionEvidence | null;
   condition: ConditionKind;
   conditionLabel: string;
   freshness: FreshnessKind;
@@ -80,6 +100,12 @@ export interface AttentionSignal {
   reason: string;
   lastTimestamp: string | null;
   seriesId: string | null;
+  /** Evidência que sustenta a linha — a mesma medição que classificou a célula. */
+  evidenceLabel: string | null;
+  evidenceValue: number | null;
+  evidenceUnit: string | null;
+  deviationRatio: number | null;
+  baseline: number | null;
 }
 
 export interface DashboardView {
@@ -88,12 +114,22 @@ export interface DashboardView {
   assessments: SyntheticAssessment[];
   ranking: SensorCellView[];
   signals: AttentionSignal[];
+  /**
+   * Um KPI = um conceito. Antes havia um único "sinais de atenção" somando condição,
+   * ausência de sensor, ausência de dados e recência — o número resultante era sempre
+   * igual ao total de pontos e não distinguia nada.
+   */
   kpis: {
+    /** Inventário: contexto, não mensagem operacional. */
     machines: number;
     points: number;
     sensors: number;
+    /** Condição: pontos cuja MEDIÇÃO desviou do baseline demonstrativo. */
     attention: number;
+    /** Recência: leitura antiga ou instante à frente do relógio. */
     stale: number;
+    /** Cobertura: ponto sem sensor ou sensor sem leitura. */
+    coverage: number;
   };
   distribution: Array<{ key: FreshnessKind | 'no-data'; label: string; value: number }>;
   latestTimestamp: string | null;
@@ -333,41 +369,131 @@ function conditionFrom(
   return { kind: 'normal', label: 'Normal demonstrativo' };
 }
 
-function latestMetric(
-  series: TimeSeriesSummary[],
-  metricsBySeries: Record<string, SeriesMetrics>,
-): { series: TimeSeriesSummary | null; metrics: SeriesMetrics | null } {
+/**
+ * Série com a leitura mais recente do sensor. O valor e o instante vêm do RESUMO devolvido
+ * por GET /time-series — antes era preciso uma chamada de métricas por série só para isto.
+ * O desempate é estável (grandeza, depois eixo) para a tela não trocar de série sozinha
+ * quando todas as leituras compartilham o mesmo instante.
+ */
+function latestSeries(series: TimeSeriesSummary[]): TimeSeriesSummary | null {
   let chosen: TimeSeriesSummary | null = null;
-  let metrics: SeriesMetrics | null = null;
   let latest = Number.NEGATIVE_INFINITY;
   for (const item of series) {
-    const candidate = metricsBySeries[item.id];
-    const at = candidate?.lastTimestamp ? Date.parse(candidate.lastTimestamp) : Number.NaN;
-    if (Number.isFinite(at) && at > latest) {
+    const at = item.lastTimestamp ? Date.parse(item.lastTimestamp) : Number.NaN;
+    if (!Number.isFinite(at)) continue;
+    if (at > latest) {
       latest = at;
       chosen = item;
-      metrics = candidate;
+      continue;
+    }
+    if (at === latest && chosen) {
+      const key = (candidate: TimeSeriesSummary) =>
+        `${candidate.physicalQuantity}/${candidate.axis ?? ''}`;
+      if (key(item) < key(chosen)) chosen = item;
     }
   }
-  return { series: chosen, metrics };
+  return chosen;
+}
+
+/** RMS radial da aquisição mais recente pareada em Y e Z — o valor que classifica. */
+function latestRadialReading(
+  ySamples: TimeSeriesSampleDto[],
+  zSamples: TimeSeriesSampleDto[],
+): { value: number; timestamp: string } | null {
+  const zByTimestamp = new Map(zSamples.map((sample) => [sample.timestamp, sample.value]));
+  let chosen: { value: number; timestamp: string } | null = null;
+  for (const sample of ySamples) {
+    const z = zByTimestamp.get(sample.timestamp);
+    if (z === undefined) continue;
+    if (!chosen || sample.timestamp > chosen.timestamp) {
+      chosen = {
+        timestamp: sample.timestamp,
+        value: Math.sqrt((sample.value ** 2 + z ** 2) / 2),
+      };
+    }
+  }
+  return chosen;
+}
+
+/** Rótulo legível da grandeza de uma série (mesma nomenclatura da tela de tendência). */
+function quantityLabel(series: TimeSeriesSummary): string {
+  const QUANTITIES: Record<string, string> = {
+    acceleration: 'Aceleração',
+    velocity: 'Velocidade',
+    temperature: 'Temperatura',
+    rotationalSpeed: 'Rotação',
+  };
+  const base = QUANTITIES[series.physicalQuantity] ?? series.physicalQuantity;
+  return series.axis ? `${base} · eixo ${series.axis.toUpperCase()}` : base;
+}
+
+/**
+ * Evidência da condição: quando existe avaliação demonstrativa, o número exibido é o RMS
+ * radial (o mesmo que produziu o índice), com o seu baseline e a sua razão. Sem avaliação,
+ * exibe-se a leitura mais recente — sempre nomeando a grandeza e o eixo, para que o valor
+ * na tela nunca fique órfão do que ele mede.
+ */
+function buildEvidence(
+  sensorSeries: TimeSeriesSummary[],
+  assessment: SyntheticAssessment | null,
+  radialSamplesBySeries: Record<string, TimeSeriesSampleDto[]>,
+): ConditionEvidence | null {
+  const y = sensorSeries.find(
+    (item) => item.physicalQuantity === 'acceleration' && item.axis === 'y',
+  );
+  const z = sensorSeries.find(
+    (item) => item.physicalQuantity === 'acceleration' && item.axis === 'z',
+  );
+
+  if (assessment && y && z) {
+    const reading = latestRadialReading(
+      radialSamplesBySeries[y.id] ?? [],
+      radialSamplesBySeries[z.id] ?? [],
+    );
+    return {
+      seriesId: y.id,
+      label: 'Aceleração radial (Y/Z)',
+      value: reading?.value ?? null,
+      unit: y.unit,
+      timestamp: reading?.timestamp ?? y.lastTimestamp,
+      deviationRatio: assessment.deviationRatio,
+      baseline: assessment.baseline,
+    };
+  }
+
+  const latest = latestSeries(sensorSeries);
+  if (!latest) return null;
+  return {
+    seriesId: latest.id,
+    label: quantityLabel(latest),
+    value: latest.lastValue,
+    unit: latest.unit,
+    timestamp: latest.lastTimestamp,
+    deviationRatio: null,
+    baseline: null,
+  };
 }
 
 function buildCell(
   point: MonitoringPointDto,
-  metricsBySeries: Record<string, SeriesMetrics>,
   allSeries: TimeSeriesSummary[],
   assessments: Map<string, SyntheticAssessment>,
+  radialSamplesBySeries: Record<string, TimeSeriesSampleDto[]>,
   nowMs: number,
 ): SensorCellView {
   const sensorSeries = point.sensor
     ? allSeries.filter((item) => item.sensorSerialNumber === point.sensor?.serialNumber)
     : [];
-  const preferred = preferredSeries(sensorSeries);
-  const latest = latestMetric(sensorSeries, metricsBySeries);
-  const hasSamples = sensorSeries.some((item) => (metricsBySeries[item.id]?.count ?? item.sampleCount) > 0);
   const assessment = point.sensor ? assessments.get(point.sensor.serialNumber) ?? null : null;
+  const evidence = buildEvidence(sensorSeries, assessment, radialSamplesBySeries);
+  const hasSamples = sensorSeries.some((item) => item.sampleCount > 0);
   const condition = conditionFrom(Boolean(point.sensor), hasSamples, assessment);
-  const freshness = classifyFreshness(latest.metrics?.lastTimestamp ?? null, nowMs);
+  // A recência é do sensor, não da série da evidência: a leitura mais nova de qualquer
+  // grandeza prova que o sensor reportou.
+  const newest = latestSeries(sensorSeries);
+  const freshness = classifyFreshness(newest?.lastTimestamp ?? null, nowMs);
+  // Investigar leva à série da evidência; sem evidência, à série preferida do sensor.
+  const preferred = preferredSeries(sensorSeries);
 
   return {
     key: point.id,
@@ -380,10 +506,11 @@ function buildCell(
     sensorSerial: point.sensor?.serialNumber ?? null,
     sensorModel: point.sensor?.model ?? null,
     series: sensorSeries,
-    preferredSeriesId: preferred?.id ?? null,
-    lastValue: latest.metrics?.last ?? null,
-    lastUnit: latest.series?.unit ?? null,
-    lastTimestamp: latest.metrics?.lastTimestamp ?? null,
+    preferredSeriesId: evidence?.seriesId ?? preferred?.id ?? null,
+    lastValue: evidence?.value ?? null,
+    lastUnit: evidence?.unit ?? null,
+    lastTimestamp: newest?.lastTimestamp ?? null,
+    evidence,
     condition: condition.kind,
     conditionLabel: condition.label,
     freshness: freshness.kind,
@@ -395,64 +522,69 @@ function buildCell(
 
 const severityOrder: Record<AttentionSeverity, number> = { high: 3, medium: 2, info: 1 };
 
+/**
+ * UMA linha por ponto, não uma por motivo. Antes, um ponto com desvio E relógio divergente
+ * aparecia duas vezes na mesma lista, o que inflava a contagem e escondia as exceções
+ * distintas; agora os motivos são acumulados e a severidade é a mais alta entre eles.
+ */
 export function buildAttentionSignals(cells: SensorCellView[]): AttentionSignal[] {
   const signals: AttentionSignal[] = [];
+
   for (const cell of cells) {
-    const common = {
-      machineName: cell.machineName,
-      pointAndSensor: `${cell.positionLabel} · ${cell.sensorSerial ?? 'sem sensor'}`,
-      lastTimestamp: cell.lastTimestamp,
-      seriesId: cell.preferredSeriesId,
-    };
+    const reasons: Array<{ severity: AttentionSeverity; text: string }> = [];
+
     if (cell.condition === 'attention') {
-      signals.push({
-        id: `${cell.key}-condition`,
+      reasons.push({
         severity: 'high',
-        reason: `Índice demonstrativo ${cell.assessment?.deviationRatio.toFixed(2)}× o baseline (limiar didático 2,0×).`,
-        ...common,
+        text: `Índice demonstrativo ${cell.assessment?.deviationRatio.toFixed(2)}× o baseline (limiar didático 2,0×).`,
       });
     } else if (cell.condition === 'observation') {
-      signals.push({
-        id: `${cell.key}-condition`,
+      reasons.push({
         severity: 'medium',
-        reason: `Desvio demonstrativo de ${cell.assessment?.deviationRatio.toFixed(2)}× o baseline observado.`,
-        ...common,
+        text: `Desvio demonstrativo de ${cell.assessment?.deviationRatio.toFixed(2)}× o baseline observado.`,
       });
     } else if (cell.condition === 'no-sensor') {
-      signals.push({
-        id: `${cell.key}-sensor`,
-        severity: 'medium',
-        reason: 'Ponto de monitoramento sem sensor associado.',
-        ...common,
-      });
+      reasons.push({ severity: 'medium', text: 'Ponto de monitoramento sem sensor associado.' });
     } else if (cell.condition === 'no-data') {
-      signals.push({
-        id: `${cell.key}-data`,
-        severity: 'medium',
-        reason: 'Sensor instalado sem leitura disponível.',
-        ...common,
-      });
+      reasons.push({ severity: 'medium', text: 'Sensor instalado sem leitura disponível.' });
     }
 
     if (cell.freshness === 'stale') {
-      signals.push({
-        id: `${cell.key}-stale`,
-        severity: 'medium',
-        reason: 'Última leitura há mais de 24 horas.',
-        ...common,
-      });
+      reasons.push({ severity: 'medium', text: 'Última leitura há mais de 24 horas.' });
     } else if (cell.freshness === 'future') {
-      signals.push({
-        id: `${cell.key}-future`,
+      reasons.push({
         severity: 'medium',
-        reason: 'Timestamp à frente do relógio local; verifique sincronização.',
-        ...common,
+        text: 'Instante à frente do relógio local; verifique a sincronização.',
       });
     }
+
+    if (reasons.length === 0) continue;
+
+    const severity = reasons.reduce<AttentionSeverity>(
+      (worst, item) => (severityOrder[item.severity] > severityOrder[worst] ? item.severity : worst),
+      'info',
+    );
+
+    signals.push({
+      id: cell.key,
+      severity,
+      machineName: cell.machineName,
+      pointAndSensor: `${cell.positionLabel} · ${cell.sensorSerial ?? 'sem sensor'}`,
+      reason: reasons.map((item) => item.text).join(' '),
+      lastTimestamp: cell.lastTimestamp,
+      seriesId: cell.preferredSeriesId,
+      evidenceLabel: cell.evidence?.label ?? null,
+      evidenceValue: cell.evidence?.value ?? null,
+      evidenceUnit: cell.evidence?.unit ?? null,
+      deviationRatio: cell.evidence?.deviationRatio ?? null,
+      baseline: cell.evidence?.baseline ?? null,
+    });
   }
+
   return signals.sort(
     (a, b) =>
       severityOrder[b.severity] - severityOrder[a.severity] ||
+      (b.deviationRatio ?? 0) - (a.deviationRatio ?? 0) ||
       a.machineName.localeCompare(b.machineName, 'pt-BR'),
   );
 }
@@ -466,13 +598,7 @@ export function buildDashboardView(
     state.radialSamplesBySeries,
   );
   const cells = state.points.data.map((point) =>
-    buildCell(
-      point,
-      state.metricsBySeries,
-      state.series.data,
-      fleetAssessments,
-      nowMs,
-    ),
+    buildCell(point, state.series.data, fleetAssessments, state.radialSamplesBySeries, nowMs),
   );
   const rows = state.machines.data.map((machine) => ({
     machine,
@@ -485,12 +611,15 @@ export function buildDashboardView(
         b.deviationRatio - a.deviationRatio ||
         a.serialNumber.localeCompare(b.serialNumber, 'pt-BR'),
     );
-  const ranking = assessments
-    .slice(0, 5)
-    .flatMap((assessment) => {
-      const cell = cells.find((candidate) => candidate.sensorSerial === assessment.serialNumber);
-      return cell ? [cell] : [];
-    });
+  // Ranking de exceções: só entra quem está acima do normal. Uma lista em que 4 dos 5
+  // primeiros marcam 1,00× ocupa a área nobre da tela sem informar nada.
+  const ranking = cells
+    .filter((cell) => cell.condition === 'attention' || cell.condition === 'observation')
+    .sort(
+      (a, b) =>
+        (b.assessment?.deviationRatio ?? 0) - (a.assessment?.deviationRatio ?? 0) ||
+        a.machineName.localeCompare(b.machineName, 'pt-BR'),
+    );
   const signals = buildAttentionSignals(cells);
   const sensors = cells.filter((cell) => cell.sensorSerial);
   const latestTimestamp = sensors.reduce<string | null>((latest, cell) => {
@@ -515,10 +644,17 @@ export function buildDashboardView(
       machines: state.machines.data.length,
       points: state.points.data.length,
       sensors: sensors.length,
-      attention: new Set(
-        signals.map((signal) => signal.id.replace(/-(condition|sensor|data|stale|future)$/, '')),
-      ).size,
-      stale: sensors.filter((cell) => cell.freshness === 'stale').length,
+      // Condição: o que a MEDIÇÃO diz. Nunca mistura ausência de sensor nem recência.
+      attention: cells.filter(
+        (cell) => cell.condition === 'attention' || cell.condition === 'observation',
+      ).length,
+      // Recência: leitura velha demais ou instante à frente do relógio.
+      stale: cells.filter((cell) => cell.freshness === 'stale' || cell.freshness === 'future')
+        .length,
+      // Cobertura: ponto sem sensor instalado ou sensor que nunca reportou.
+      coverage: cells.filter(
+        (cell) => cell.condition === 'no-sensor' || cell.condition === 'no-data',
+      ).length,
     },
     distribution,
     latestTimestamp,
@@ -533,7 +669,12 @@ export interface TrendPoint {
 
 export interface TrendView {
   points: TrendPoint[];
-  mode: 'raw' | 'average';
+  /**
+   * `acquisition` existe porque o dado real é uma RAJADA: 60 amostras em 60 s, repetidas a
+   * cada hora. Plotadas cruas num eixo de horas, cada aquisição vira um traço vertical e a
+   * tendência — que é justamente a comparação entre aquisições — some.
+   */
+  mode: 'raw' | 'average' | 'acquisition';
   filteredSamples: TimeSeriesSampleDto[];
   availableStart: string | null;
   availableEnd: string | null;
@@ -546,14 +687,19 @@ export function filterSamplesByPeriod(
   period: DashboardPeriod,
   nowMs = Date.now(),
 ): TimeSeriesSampleDto[] {
-  const start = nowMs - PERIOD_MS[period];
-  return samples
-    .filter((sample) => {
-      const at = parseTimestamp(sample.timestamp);
-      return at !== null && at >= start && at <= nowMs;
-    })
+  const sorted = samples
+    .filter((sample) => parseTimestamp(sample.timestamp) !== null)
     .slice()
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+  // "Tudo" mostra o histórico como ele está no banco, inclusive fora da janela móvel.
+  if (period === 'all') return sorted;
+
+  const start = nowMs - PERIOD_MS[period];
+  return sorted.filter((sample) => {
+    const at = Date.parse(sample.timestamp);
+    return at >= start && at <= nowMs;
+  });
 }
 
 function sampleRange(samples: TimeSeriesSampleDto[]): [string | null, string | null] {
@@ -564,10 +710,12 @@ function sampleRange(samples: TimeSeriesSampleDto[]): [string | null, string | n
   return [sorted[0]?.timestamp ?? null, sorted.at(-1)?.timestamp ?? null];
 }
 
-function bucketSize(period: DashboardPeriod): number {
+function bucketSize(period: DashboardPeriod, spanMs: number): number {
   if (period === '24h') return 15 * 60 * 1000;
   if (period === '7d') return 60 * 60 * 1000;
-  return 6 * 60 * 60 * 1000;
+  if (period === '30d') return 6 * 60 * 60 * 1000;
+  // "Tudo": o intervalo vem dos próprios dados, então o balde é derivado deles.
+  return Math.max(1, Math.ceil(spanMs / 240));
 }
 
 export function buildTrendView(
@@ -579,6 +727,30 @@ export function buildTrendView(
   const filtered = filterSamplesByPeriod(samples, period, nowMs);
   const [availableStart, availableEnd] = sampleRange(samples);
   const [coveredStart, coveredEnd] = sampleRange(filtered);
+
+  // Rajadas separadas por lacunas: uma média por aquisição mostra a tendência que o
+  // traçado cru esconde. Cada ponto continua sendo dado medido, nunca interpolação.
+  const acquisitions = groupAcquisitionWindows(filtered);
+  const denseAcquisitions =
+    acquisitions.length >= 2 &&
+    acquisitions.length <= 48 &&
+    filtered.length >= acquisitions.length * 10;
+
+  if (denseAcquisitions) {
+    return {
+      points: acquisitions.map((window) => ({
+        timestamp: Date.parse(window[0].timestamp),
+        value: mean(window.map((sample) => sample.value)),
+        samples: window.length,
+      })),
+      mode: 'acquisition',
+      filteredSamples: filtered,
+      availableStart,
+      availableEnd,
+      coveredStart,
+      coveredEnd,
+    };
+  }
 
   if (filtered.length <= rawLimit) {
     const points: TrendPoint[] = [];
@@ -609,8 +781,11 @@ export function buildTrendView(
     };
   }
 
-  const size = bucketSize(period);
-  const start = nowMs - PERIOD_MS[period];
+  const firstAt = Date.parse(filtered[0].timestamp);
+  const lastAt = Date.parse(filtered[filtered.length - 1].timestamp);
+  const spanMs = period === 'all' ? Math.max(1, lastAt - firstAt) : PERIOD_MS[period];
+  const size = bucketSize(period, spanMs);
+  const start = period === 'all' ? firstAt : nowMs - spanMs;
   const buckets = new Map<number, number[]>();
   for (const sample of filtered) {
     const at = Date.parse(sample.timestamp);
@@ -619,7 +794,7 @@ export function buildTrendView(
     values.push(sample.value);
     buckets.set(bucket, values);
   }
-  const count = Math.ceil(PERIOD_MS[period] / size);
+  const count = Math.ceil(spanMs / size);
   const points = Array.from({ length: count }, (_, bucket) => {
     const values = buckets.get(bucket) ?? [];
     return {

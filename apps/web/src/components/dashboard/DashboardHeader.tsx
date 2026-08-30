@@ -14,14 +14,17 @@ const PERIOD_LABELS: Record<DashboardPeriod, string> = {
   '24h': '24 h',
   '7d': '7 dias',
   '30d': '30 dias',
+  all: 'Tudo',
 };
 
-const PERIODS: DashboardPeriod[] = ['24h', '7d', '30d'];
+const PERIODS: DashboardPeriod[] = ['24h', '7d', '30d', 'all'];
 
 export interface DashboardHeaderProps {
   period: DashboardPeriod;
   loadedAt: string | null;
   latestReading: string | null;
+  /** Inventário: contexto do que está sendo monitorado, não a mensagem operacional. */
+  inventory: { machines: number; points: number; sensors: number };
   onPeriodChange: (period: DashboardPeriod) => void;
 }
 
@@ -29,6 +32,7 @@ export function DashboardHeader({
   period,
   loadedAt,
   latestReading,
+  inventory,
   onPeriodChange,
 }: DashboardHeaderProps): JSX.Element {
   return (
@@ -61,7 +65,7 @@ export function DashboardHeader({
             Visão geral operacional
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Prioridade de inspeção, recência e tendência com dados persistidos pela API.
+            Exceções primeiro; a frota completa e o histórico ficam abaixo.
           </Typography>
           <Stack direction="row" gap={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
             <Chip
@@ -81,9 +85,17 @@ export function DashboardHeader({
                 label={`Painel atualizado: ${formatDateTime(loadedAt)}`}
                 size="small"
                 variant="outlined"
+                // Redundante no celular: ocupa uma linha inteira antes das exceções.
+                sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
               />
             ) : null}
           </Stack>
+          {/* Inventário como contexto: informa a escala do monitoramento sem competir
+              com os indicadores de exceção. */}
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Monitorando {inventory.machines} máquina(s) · {inventory.points} ponto(s) ·{' '}
+            {inventory.sensors} sensor(es)
+          </Typography>
         </Box>
 
         <ToggleButtonGroup

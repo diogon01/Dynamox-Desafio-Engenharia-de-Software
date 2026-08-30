@@ -19,11 +19,8 @@ export const selectDashboardPartialErrors = createSelector([selectDashboard], (d
     dashboard.machines.error ? `Máquinas: ${dashboard.machines.error}` : null,
     dashboard.points.error ? `Pontos: ${dashboard.points.error}` : null,
     dashboard.series.error ? `Séries: ${dashboard.series.error}` : null,
-    Object.keys(dashboard.metricErrors).length > 0
-      ? `${Object.keys(dashboard.metricErrors).length} série(s) sem métricas.`
-      : null,
     Object.keys(dashboard.radialSampleErrors).length > 0
-      ? `${Object.keys(dashboard.radialSampleErrors).length} série(s) radiais sem baseline calculável.`
+      ? `${Object.keys(dashboard.radialSampleErrors).length} série(s) sem avaliação de condição.`
       : null,
   ].flatMap((value) => (value ? [value] : [])),
 );

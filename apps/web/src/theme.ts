@@ -15,10 +15,13 @@ const BRAND = {
   surface: '#FFFFFF',
   surfaceAlt: '#F8FAFC',
   onSurface: '#182636',
-  muted: '#667788',
+  // Texto e estados passam WCAG AA (>= 4,5:1) sobre as três superfícies reais do produto:
+  // #FFFFFF (paper), #F8FAFC (drawer) e #F3F5F7 (fundo). Os tons anteriores mediam
+  // 4,40 (secundário), 3,30 (sucesso) e 2,47 (aviso) — reprovados na auditoria.
+  muted: '#556676',
   border: '#D6E0E8',
-  success: '#16A34A',
-  warning: '#D49B16',
+  success: '#12813B',
+  warning: '#946200',
   error: '#C2413B',
 };
 

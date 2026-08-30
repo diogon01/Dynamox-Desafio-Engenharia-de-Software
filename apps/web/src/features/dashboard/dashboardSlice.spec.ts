@@ -5,10 +5,12 @@ import type { TimeSeriesSummary } from '@dynamox/domain';
 import {
   dashboardReducer,
   dashboardSeriesSelected,
+  fetchConditionEvidence,
   fetchDashboardSeriesDetail,
   fetchOperationalDashboard,
   initialDashboardState,
   periodChanged,
+  radialSeriesForCondition,
   type OperationalDashboardPayload,
 } from './dashboardSlice';
 
@@ -24,6 +26,8 @@ const xSeries: TimeSeriesSummary = {
   unit: 'g',
   displayName: null,
   sampleCount: 10,
+  lastValue: 0.008,
+  lastTimestamp: '2026-08-29T11:59:00.000Z',
 };
 
 const ySeries: TimeSeriesSummary = { ...xSeries, id: 'series-y', axis: 'y' };
@@ -33,10 +37,6 @@ function payload(overrides: Partial<OperationalDashboardPayload> = {}): Operatio
     machines: { data: [], error: null },
     points: { data: [], error: null },
     series: { data: [xSeries, ySeries], error: null },
-    metricsBySeries: {},
-    metricErrors: {},
-    radialSamplesBySeries: {},
-    radialSampleErrors: {},
     loadedAt: '2026-08-29T12:00:00.000Z',
     ...overrides,
   };
@@ -49,7 +49,7 @@ describe('dashboardSlice', () => {
     expect(dashboardReducer(initialDashboardState, periodChanged('30d')).period).toBe('30d');
   });
 
-  it('marca inventário e métricas como loading no carregamento inicial', () => {
+  it('marca o inventário como loading no carregamento inicial', () => {
     const state = dashboardReducer(
       initialDashboardState,
       fetchOperationalDashboard.pending('load-1'),
@@ -57,7 +57,8 @@ describe('dashboardSlice', () => {
     expect(state.machines.status).toBe('loading');
     expect(state.points.status).toBe('loading');
     expect(state.series.status).toBe('loading');
-    expect(state.metricsStatus).toBe('loading');
+    // A avaliação de condição é uma segunda etapa: não bloqueia o primeiro render.
+    expect(state.conditionStatus).toBe('idle');
   });
 
   it('seleciona primeiro a aceleração Y com amostras', () => {
@@ -91,19 +92,70 @@ describe('dashboardSlice', () => {
     expect(state.series.data).toHaveLength(2);
   });
 
-  it('preserva erros granulares de métricas e amostras radiais', () => {
+  it('preserva erros granulares da avaliação de condição', () => {
     const state = dashboardReducer(
       initialDashboardState,
-      fetchOperationalDashboard.fulfilled(
-        payload({
-          metricErrors: { 'series-x': 'sem métrica' },
-          radialSampleErrors: { 'series-y': 'sem amostras' },
-        }),
-        'load-5',
+      fetchConditionEvidence.fulfilled(
+        { radialSamplesBySeries: {}, radialSampleErrors: { 'series-y': 'sem amostras' } },
+        'cond-1',
+        undefined,
       ),
     );
-    expect(state.metricErrors).toEqual({ 'series-x': 'sem métrica' });
+    expect(state.conditionStatus).toBe('succeeded');
     expect(state.radialSampleErrors).toEqual({ 'series-y': 'sem amostras' });
+  });
+
+  it('a carga inicial não traz amostras: elas são da segunda etapa', () => {
+    const state = dashboardReducer(
+      initialDashboardState,
+      fetchOperationalDashboard.fulfilled(payload(), 'load-5b'),
+    );
+    expect(state.radialSamplesBySeries).toEqual({});
+    expect(state.conditionStatus).toBe('idle');
+
+    const avaliado = dashboardReducer(
+      state,
+      fetchConditionEvidence.fulfilled(
+        {
+          radialSamplesBySeries: { 'series-y': [{ timestamp: '2026-08-29T12:00:00.000Z', value: 1 }] },
+          radialSampleErrors: {},
+        },
+        'cond-2',
+        undefined,
+      ),
+    );
+    expect(avaliado.conditionStatus).toBe('succeeded');
+    expect(avaliado.radialSamplesBySeries['series-y']).toHaveLength(1);
+  });
+
+  it('a segunda etapa só busca o par radial avaliável, não a planta inteira', () => {
+    const radialY = { ...ySeries, sampleCount: 180 };
+    const radialZ = { ...ySeries, id: 'series-z', axis: 'z' as const, sampleCount: 180 };
+    // Eixo X não entra: o índice demonstrativo é radial (Y/Z).
+    const axialX = { ...ySeries, id: 'series-x-axial', axis: 'x' as const, sampleCount: 180 };
+    const temperatura = {
+      ...ySeries,
+      id: 'series-temp',
+      axis: null,
+      physicalQuantity: 'temperature' as const,
+      sampleCount: 180,
+    };
+    // Uma única aquisição não permite comparar com baseline: fica de fora.
+    const curta = { ...ySeries, id: 'series-curta', sampleCount: 3 };
+    const externa = { ...radialY, id: 'series-externa', sensorSerialNumber: 'DYNA-9000' };
+
+    const escolhidas = radialSeriesForCondition([
+      xSeries,
+      axialX,
+      radialY,
+      radialZ,
+      temperatura,
+      curta,
+      externa,
+    ]);
+
+    // Só Y/Z de sensores demonstrativos com histórico suficiente para duas aquisições.
+    expect(escolhidas.map((item) => item.id).sort()).toEqual(['series-y', 'series-z']);
   });
 
   it('descarta resposta atrasada da série anterior', () => {

@@ -50,6 +50,19 @@ export function formatNumber(value: number | null, maximumFractionDigits = 3): s
   return new Intl.NumberFormat('pt-BR', { maximumFractionDigits }).format(value);
 }
 
+/**
+ * Rótulo de eixo: grandezas de vibração vivem em milésimos de g, então três casas fazem
+ * dois valores distintos virarem o mesmo texto. A precisão acompanha a magnitude.
+ */
+export function formatAxisValue(value: number): string {
+  const magnitude = Math.abs(value);
+  if (magnitude === 0) return '0';
+  if (magnitude < 0.01) return formatNumber(value, 5);
+  if (magnitude < 0.1) return formatNumber(value, 4);
+  if (magnitude < 1) return formatNumber(value, 3);
+  return formatNumber(value, 2);
+}
+
 export function formatMeasurement(value: number | null, unit: string | null): string {
   if (value === null) return 'Sem leitura';
   return `${number.format(value)}${unit ? ` ${unit}` : ''}`;

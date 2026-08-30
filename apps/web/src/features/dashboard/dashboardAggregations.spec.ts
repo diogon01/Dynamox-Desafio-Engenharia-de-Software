@@ -61,7 +61,14 @@ const points: MonitoringPointDto[] = [
   },
 ];
 
-function summary(id: string, serial: string, axis: 'y' | 'z'): TimeSeriesSummary {
+const LAST_READING = '2026-08-29T11:30:00.000Z';
+
+function summary(
+  id: string,
+  serial: string,
+  axis: 'y' | 'z' | 'x' | null,
+  overrides: Partial<TimeSeriesSummary> = {},
+): TimeSeriesSummary {
   return {
     id,
     sensorSerialNumber: serial,
@@ -75,14 +82,17 @@ function summary(id: string, serial: string, axis: 'y' | 'z'): TimeSeriesSummary
     unit: 'g',
     displayName: null,
     sampleCount: 6,
+    lastValue: 1,
+    lastTimestamp: LAST_READING,
+    ...overrides,
   };
 }
 
 const series = [
   summary('s1y', 'SIM-HF-001', 'y'),
   summary('s1z', 'SIM-HF-001', 'z'),
-  summary('s2y', 'SIM-HF-002', 'y'),
-  summary('s2z', 'SIM-HF-002', 'z'),
+  summary('s2y', 'SIM-HF-002', 'y', { lastValue: 3 }),
+  summary('s2z', 'SIM-HF-002', 'z', { lastValue: 3 }),
 ];
 
 function dashboardState(): DashboardState {
@@ -93,22 +103,8 @@ function dashboardState(): DashboardState {
     ...initialDashboardState,
     machines: { status: 'succeeded', data: [machine], error: null },
     points: { status: 'succeeded', data: points, error: null },
-    series: { status: 'succeeded', data: series, error: null },
-    metricsStatus: 'succeeded',
-    metricsBySeries: Object.fromEntries(
-      series.map((item) => [
-        item.id,
-        {
-          count: 6,
-          min: 1,
-          max: item.sensorSerialNumber === 'SIM-HF-002' ? 3 : 1,
-          avg: 1,
-          last: item.sensorSerialNumber === 'SIM-HF-002' ? 3 : 1,
-          firstTimestamp: baseline[0].timestamp,
-          lastTimestamp: '2026-08-29T11:30:00.000Z',
-        },
-      ]),
-    ),
+    series: { status: 'succeeded', data: series.map((item) => ({ ...item })), error: null },
+    conditionStatus: 'succeeded',
     radialSamplesBySeries: {
       s1y: [...baseline, ...normal],
       s1z: [...baseline, ...normal],
@@ -147,13 +143,76 @@ describe('agregações puras do dashboard operacional', () => {
     expect(computeSyntheticAssessment('SIM-HF-001', observed, observed)).toBeNull();
   });
 
-  it('monta KPIs reais, condição, DE/NDE e ranking determinístico', () => {
+  it('separa os KPIs por conceito: condição, recência e cobertura não se somam', () => {
     const view = buildDashboardView(dashboardState(), NOW);
-    expect(view.kpis).toMatchObject({ machines: 1, points: 3, sensors: 2, stale: 0 });
+
+    // Inventário é contexto.
+    expect(view.kpis).toMatchObject({ machines: 1, points: 3, sensors: 2 });
+    // Só o sensor com desvio entra em "em atenção" — não a frota inteira.
+    expect(view.kpis.attention).toBe(1);
+    // Recência e cobertura são eixos independentes.
+    expect(view.kpis.stale).toBe(0);
+    expect(view.kpis.coverage).toBe(1);
+    // O KPI de condição NÃO pode coincidir com o total de pontos só porque há um ponto
+    // sem sensor: era exatamente esse o defeito da versão anterior.
+    expect(view.kpis.attention).toBeLessThan(view.kpis.points);
+
     expect(view.cells.map((cell) => cell.positionLabel)).toEqual(['DE', 'NDE', 'Carcaça']);
     expect(view.cells.find((cell) => cell.sensorSerial === 'SIM-HF-002')?.condition).toBe('attention');
-    expect(view.ranking.map((cell) => cell.sensorSerial)).toEqual(['SIM-HF-002', 'SIM-HF-001']);
+  });
+
+  it('o ranking de inspeção lista apenas exceções, não a frota inteira', () => {
+    const view = buildDashboardView(dashboardState(), NOW);
+    expect(view.ranking.map((cell) => cell.sensorSerial)).toEqual(['SIM-HF-002']);
     expect(view.ranking[0].assessment?.deviationRatio).toBeCloseTo(3);
+  });
+
+  it('a evidência da célula é a medição que classificou, não uma série qualquer', () => {
+    const state = dashboardState();
+    // Eixo X com o mesmo instante das radiais: no modelo antigo, o desempate caía nele e
+    // a célula "em atenção" exibia 0,008 g — um número sem relação com a classificação.
+    state.series.data.push(
+      summary('s2x', 'SIM-HF-002', 'x', { lastValue: 0.008, lastTimestamp: LAST_READING }),
+    );
+
+    const view = buildDashboardView(state, NOW);
+    const attention = view.cells.find((cell) => cell.sensorSerial === 'SIM-HF-002');
+
+    expect(attention?.condition).toBe('attention');
+    expect(attention?.evidence?.label).toBe('Aceleração radial (Y/Z)');
+    expect(attention?.evidence?.unit).toBe('g');
+    // O valor exibido é o RMS radial da aquisição mais recente (3 em Y e Z ⇒ 3), e não o
+    // último valor do eixo X.
+    expect(attention?.evidence?.value).toBeCloseTo(3);
+    expect(attention?.evidence?.deviationRatio).toBeCloseTo(3);
+    expect(attention?.evidence?.baseline).toBeCloseTo(1);
+    // Investigar leva à série que sustenta a evidência.
+    expect(attention?.preferredSeriesId).toBe('s2y');
+  });
+
+  it('sem avaliação, a evidência nomeia a grandeza e o eixo da leitura exibida', () => {
+    const state = dashboardState();
+    state.radialSamplesBySeries = {};
+    const view = buildDashboardView(state, NOW);
+    const cell = view.cells.find((item) => item.sensorSerial === 'SIM-HF-001');
+    expect(cell?.condition).toBe('unclassified');
+    expect(cell?.evidence?.label).toBe('Aceleração · eixo Y');
+    expect(cell?.evidence?.deviationRatio).toBeNull();
+  });
+
+  it('agrupa os motivos do mesmo ponto em um sinal só, com a severidade mais alta', () => {
+    const state = dashboardState();
+    // O sensor em atenção também está com leitura velha: antes isso gerava DUAS linhas.
+    for (const item of state.series.data) {
+      if (item.sensorSerialNumber === 'SIM-HF-002') item.lastTimestamp = '2026-08-27T08:00:00.000Z';
+    }
+    const view = buildDashboardView(state, NOW);
+    const doSensor = view.signals.filter((signal) => signal.pointAndSensor.includes('SIM-HF-002'));
+    expect(doSensor).toHaveLength(1);
+    expect(doSensor[0].severity).toBe('high');
+    expect(doSensor[0].reason).toContain('baseline');
+    expect(doSensor[0].reason).toContain('24 horas');
+    expect(doSensor[0].evidenceLabel).toBe('Aceleração radial (Y/Z)');
   });
 
   it('ignora aquisições isoladas ao escolher as janelas compartilhadas da frota', () => {
@@ -200,11 +259,23 @@ describe('agregações puras do dashboard operacional', () => {
 
   it('conta dado desatualizado e gera um sinal orientado à inspeção', () => {
     const state = dashboardState();
-    state.metricsBySeries.s1y.lastTimestamp = '2026-08-27T08:00:00.000Z';
-    state.metricsBySeries.s1z.lastTimestamp = '2026-08-27T08:00:00.000Z';
+    for (const item of state.series.data) {
+      if (item.sensorSerialNumber === 'SIM-HF-001') item.lastTimestamp = '2026-08-27T08:00:00.000Z';
+    }
     const view = buildDashboardView(state, NOW);
     expect(view.kpis.stale).toBe(1);
+    // Recência não contamina o KPI de condição.
+    expect(view.kpis.attention).toBe(1);
     expect(view.signals.some((signal) => signal.reason.includes('mais de 24 horas'))).toBe(true);
+  });
+
+  it('"Tudo" mostra o histórico inteiro quando a janela móvel não alcança o dado', () => {
+    const antigo = samples('2026-06-01T08:00:00.000Z', [1, 2, 3]);
+    expect(filterSamplesByPeriod(antigo, '30d', NOW)).toHaveLength(0);
+    expect(filterSamplesByPeriod(antigo, 'all', NOW)).toHaveLength(3);
+    const trend = buildTrendView(antigo, 'all', NOW);
+    expect(trend.filteredSamples).toHaveLength(3);
+    expect(trend.points.some((point) => point.value !== null)).toBe(true);
   });
 
   it('filtra 24 h, 7 dias e 30 dias pelos timestamps reais', () => {
@@ -228,6 +299,28 @@ describe('agregações puras do dashboard operacional', () => {
     expect(trend.mode).toBe('raw');
     expect(trend.points.some((point) => point.value === null)).toBe(true);
     expect(trend.points.some((point) => point.value === 0)).toBe(false);
+  });
+
+  it('rajadas viram uma média por aquisição em vez de traços verticais ilegíveis', () => {
+    // Três aquisições de 60 amostras separadas por uma hora — a forma real do dado.
+    const rajada = (offsetMs: number, valor: number) =>
+      samples(
+        new Date(NOW - 3 * 60 * 60 * 1000 + offsetMs).toISOString(),
+        Array.from({ length: 60 }, () => valor),
+      );
+    const input = [
+      ...rajada(0, 1),
+      ...rajada(60 * 60 * 1000, 1),
+      ...rajada(2 * 60 * 60 * 1000, 3),
+    ];
+
+    const trend = buildTrendView(input, '7d', NOW);
+    expect(trend.mode).toBe('acquisition');
+    expect(trend.points).toHaveLength(3);
+    expect(trend.points.map((point) => point.value)).toEqual([1, 1, 3]);
+    // Nenhum ponto inventado: cada um resume amostras que existem.
+    expect(trend.points.every((point) => point.samples === 60)).toBe(true);
+    expect(trend.filteredSamples).toHaveLength(180);
   });
 
   it('agrega muitas amostras por média e deixa buckets vazios nulos', () => {

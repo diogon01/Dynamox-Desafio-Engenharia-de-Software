@@ -29,6 +29,7 @@ import {
   computeSampleStats,
 } from '../../features/dashboard/dashboardAggregations';
 import {
+  formatAxisValue,
   formatDateTime,
   formatChartTick,
   formatNumber,
@@ -180,7 +181,7 @@ export function SeriesExplorer({
                         fontSize={11}
                         width={58}
                         domain={['auto', 'auto']}
-                        tickFormatter={(value: number) => formatNumber(value, 3)}
+                        tickFormatter={formatAxisValue}
                       />
                       <Tooltip
                         accessibilityLayer

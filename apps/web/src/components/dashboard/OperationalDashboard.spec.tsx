@@ -22,9 +22,17 @@ const samplesBySeries: Record<string, TimeSeriesSampleDto[]> = {
   s1z: [...windowAt(0, 1), ...windowAt(60 * 60 * 1000, 1)],
   s2y: [...windowAt(0, 1), ...windowAt(60 * 60 * 1000, 3)],
   s2z: [...windowAt(0, 1), ...windowAt(60 * 60 * 1000, 3)],
+  s2x: [...windowAt(0, 0.008), ...windowAt(60 * 60 * 1000, 0.008)],
 };
 
-function series(id: string, serial: string, machine: string, point: string, axis: 'y' | 'z'): TimeSeriesSummary {
+function series(
+  id: string,
+  serial: string,
+  machine: string,
+  point: string,
+  axis: 'y' | 'z' | 'x',
+): TimeSeriesSummary {
+  const data = samplesBySeries[id] ?? [];
   return {
     id,
     sensorSerialNumber: serial,
@@ -36,7 +44,9 @@ function series(id: string, serial: string, machine: string, point: string, axis
     axis,
     unit: 'g',
     displayName: null,
-    sampleCount: 6,
+    sampleCount: data.length || 6,
+    lastValue: data.at(-1)?.value ?? 0.008,
+    lastTimestamp: data.at(-1)?.timestamp ?? new Date(baseMs).toISOString(),
   };
 }
 
@@ -45,6 +55,9 @@ const SERIES = [
   series('s1z', 'SIM-HF-001', 'P-101', 'Mancal lado acoplamento', 'z'),
   series('s2y', 'SIM-HF-002', 'P-102', 'Mancal lado oposto ao acoplamento', 'y'),
   series('s2z', 'SIM-HF-002', 'P-102', 'Mancal lado oposto ao acoplamento', 'z'),
+  // Eixo X do sensor em atenção: mesmo instante das radiais e valor sem relação com a
+  // condição. Existe para provar que a evidência exibida não cai nele.
+  series('s2x', 'SIM-HF-002', 'P-102', 'Mancal lado oposto ao acoplamento', 'x'),
 ];
 
 const MACHINES = [
@@ -115,7 +128,7 @@ function fixtureFetch(
       });
     }
     if (url.endsWith('/time-series')) return okJson(options.emptyInventory || options.seriesEmpty ? [] : SERIES);
-    const metric = url.match(/time-series\/(s\dy|s\dz)\/metrics/);
+    const metric = url.match(/time-series\/(s\d[xyz])\/metrics/);
     if (metric) {
       const data = samplesBySeries[metric[1]];
       return okJson({
@@ -128,7 +141,7 @@ function fixtureFetch(
         lastTimestamp: data.at(-1)?.timestamp ?? null,
       });
     }
-    const sample = url.match(/time-series\/(s\dy|s\dz)\/samples/);
+    const sample = url.match(/time-series\/(s\d[xyz])\/samples/);
     if (sample) {
       const data = samplesBySeries[sample[1]];
       return okJson({ items: data, total: data.length, limit: 5000, offset: 0 });
@@ -181,22 +194,64 @@ describe('OperationalDashboard', () => {
     renderDashboard(vi.mocked(fetch));
     expect(screen.getByRole('heading', { name: /Visão geral operacional/i })).toBeDefined();
     expect(screen.getByLabelText(/Carregando matriz de sensores/i)).toBeDefined();
-    expect(screen.getByLabelText(/Máquinas: carregando/i)).toBeDefined();
+    expect(screen.getByLabelText(/Em atenção: carregando/i)).toBeDefined();
   });
 
-  it('calcula KPIs, matriz, ranking, recência e sinais com dados reais da API', async () => {
+  it('separa os KPIs por conceito em vez de somar tudo num indicador só', async () => {
     renderDashboard();
-    expect(await screen.findByLabelText('Máquinas: 2')).toBeDefined();
-    expect(screen.getByLabelText('Pontos: 3')).toBeDefined();
-    expect(screen.getByLabelText('Sensores: 2')).toBeDefined();
-    expect(screen.getByLabelText('Desatualizados: 2')).toBeDefined();
-    expect(screen.getByRole('grid', { name: /Máquinas, pontos, sensores e condição/i })).toBeDefined();
-    expect(screen.getByText('Sensor não instalado')).toBeDefined();
-    expect(screen.getByText('3×')).toBeDefined();
-    expect(screen.getAllByText(/Última leitura há mais de 24 horas/i).length).toBeGreaterThan(0);
+    // Condição: apenas o sensor com desvio.
+    expect(await screen.findByLabelText('Em atenção: 1')).toBeDefined();
+    // Recência: os dois sensores instalados reportaram há 2 dias.
+    expect(screen.getByLabelText('Sem leitura recente: 2')).toBeDefined();
+    // Cobertura: o ponto sem sensor.
+    expect(screen.getByLabelText('Cobertura: 1')).toBeDefined();
+    // Inventário é contexto, não manchete.
+    expect(screen.getByText(/Monitorando 2 máquina\(s\) · 3 ponto\(s\) · 2 sensor\(es\)/i)).toBeDefined();
   });
 
-  it('seleciona uma célula da matriz e atualiza a série operacional', async () => {
+  it('a carga inicial não busca métricas série a série', async () => {
+    const fetcher = fixtureFetch();
+    renderDashboard(fetcher);
+    await screen.findByLabelText('Em atenção: 1');
+    await waitFor(() => expect(screen.getByText(/3× baseline/i)).toBeDefined());
+
+    const urls = fetcher.mock.calls.map(([input]) => String(input));
+    // O resumo das séries já traz a última leitura: nenhuma chamada de métricas.
+    expect(urls.filter((url) => url.includes('/metrics'))).toHaveLength(0);
+    // Inventário: máquinas + pontos + séries. As amostras vêm da segunda etapa.
+    const inventario = urls.filter(
+      (url) => !url.includes('/samples') && !url.endsWith('/health') && !url.includes('/auth/'),
+    );
+    expect(inventario).toHaveLength(3);
+  });
+
+  it('a exceção aparece com a evidência que a classificou', async () => {
+    renderDashboard();
+    const fila = await screen.findByRole('region', { name: /Prioridade de inspeção/i });
+
+    // A primeira linha é a de maior severidade — o sensor com desvio, não o mais antigo.
+    const alta = within(fila).getByText(/Prioridade alta/i).closest('div')?.parentElement;
+    expect(alta).toBeTruthy();
+    expect(within(alta!).getByText(/SIM-HF-002/i)).toBeDefined();
+    // Grandeza medida + índice, não um número órfão de outra série (o eixo X vale 0,008).
+    expect(within(alta!).getByText(/Aceleração radial \(Y\/Z\)/i)).toBeDefined();
+    expect(within(alta!).getByText(/3× o baseline demonstrativo/i)).toBeDefined();
+    expect(within(alta!).queryByText(/0,008/)).toBeNull();
+  });
+
+  it('investigar leva ao painel de histórico com o contexto selecionado', async () => {
+    renderDashboard();
+    const fila = await screen.findByRole('region', { name: /Prioridade de inspeção/i });
+    const investigar = within(fila).getAllByRole('button', { name: /Investigar/i })[0];
+    await userEvent.click(investigar);
+
+    const investigacao = await screen.findByRole('heading', { name: /Investigação — SIM-HF-002/i });
+    // O drill-down entrega o foco: o caminho também existe no teclado.
+    await waitFor(() => expect(document.activeElement).toBe(investigacao));
+    expect(screen.getAllByDisplayValue('SIM-HF-002').length).toBeGreaterThan(0);
+  });
+
+  it('a matriz da frota leva ao mesmo painel de investigação', async () => {
     renderDashboard();
     const cell = await screen.findByRole('button', {
       name: /P-102, Mancal lado oposto ao acoplamento, SIM-HF-002/i,
@@ -211,43 +266,53 @@ describe('OperationalDashboard', () => {
           .getAttribute('aria-pressed'),
       ).toBe('true'),
     );
-    expect(screen.getAllByDisplayValue('P-102').length).toBeGreaterThan(0);
-    expect(screen.getAllByDisplayValue('SIM-HF-002').length).toBeGreaterThan(0);
+    expect(await screen.findByRole('heading', { name: /Investigação — SIM-HF-002/i })).toBeDefined();
   });
 
-  it('aplica o filtro global e comunica dados fora das últimas 24 horas', async () => {
+  it('declara quantas exceções estão visíveis e permite ver todas', async () => {
     renderDashboard();
-    await screen.findByLabelText('Máquinas: 2');
+    const fila = await screen.findByRole('region', { name: /Prioridade de inspeção/i });
+    // Três pontos geram exceção (desvio, recência e ausência de sensor).
+    expect(within(fila).getByText(/Mostrando 3 de 3/i)).toBeDefined();
+    // Com o total dentro do limite visível, não há corte silencioso a revelar.
+    expect(within(fila).queryByRole('button', { name: /Ver todas/i })).toBeNull();
+  });
+
+  it('quando o período não alcança o dado, oferece o período disponível', async () => {
+    renderDashboard();
+    await screen.findByLabelText('Em atenção: 1');
     await userEvent.click(screen.getByRole('button', { name: /^24 h$/i }));
-    expect(await screen.findByText(/Sem dados no período de 24 horas/i)).toBeDefined();
-    expect(screen.getByText(/Nenhum ponto foi simulado para preencher a lacuna/i)).toBeDefined();
+    expect(await screen.findByText(/Sem dados em 24 horas/i)).toBeDefined();
+
+    await userEvent.click(screen.getByRole('button', { name: /Ver período disponível/i }));
+    await waitFor(() => expect(screen.queryByText(/Sem dados em/i)).toBeNull());
+    expect(screen.getByRole('button', { name: /^Tudo$/i }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('mantém dados parciais e orienta nova tentativa quando pontos falham', async () => {
     renderDashboard(fixtureFetch({ pointsFail: true }));
     expect(await screen.findByText(/Dados parciais/i)).toBeDefined();
     expect(screen.getByText(/Pontos indisponíveis/i)).toBeDefined();
-    expect(screen.getByLabelText('Máquinas: 2')).toBeDefined();
     expect(screen.getByRole('button', { name: /Tentar novamente/i })).toBeDefined();
   });
 
   it('orienta o primeiro cadastro quando não há máquinas', async () => {
     renderDashboard(fixtureFetch({ emptyInventory: true }));
     expect(await screen.findByText(/Nenhuma máquina cadastrada/i)).toBeDefined();
-    expect(screen.getByLabelText('Máquinas: 0')).toBeDefined();
+    expect(screen.getByLabelText('Em atenção: 0')).toBeDefined();
     expect(screen.getByText(/Cadastre uma máquina e seus pontos/i)).toBeDefined();
   });
 
   it('mantém sensores instalados como sem dados quando não existem séries', async () => {
     renderDashboard(fixtureFetch({ seriesEmpty: true }));
-    expect(await screen.findByLabelText('Sensores: 2')).toBeDefined();
+    expect(await screen.findByLabelText('Cobertura: 3')).toBeDefined();
     expect(screen.getAllByText('Sem dados').length).toBeGreaterThan(0);
     expect(screen.getByText(/Nenhuma série persistida/i)).toBeDefined();
   });
 
   it('abre o explorador com quatro filtros hierárquicos e métricas da série', async () => {
     renderDashboard();
-    await screen.findByLabelText('Máquinas: 2');
+    await screen.findByLabelText('Em atenção: 1');
     await userEvent.click(screen.getByRole('button', { name: /Explorar série temporal/i }));
     const explorer = document.getElementById('series-explorer-content');
     expect(explorer).not.toBeNull();
@@ -259,11 +324,21 @@ describe('OperationalDashboard', () => {
     expect(within(explorer!).getByText('Unidade')).toBeDefined();
   });
 
-  it('expõe uma hierarquia acessível e não recria o cabeçalho removido', async () => {
+  it('expõe a hierarquia da página na ordem da decisão operacional', async () => {
     renderDashboard();
     expect(await screen.findByRole('heading', { level: 1, name: /Visão geral operacional/i })).toBeDefined();
-    expect(screen.queryByText('MONITORAMENTO DE ATIVOS')).toBeNull();
-    expect(screen.getByRole('region', { name: /Matriz de condição dos sensores/i })).toBeDefined();
+    const secoes = screen
+      .getAllByRole('region')
+      .map((node) => node.getAttribute('aria-label') ?? node.textContent?.slice(0, 40) ?? '');
+    const titulos = screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent ?? '');
+    // Exceção antes da frota; frota antes do mergulho manual.
+    const iFila = titulos.findIndex((t) => /Prioridade de inspeção/.test(t));
+    const iInvestigacao = titulos.findIndex((t) => /Investigação/.test(t));
+    const iFrota = titulos.findIndex((t) => /Frota — condição por ponto/.test(t));
+    expect(iFila).toBeGreaterThanOrEqual(0);
+    expect(iFila).toBeLessThan(iInvestigacao);
+    expect(iInvestigacao).toBeLessThan(iFrota);
+    expect(secoes.length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: /7 dias/i }).getAttribute('aria-pressed')).toBe('true');
   });
 });

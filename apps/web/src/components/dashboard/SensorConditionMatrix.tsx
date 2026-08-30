@@ -27,6 +27,7 @@ import {
   formatDateTime,
   formatMeasurement,
   formatNumber,
+  formatRelativeTime,
 } from '../../features/dashboard/dashboardFormatters';
 
 const CONDITION_META: Record<
@@ -64,7 +65,8 @@ function CellTooltip({ cell }: { cell: SensorCellView }): JSX.Element {
         Sensor: {cell.sensorSerial ?? 'não instalado'} · {cell.sensorModel ?? 'sem modelo'}
       </Typography>
       <Typography variant="caption" display="block">
-        Última leitura: {formatMeasurement(cell.lastValue, cell.lastUnit)}
+        {cell.evidence?.label ?? 'Última leitura'}:{' '}
+        {formatMeasurement(cell.evidence?.value ?? null, cell.evidence?.unit ?? null)}
       </Typography>
       <Typography variant="caption" display="block">
         Timestamp: {formatDateTime(cell.lastTimestamp)} · {cell.freshnessLabel}
@@ -89,6 +91,7 @@ function CellTooltip({ cell }: { cell: SensorCellView }): JSX.Element {
 export interface SensorConditionMatrixProps {
   view: DashboardView;
   loading: boolean;
+  nowMs: number;
   selectedSeriesId: string | null;
   onSelectSeries: (seriesId: string) => void;
 }
@@ -96,6 +99,7 @@ export interface SensorConditionMatrixProps {
 export function SensorConditionMatrix({
   view,
   loading,
+  nowMs,
   selectedSeriesId,
   onSelectSeries,
 }: SensorConditionMatrixProps): JSX.Element {
@@ -110,10 +114,10 @@ export function SensorConditionMatrix({
         >
           <Box>
             <Typography id="condition-matrix-title" variant="h2" component="h2">
-              Matriz de condição dos sensores
+              Frota — condição por ponto
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
-              Selecione uma célula para atualizar a tendência, o ranking e o explorador.
+              Visão completa da planta. Selecione um ponto para investigar o histórico.
             </Typography>
           </Box>
           <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap aria-label="Legenda de condição">
@@ -212,7 +216,7 @@ export function SensorConditionMatrix({
                               }}
                               sx={(theme) => ({
                                 width: '100%',
-                                minHeight: 112,
+                                minHeight: 148,
                                 p: 1.25,
                                 display: 'block',
                                 textAlign: 'left',
@@ -258,10 +262,44 @@ export function SensorConditionMatrix({
                                   size="small"
                                   variant="outlined"
                                 />
-                                <Typography variant="caption" color="text.secondary">
-                                  {formatMeasurement(cell.lastValue, cell.lastUnit)}
-                                </Typography>
+                                {cell.evidence?.deviationRatio !== null &&
+                                cell.evidence?.deviationRatio !== undefined ? (
+                                  <Typography
+                                    variant="caption"
+                                    sx={{ fontWeight: 700 }}
+                                    color={
+                                      cell.condition === 'attention'
+                                        ? 'error.main'
+                                        : cell.condition === 'observation'
+                                          ? 'warning.main'
+                                          : 'text.secondary'
+                                    }
+                                  >
+                                    {formatNumber(cell.evidence.deviationRatio, 2)}× baseline
+                                  </Typography>
+                                ) : null}
                               </Stack>
+                              {/* A medição que sustenta o estado: grandeza, eixo, valor e
+                                  unidade. Sem isto, o número da célula podia ser de outra
+                                  série que não a que classificou o ponto. */}
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block', mt: 0.75 }}
+                              >
+                                {cell.evidence
+                                  ? `${cell.evidence.label} · ${formatMeasurement(cell.evidence.value, cell.evidence.unit)}`
+                                  : 'Sem leitura'}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block' }}
+                              >
+                                {cell.lastTimestamp
+                                  ? `Leitura ${formatRelativeTime(cell.lastTimestamp, nowMs)}`
+                                  : 'Nunca reportou'}
+                              </Typography>
                             </ButtonBase>
                           </span>
                         </Tooltip>

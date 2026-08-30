@@ -75,6 +75,9 @@ recusa.
 
 ### Por que cada redução existe
 
+A decisão de reduzir em vez de espelhar ou inventar está em
+[ADR-0005](../06-decisions/adr-0005-internal-contract-reduction.md).
+
 - **Fechar a raiz e `dataPoints`** — a política de toda a API é recusar propriedade
   desconhecida com `400` em vez de ignorá-la ([`../02-api/backend-architecture.md`](../02-api/backend-architecture.md));
   aceitar um campo que ninguém lê faz o cliente acreditar que ele significa alguma coisa.

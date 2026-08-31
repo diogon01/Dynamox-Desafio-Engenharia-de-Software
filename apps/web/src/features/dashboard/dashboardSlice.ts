@@ -140,6 +140,38 @@ export function rangeForPeriod(period: DashboardPeriod, nowMs: number): Analytic
   return { from: new Date(nowMs - spans[period]).toISOString(), to: to.toISOString() };
 }
 
+/** Folga somada à âncora para a última leitura cair DENTRO da janela consultada. */
+const ANCHOR_SLACK_MS = 60_000;
+
+/** Instante da leitura mais recente conhecida, a partir do resumo das séries. */
+export function dataAnchorMs(series: TimeSeriesSummary[]): number | null {
+  let max = Number.NEGATIVE_INFINITY;
+  for (const item of series) {
+    const at = item.lastTimestamp ? Date.parse(item.lastTimestamp) : Number.NaN;
+    if (Number.isFinite(at) && at > max) max = at;
+  }
+  return Number.isFinite(max) ? max : null;
+}
+
+/**
+ * Janela do período ANCORADA NA ÚLTIMA LEITURA, não no relógio da máquina.
+ *
+ * Numa operação viva as duas âncoras quase coincidem. Quando a ingestão para — fim da
+ * demonstração, planta parada, gateway fora — ancorar em `Date.now()` faz o painel
+ * apodrecer sozinho: a baseline da condição usa as últimas 24 h DA JANELA, então primeiro
+ * a referência desliza para fora (tudo vira "sem classificação"), depois a própria leitura.
+ * "Últimos 7 dias" aqui significa os últimos 7 dias DE DADO; a recência contra o relógio
+ * continua sendo dita, com contexto, pelos painéis de recência e pelos alertas de telemetria.
+ */
+export function anchoredRangeForPeriod(
+  period: DashboardPeriod,
+  series: TimeSeriesSummary[],
+  nowMs: number,
+): AnalyticsRange {
+  const anchor = dataAnchorMs(series);
+  return rangeForPeriod(period, anchor === null ? nowMs : anchor + ANCHOR_SLACK_MS);
+}
+
 /** Bucket proporcional ao período: quanto maior a janela, mais grossa a agregação. */
 export function bucketForPeriod(period: DashboardPeriod): string {
   if (period === '24h') return '15m';
@@ -185,10 +217,10 @@ export const fetchFleetCondition = createAsyncThunk<
   void,
   { state: { dashboard: DashboardState } }
 >('dashboard/fetchFleetCondition', async (_, { getState }) => {
-  const { period } = getState().dashboard;
+  const { period, series } = getState().dashboard;
   // A tendência curta vem junto: são doze valores por ponto, agregados no banco, e é o
   // que devolve as miniaturas da fila de inspeção sem reabrir a porta das amostras brutas.
-  return api.fleetCondition(rangeForPeriod(period, Date.now()), { includeTrend: true });
+  return api.fleetCondition(anchoredRangeForPeriod(period, series.data, Date.now()), { includeTrend: true });
 });
 
 /** Mapa de atividade da janela — uma consulta agregada, nunca as amostras do período. */
@@ -197,8 +229,8 @@ export const fetchActivityHeatmap = createAsyncThunk<
   void,
   { state: { dashboard: DashboardState } }
 >('dashboard/fetchActivityHeatmap', async (_, { getState }) => {
-  const { period } = getState().dashboard;
-  return api.heatmap(rangeForPeriod(period, Date.now()), 'hour');
+  const { period, series } = getState().dashboard;
+  return api.heatmap(anchoredRangeForPeriod(period, series.data, Date.now()), 'hour');
 });
 
 /**
@@ -221,10 +253,10 @@ export const fetchDashboardSeriesDetail = createAsyncThunk<
   string,
   { state: { dashboard: DashboardState } }
 >('dashboard/fetchSeriesDetail', async (seriesId: string, { getState }) => {
-  const { period } = getState().dashboard;
+  const { period, series } = getState().dashboard;
   const points = await api.seriesPoints(
     seriesId,
-    rangeForPeriod(period, Date.now()),
+    anchoredRangeForPeriod(period, series.data, Date.now()),
     bucketForPeriod(period),
   );
   return { seriesId, points };

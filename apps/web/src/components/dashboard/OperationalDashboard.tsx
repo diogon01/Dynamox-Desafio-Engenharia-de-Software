@@ -14,15 +14,15 @@ import {
   selectDashboardPartialErrors,
 } from '../../features/dashboard/dashboardSelectors';
 import {
+  anchoredRangeForPeriod,
   dashboardSeriesAutoSelected,
   dashboardSeriesSelected,
   fetchActivityHeatmap,
   fetchAlertsSummary,
-  fetchFleetCondition,
   fetchDashboardSeriesDetail,
+  fetchFleetCondition,
   fetchOperationalDashboard,
   periodChanged,
-  rangeForPeriod,
 } from '../../features/dashboard/dashboardSlice';
 import { hourWindowPath } from '../../features/time/instant';
 import { useAppDispatch, useAppSelector } from '../../store';
@@ -69,9 +69,9 @@ export function OperationalDashboard(): JSX.Element {
   // O mesmo recorte que alimenta as consultas viaja nos links: sair do painel para uma
   // página de investigação não pode significar recomeçar com outro período.
   const range = useMemo(() => {
-    const period = rangeForPeriod(dashboard.period, nowMs);
+    const period = anchoredRangeForPeriod(dashboard.period, dashboard.series.data, nowMs);
     return { from: period.from, to: period.to };
-  }, [dashboard.period, nowMs]);
+  }, [dashboard.period, dashboard.series.data, nowMs]);
 
   useEffect(() => {
     void dispatch(fetchOperationalDashboard());

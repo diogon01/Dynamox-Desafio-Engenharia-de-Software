@@ -593,6 +593,11 @@ describe('OperationalDashboard', () => {
     const cell = await screen.findByRole('button', {
       name: /Abrir P-102, Mancal lado oposto ao acoplamento, SIM-HF-002/i,
     });
+    // A célula carrega MAGNITUDE, não só categoria: 3× no ponto em atenção, 1× no normal.
+    const matriz = screen.getByRole('region', { name: /Matriz de condição da frota/i });
+    expect(within(matriz).getByText('3×')).toBeDefined();
+    // '1×' também nomeia a faixa na legenda — a célula é a segunda ocorrência.
+    expect(within(matriz).getAllByText('1×').length).toBeGreaterThanOrEqual(2);
     await userEvent.click(cell);
     await waitFor(() =>
       expect(screen.getByTestId('rota').textContent).toMatch(
@@ -660,16 +665,28 @@ describe('OperationalDashboard', () => {
     );
   });
 
-  it('quando o período não alcança o dado, oferece o período disponível', async () => {
-    renderDashboard();
+  it('a janela ancora na última leitura, não no relógio — 24 h continua mostrando dado', async () => {
+    const fetcher = fixtureFetch();
+    renderDashboard(fetcher);
     await screen.findByLabelText(/^Ativos em atenção: 1\b/);
-    await userEvent.click(screen.getByRole('button', { name: /^24 h$/i }));
-    expect(await screen.findByText(/Sem dados em 24 horas/i)).toBeDefined();
 
-    await userEvent.click(screen.getByRole('button', { name: /Ver período disponível/i }));
-    await waitFor(() => expect(screen.queryByText(/Sem dados em/i)).toBeNull());
-    // O seletor mostra só as três janelas usuais; o período completo aparece como estado.
-    expect(screen.getByText(/Período: Tudo/i)).toBeDefined();
+    // A consulta de condição vai ancorada no fim do DADO (o fixture termina há 2 dias),
+    // não em Date.now(): ancorar no relógio faz a baseline deslizar para fora da janela
+    // e o painel inteiro apodrecer em "sem classificação" quando a ingestão para.
+    const fleetUrl = fetcher.mock.calls
+      .map(([input]) => String(input))
+      .find((url) => url.includes('/analytics/fleet-condition'));
+    const to = Date.parse(new URL(fleetUrl!, 'http://localhost').searchParams.get('to')!);
+    const dataEnd = Math.max(
+      ...Object.values(samplesBySeries).flat().map((sample) => Date.parse(sample.timestamp)),
+    );
+    expect(to).toBeGreaterThanOrEqual(dataEnd);
+    expect(to - dataEnd).toBeLessThan(5 * 60_000);
+
+    // Trocar para 24 h significa o último dia DE DADO: a série continua visível.
+    await userEvent.click(screen.getByRole('button', { name: /^24 h$/i }));
+    await waitFor(() => expect(screen.getByRole('region', { name: /Série temporal — 24 h/i })).toBeDefined());
+    expect(screen.queryByText(/Sem dados em 24 horas/i)).toBeNull();
   });
 
   it('mantém dados parciais e orienta nova tentativa quando pontos falham', async () => {

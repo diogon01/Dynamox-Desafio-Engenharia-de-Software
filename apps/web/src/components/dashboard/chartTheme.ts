@@ -48,23 +48,6 @@ export function chartTooltipStyles(theme: Theme): {
   };
 }
 
-/** Ordem e rótulos canônicos das condições nos gráficos empilhados e legendas. */
-export const CONDITION_STACK_ORDER = [
-  'normal',
-  'observation',
-  'attention',
-  'unclassified',
-  'noData',
-] as const;
-
-export const CONDITION_STACK_LABELS: Record<(typeof CONDITION_STACK_ORDER)[number], string> = {
-  normal: 'Normal',
-  observation: 'Observação',
-  attention: 'Atenção',
-  unclassified: 'Sem classificação',
-  noData: 'Sem dados',
-};
-
 /**
  * Domínio vertical de uma série de valores pequenos e positivos.
  *

@@ -14,7 +14,7 @@ import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 
-import { machineTag } from '@dynamox/domain';
+import { DEFAULT_CONDITION_POLICY, machineTag } from '@dynamox/domain';
 import { EmptyState } from '@dynamox/ui';
 
 import type {
@@ -25,7 +25,7 @@ import { formatNumber } from '../../features/dashboard/dashboardFormatters';
 import { formatRelativeTime } from '../../features/time/instant';
 import { links, type AnalyticsRange } from '../../features/investigation/links';
 import { DashboardCard } from './DashboardCard';
-import { conditionColor } from '../condition/ConditionTag';
+import { COLOR_CEILING, severityColor } from './ActivityHeatmap';
 
 /**
  * Conteúdo do tooltip da célula: identidade, condição e a evidência que a sustenta.
@@ -42,8 +42,8 @@ function CellTooltip({ cell, nowMs }: { cell: SensorCellView; nowMs: number }): 
       </Typography>
       <Typography variant="caption" display="block">
         {cell.conditionLabel}
-        {cell.evidence?.deviationRatio != null
-          ? ` · ${formatNumber(cell.evidence.deviationRatio, 2)}× (RMS radial Y/Z)`
+        {cell.assessment?.deviationRatio != null
+          ? ` · ${formatNumber(cell.assessment.deviationRatio, 2)}× (RMS radial Y/Z)`
           : ''}
         {cell.sensorSerial ? ` · ${cell.sensorSerial}` : ' · sem sensor'}
       </Typography>
@@ -77,17 +77,21 @@ export function FleetConditionMatrix({
   const navigate = useNavigate();
   const machines = view.rows;
   const positions = [...new Set(view.cells.map((cell) => cell.positionLabel))];
-  const legend = [...new Set(view.cells.map((cell) => cell.condition))].map((kind) => ({
-    kind,
-    label: view.cells.find((cell) => cell.condition === kind)?.conditionLabel ?? kind,
-  }));
+  // A legenda nomeia as FAIXAS da política — a mesma régua do mapa de severidade.
+  const legend = [
+    { label: 'sem referência', ratio: null },
+    { label: '1×', ratio: 1 },
+    { label: `${formatNumber(DEFAULT_CONDITION_POLICY.observationRatio, 1)}× observação`, ratio: DEFAULT_CONDITION_POLICY.observationRatio },
+    { label: `${formatNumber(DEFAULT_CONDITION_POLICY.attentionRatio, 1)}× atenção`, ratio: DEFAULT_CONDITION_POLICY.attentionRatio },
+    { label: `${formatNumber(COLOR_CEILING, 1)}×+`, ratio: COLOR_CEILING },
+  ];
 
   return (
     <DashboardCard
       title="Matriz de condição da frota"
       titleId="fleet-matrix-title"
-      subtitle="Todos os pontos por máquina."
-      info="Cada célula é um ponto monitorado: a cor indica a condição. Clique para abrir o ponto."
+      subtitle="Desvio de cada ponto contra a baseline da condição, nas faixas da política."
+      info="Cada célula é um ponto monitorado: o número é o desvio atual contra a baseline da condição, e a cor é a faixa da política — a mesma régua do mapa de severidade. Ponto sem referência comparável na janela fica neutro. Clique para abrir o ponto."
       flush
     >
       {loading ? (
@@ -153,7 +157,7 @@ export function FleetConditionMatrix({
                           </TableCell>
                         );
                       }
-                      const color = conditionColor(cell.condition, muiTheme.palette);
+                      const ratio = cell.assessment?.deviationRatio ?? null;
                       const selected =
                         Boolean(cell.preferredSeriesId) &&
                         cell.series.some((item) => item.id === selectedSeriesId);
@@ -166,7 +170,7 @@ export function FleetConditionMatrix({
                             <span>
                               <ButtonBase
                                 disabled={!clickable}
-                                aria-label={`Abrir ${cell.machineName}, ${cell.pointName}, ${cell.sensorSerial ?? 'sem sensor'}, ${cell.conditionLabel}`}
+                                aria-label={`Abrir ${cell.machineName}, ${cell.pointName}, ${cell.sensorSerial ?? 'sem sensor'}, ${cell.conditionLabel}${ratio !== null ? `, ${formatNumber(ratio, 2)}×` : ''}`}
                                 aria-current={selected ? 'true' : undefined}
                                 onClick={() => {
                                   if (clickable) {
@@ -174,29 +178,48 @@ export function FleetConditionMatrix({
                                   }
                                 }}
                                 sx={{
-                                  width: 26,
-                                  height: 26,
-                                  borderRadius: '50%',
+                                  minWidth: 38,
+                                  height: 24,
+                                  borderRadius: 1,
                                   display: 'grid',
                                   placeItems: 'center',
                                   border: selected ? `2px solid ${muiTheme.palette.primary.main}` : '2px solid transparent',
-                                  '&:hover': { bgcolor: alpha(color, 0.14) },
+                                  '&:hover': { bgcolor: muiTheme.palette.action.hover },
                                   '&:focus-visible': {
                                     outline: `2px solid ${alpha(muiTheme.palette.primary.main, 0.55)}`,
                                   },
                                   '&.Mui-disabled': { opacity: 1 },
                                 }}
                               >
-                                <Box
-                                  aria-hidden="true"
-                                  sx={{
-                                    width: 13,
-                                    height: 13,
-                                    borderRadius: '50%',
-                                    bgcolor: cell.condition === 'no-sensor' ? 'transparent' : color,
-                                    border: `1.5px solid ${color}`,
-                                  }}
-                                />
+                                {cell.condition === 'no-sensor' ? (
+                                  <Box
+                                    aria-hidden="true"
+                                    sx={{
+                                      width: 11,
+                                      height: 11,
+                                      borderRadius: '50%',
+                                      border: `1.5px solid ${muiTheme.palette.condition.unclassified}`,
+                                    }}
+                                  />
+                                ) : (
+                                  <Box
+                                    aria-hidden="true"
+                                    sx={{
+                                      minWidth: 34,
+                                      px: 0.5,
+                                      borderRadius: '4px',
+                                      bgcolor: severityColor(ratio, muiTheme.palette),
+                                      fontSize: 10.5,
+                                      fontWeight: 700,
+                                      lineHeight: '17px',
+                                      color: 'text.primary',
+                                      textAlign: 'center',
+                                      fontVariantNumeric: 'tabular-nums',
+                                    }}
+                                  >
+                                    {ratio !== null ? `${formatNumber(ratio, 2)}×` : '—'}
+                                  </Box>
+                                )}
                               </ButtonBase>
                             </span>
                           </Tooltip>
@@ -211,17 +234,17 @@ export function FleetConditionMatrix({
 
           <Stack direction="row" flexWrap="wrap" useFlexGap gap={1} sx={{ px: 2, pt: 1.25, pb: 1.5 }}>
             {legend.map((entry) => (
-              <Stack key={entry.kind} direction="row" alignItems="center" spacing={0.5}>
+              <Stack key={entry.label} direction="row" alignItems="center" spacing={0.5}>
                 <Box
                   aria-hidden="true"
                   sx={{
-                    width: 9,
-                    height: 9,
-                    borderRadius: '50%',
-                    bgcolor: conditionColor(entry.kind, muiTheme.palette),
+                    width: 16,
+                    height: 8,
+                    borderRadius: '2px',
+                    bgcolor: severityColor(entry.ratio, muiTheme.palette),
                   }}
                 />
-                <Typography variant="caption" noWrap>
+                <Typography variant="caption" noWrap color="text.secondary">
                   {entry.label}
                 </Typography>
               </Stack>

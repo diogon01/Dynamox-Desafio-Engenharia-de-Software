@@ -1,5 +1,5 @@
-import AccessTimeOutlinedIcon from '@mui/icons-material/AccessTimeOutlined';
 import MonitorHeartOutlinedIcon from '@mui/icons-material/MonitorHeartOutlined';
+import NotificationsActiveOutlinedIcon from '@mui/icons-material/NotificationsActiveOutlined';
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined';
 import WarningAmberOutlinedIcon from '@mui/icons-material/WarningAmberOutlined';
 import Box from '@mui/material/Box';
@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
 
 import { Link as RouterLink } from 'react-router-dom';
 
-import { DEFAULT_CONDITION_POLICY } from '@dynamox/domain';
+import { DEFAULT_CONDITION_POLICY, type AlertListResponseDto } from '@dynamox/domain';
 
 import type { DashboardView } from '../../features/dashboard/dashboardAggregations';
 import { formatMeasurement, formatNumber, formatPercent } from '../../features/dashboard/dashboardFormatters';
@@ -20,9 +20,11 @@ import { links, type AnalyticsRange } from '../../features/investigation/links';
 
 /**
  * Os quatro números do topo — cada um responde a UMA pergunta:
- * condição (ativos em atenção), magnitude (maior desvio), cobertura e recência.
- * Nenhum agrega os outros; todos vêm dos dados persistidos, nunca de valores de protótipo.
- * Renderiza itens diretos do grid da página, para os quatro cards dividirem a mesma linha.
+ * condição (ativos em atenção), magnitude (maior desvio), cobertura e ALERTAS abertos.
+ * Condição e alerta são conceitos diferentes e ficam lado a lado de propósito: a condição
+ * é derivada da última aquisição contra a anterior; o alerta é um episódio persistido pelo
+ * motor contra a baseline aprendida do ponto. Nenhum agrega os outros; todos vêm dos dados
+ * persistidos. Renderiza itens diretos do grid da página, para dividirem a mesma linha.
  */
 interface KpiSpec {
   key: string;
@@ -45,14 +47,20 @@ export function KpiRow({
   view,
   loading,
   range,
+  alerts = null,
+  alertsLoading = false,
 }: {
   view: DashboardView;
   loading: boolean;
   range: AnalyticsRange;
+  alerts?: AlertListResponseDto | null;
+  alertsLoading?: boolean;
 }): JSX.Element {
   const { headline } = view;
   const top = headline.attention.top;
   const deviation = headline.maxDeviation;
+  const counts = alerts?.counts ?? null;
+  const activeAlerts = counts ? counts.activeA1 + counts.activeA2 : 0;
 
   const kpis: KpiSpec[] = [
     {
@@ -90,19 +98,26 @@ export function KpiRow({
       active: false,
     },
     {
-      key: 'recency',
-      label: 'Leituras atuais',
-      value: formatPercent(headline.recency.current, headline.recency.installed),
-      context: 'leituras dentro das últimas 24 h',
-      icon: <AccessTimeOutlinedIcon />,
-      tone: 'warning',
-      active: headline.recency.installed > 0 && headline.recency.current < headline.recency.installed,
+      key: 'alerts',
+      label: 'Alertas abertos',
+      value: counts ? String(activeAlerts) : '—',
+      context: counts
+        ? activeAlerts > 0
+          ? `${counts.activeA2} em A2 · ${counts.activeA1} em A1${counts.acknowledged > 0 ? ` · ${counts.acknowledged} reconhecido(s)` : ''}`
+          : `nenhuma regra disparada · ${counts.resolved} resolvido(s)`
+        : 'episódios persistidos pelo motor',
+      icon: <NotificationsActiveOutlinedIcon />,
+      tone: counts && counts.activeA2 > 0 ? 'error' : counts && counts.activeA1 > 0 ? 'warning' : 'success',
+      active: activeAlerts > 0,
+      to: links.alerts({ status: 'active' }),
     },
   ];
 
   return (
     <>
-      {kpis.map((kpi, index) => (
+      {kpis.map((kpi, index) => {
+        const cardLoading = kpi.key === 'alerts' ? alertsLoading : loading;
+        return (
         <Box
           key={kpi.key}
           sx={{
@@ -116,9 +131,9 @@ export function KpiRow({
         >
           <Card
             variant="outlined"
-            {...(kpi.to && !loading
+            {...(kpi.to && !cardLoading
               ? { component: RouterLink, to: kpi.to, 'aria-label': `${kpi.label}: ${kpi.value}. ${kpi.context}. Abrir investigação.` }
-              : { 'aria-label': `${kpi.label}: ${loading ? 'carregando' : kpi.value}` })}
+              : { 'aria-label': `${kpi.label}: ${cardLoading ? 'carregando' : kpi.value}` })}
             sx={(muiTheme) => ({
               flex: 1,
               minWidth: 0,
@@ -130,7 +145,7 @@ export function KpiRow({
               bgcolor: 'background.paper',
               textDecoration: 'none',
               // Só quem leva a algum lugar ganha linguagem de item navegável.
-              ...(kpi.to && !loading
+              ...(kpi.to && !cardLoading
                 ? {
                     cursor: 'pointer',
                     transition: 'border-color 120ms, background-color 120ms',
@@ -168,7 +183,7 @@ export function KpiRow({
                 <Typography variant="overline" color="text.secondary" component="div" noWrap>
                   {kpi.label}
                 </Typography>
-                {loading ? (
+                {cardLoading ? (
                   <Skeleton width={72} height={38} />
                 ) : (
                   <Typography
@@ -184,13 +199,14 @@ export function KpiRow({
                   </Typography>
                 )}
                 <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.25 }}>
-                  {loading ? 'Avaliando a frota…' : kpi.context}
+                  {cardLoading ? (kpi.key === 'alerts' ? 'Consultando alertas…' : 'Avaliando a frota…') : kpi.context}
                 </Typography>
               </Box>
             </Stack>
           </Card>
         </Box>
-      ))}
+        );
+      })}
     </>
   );
 }

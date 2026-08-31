@@ -17,6 +17,7 @@ import {
   dashboardSeriesAutoSelected,
   dashboardSeriesSelected,
   fetchActivityHeatmap,
+  fetchAlertsSummary,
   fetchFleetCondition,
   fetchDashboardSeriesDetail,
   fetchOperationalDashboard,
@@ -83,6 +84,7 @@ export function OperationalDashboard(): JSX.Element {
     if (dashboard.series.status === 'succeeded' && dashboard.conditionStatus === 'idle') {
       void dispatch(fetchFleetCondition());
       void dispatch(fetchActivityHeatmap());
+      void dispatch(fetchAlertsSummary());
     }
   }, [dispatch, dashboard.series.status, dashboard.conditionStatus]);
 
@@ -206,7 +208,13 @@ export function OperationalDashboard(): JSX.Element {
         }}
       >
         {/* SITUAÇÃO — quatro perguntas, quatro números */}
-        <KpiRow view={view} loading={inventoryLoading} range={range} />
+        <KpiRow
+          view={view}
+          loading={inventoryLoading}
+          range={range}
+          alerts={dashboard.alerts}
+          alertsLoading={dashboard.alertsStatus === 'idle' || dashboard.alertsStatus === 'loading'}
+        />
 
         {/* ONDE INVESTIGAR — o ranking, e se os sensores que o alimentam estão vivos */}
         <Box sx={slot({ lg: 8, xs: 5 })}>
@@ -241,7 +249,12 @@ export function OperationalDashboard(): JSX.Element {
         </Box>
         <Box sx={stack('minmax(0, 1fr) auto')}>
           <Box sx={slot({ md: 6, xs: 7 })}>
-            <RecentOccurrences view={view} loading={inventoryLoading} range={range} />
+            <RecentOccurrences
+              alerts={dashboard.alerts}
+              status={dashboard.alertsStatus}
+              error={dashboard.alertsError}
+              onRetry={() => void dispatch(fetchAlertsSummary())}
+            />
           </Box>
           <Box sx={slot({ md: 6, xs: 9 })}>
             <DataQualityPanel view={view} loading={inventoryLoading} />

@@ -284,8 +284,105 @@ function fixtureFetch(
       const data = samplesBySeries[sample[1]];
       return okJson({ items: data, total: data.length, limit: 5000, offset: 0 });
     }
+    if (url.includes('/alerts')) return okJson(alertsFixture({ emptyInventory: options.emptyInventory }));
     return new Response(JSON.stringify({ message: `Rota não simulada: ${url}` }), { status: 404 });
   });
+}
+
+/** Alertas persistidos pelo motor: um A2 ativo em SIM-HF-002 e um episódio de frota resolvido. */
+function alertsFixture(options: { emptyInventory?: boolean } = {}) {
+  const items = options.emptyInventory
+    ? []
+    : [
+        {
+          id: 'alrt-0000-0000-4000-8000-000000000001',
+          ruleId: 'r-vib',
+          ruleKey: 'vibration-radial',
+          type: 'vibration-threshold',
+          family: 'condition',
+          scope: 'point',
+          level: 'A2',
+          state: 'active',
+          status: 'open',
+          machineId: 'm2',
+          machineName: 'P-102',
+          machineType: 'Pump',
+          monitoringPointId: 'p2',
+          monitoringPointName: 'Mancal lado oposto ao acoplamento',
+          sensorId: 's2',
+          sensorSerialNumber: 'SIM-HF-002',
+          sensorModel: 'HF+',
+          openedAt: '2026-08-27T01:17:00.000Z',
+          lastEvaluatedAt: '2026-08-30T23:00:00.000Z',
+          acknowledgedAt: null,
+          acknowledgedBy: null,
+          acknowledgedLevel: null,
+          acknowledgeNote: null,
+          resolvedAt: null,
+          resolutionReason: null,
+          metric: 'radial_rms_g',
+          unit: 'g',
+          thresholdMode: 'ratio-to-baseline',
+          trigger: { cycleId: 'c-open', at: '2026-08-27T01:17:00.000Z', value: 0.0226, baseline: 0.015, measure: 1.5, threshold: 1.5, consecutiveEvaluations: 2 },
+          peak: { cycleId: 'c-peak', at: '2026-08-30T23:00:00.000Z', value: 0.0565, baseline: null, measure: 3.77 },
+          last: { cycleId: 'c-peak', at: '2026-08-30T23:00:00.000Z', value: 0.0565, baseline: null, measure: 3.77 },
+          affectedCount: null,
+          policyVersion: 1,
+        },
+        {
+          id: 'alrt-0000-0000-4000-8000-000000000002',
+          ruleId: 'r-presence',
+          ruleKey: 'telemetry-presence',
+          type: 'fleet-silent',
+          family: 'data-quality',
+          scope: 'fleet',
+          level: 'A1',
+          state: 'resolved',
+          status: 'resolved',
+          machineId: null,
+          machineName: null,
+          machineType: null,
+          monitoringPointId: null,
+          monitoringPointName: null,
+          sensorId: null,
+          sensorSerialNumber: null,
+          sensorModel: null,
+          openedAt: '2026-08-30T03:00:00.000Z',
+          lastEvaluatedAt: '2026-08-30T08:15:00.000Z',
+          acknowledgedAt: null,
+          acknowledgedBy: null,
+          acknowledgedLevel: null,
+          acknowledgeNote: null,
+          resolvedAt: '2026-08-30T08:15:00.000Z',
+          resolutionReason: 'telemetry-resumed',
+          metric: 'telemetry_interval_s',
+          unit: 's',
+          thresholdMode: 'elapsed-intervals',
+          trigger: { cycleId: null, at: '2026-08-30T01:47:00.000Z', value: 4380, baseline: 900, measure: 4.87, threshold: 4, consecutiveEvaluations: 1 },
+          peak: { cycleId: null, at: '2026-08-30T08:00:00.000Z', value: 22380, baseline: null, measure: 24.9 },
+          last: { cycleId: null, at: '2026-08-30T08:15:00.000Z', value: 22380, baseline: null, measure: 24.9 },
+          affectedCount: 12,
+        },
+      ];
+  return {
+    items,
+    total: items.length,
+    page: 1,
+    pageSize: 6,
+    totalPages: 1,
+    counts: options.emptyInventory
+      ? { total: 0, open: 0, acknowledged: 0, resolved: 0, activeA1: 0, activeA2: 0 }
+      : { total: 2, open: 1, acknowledged: 0, resolved: 1, activeA1: 0, activeA2: 1 },
+    status: null,
+    level: null,
+    type: null,
+    machine: null,
+    sensor: null,
+    from: null,
+    to: null,
+    sortBy: 'lastEvaluatedAt',
+    sortDir: 'desc',
+  };
 }
 
 /** Sonda de rota: o MemoryRouter não mexe em window.location, então a URL é observada aqui. */
@@ -349,7 +446,7 @@ describe('OperationalDashboard', () => {
     expect(screen.getByLabelText(/Ativos em atenção: carregando/i)).toBeDefined();
   });
 
-  it('os quatro KPIs separam condição, magnitude, cobertura e recência', async () => {
+  it('os quatro KPIs separam condição, magnitude, cobertura e alertas', async () => {
     renderDashboard();
     // Condição: apenas o sensor com desvio.
     expect(await screen.findByLabelText(/^Ativos em atenção: 1\b/)).toBeDefined();
@@ -359,8 +456,10 @@ describe('OperationalDashboard', () => {
     expect(within(desvio).getByText(/RMS radial Y\/Z/i)).toBeDefined();
     // Cobertura: instrumentados e reportando sobre o total de pontos.
     expect(screen.getByLabelText(/^Cobertura monitorada: 66,7%/)).toBeDefined();
-    // Recência: leituras de 2 dias atrás estão fora da janela de 24 h.
-    expect(screen.getByLabelText(/^Leituras atuais: 0%/)).toBeDefined();
+    // Alertas: episódios persistidos pelo motor — conceito distinto da condição ao lado.
+    const alertas = await screen.findByLabelText(/^Alertas abertos: 1\b/);
+    expect(within(alertas).getByText(/1 em A2 · 0 em A1/)).toBeDefined();
+    expect(alertas.getAttribute('href')).toBe('/alerts?status=active');
   });
 
   it('a carga não busca métricas por série nem amostra bruta: tudo vem agregado', async () => {
@@ -377,9 +476,13 @@ describe('OperationalDashboard', () => {
     // Inventário: máquinas + pontos + séries, e nada de contagem por série.
     const inventario = urls.filter(
       (url) =>
-        !url.includes('/analytics/') && !url.endsWith('/health') && !url.includes('/auth/'),
+        !url.includes('/analytics/') && !url.endsWith('/health') && !url.includes('/auth/') && !url.includes('/alerts'),
     );
     expect(inventario).toHaveLength(3);
+    // Alertas: UMA consulta resumida (contagens + feed), sem janela — alerta tem o próprio tempo.
+    const alertas = urls.filter((url) => url.includes('/alerts'));
+    expect(alertas).toHaveLength(1);
+    expect(alertas[0]).not.toMatch(/from=/);
     expect(urls.filter((url) => url.includes('withCounts'))).toHaveLength(0);
     // Condição: UMA consulta agregada com a janela do período, no lugar de uma por série.
     const condicao = urls.filter((url) => url.includes('/analytics/fleet-condition'));
@@ -478,21 +581,20 @@ describe('OperationalDashboard', () => {
     );
   });
 
-  it('as ocorrências recentes derivam das leituras reais, sem inventar eventos', async () => {
+  it('os alertas recentes são episódios persistidos e abrem o próprio episódio', async () => {
     renderDashboard();
-    const painel = await screen.findByRole('region', { name: /Ocorrências recentes/i });
-    // Uma linha por sensor com leitura, a mais crítica identificável.
-    expect(within(painel).getByText(/P-102 · NDE · SIM-HF-002/i)).toBeDefined();
-    expect(within(painel).getByText(/não há alarmes persistidos/i)).toBeDefined();
+    const painel = await screen.findByRole('region', { name: /Alertas recentes/i });
+    // Um A2 ativo em SIM-HF-002 e uma parada da planta já resolvida — ambos com status próprio.
+    expect(await within(painel).findByText(/Vibração · P-102 · Mancal lado oposto ao acoplamento · SIM-HF-002/i)).toBeDefined();
+    expect(within(painel).getByText(/Planta muda · Planta · 12 pontos/i)).toBeDefined();
+    expect(within(painel).getAllByText(/Resolvido/)).toHaveLength(1);
+    expect(within(painel).queryByText(/não há alarmes persistidos/i)).toBeNull();
+    expect(within(painel).getByRole('link', { name: /Ver todos/i }).getAttribute('href')).toBe('/alerts?status=active');
 
-    // Abrir a ocorrência leva ao sensor recortado NA HORA da leitura, não na janela do painel.
-    await userEvent.click(
-      within(painel).getByRole('button', { name: /Abrir P-102 · NDE · SIM-HF-002/i }),
-    );
+    // Abrir leva ao episódio — regra, evidência e linha do tempo —, não a uma janela genérica.
+    await userEvent.click(within(painel).getByRole('button', { name: /Abrir alerta A2 Vibração/i }));
     await waitFor(() =>
-      expect(screen.getByTestId('rota').textContent).toMatch(
-        /^\/sensors\/SIM-HF-002\?from=.+&to=.+&bucket=15m/,
-      ),
+      expect(screen.getByTestId('rota').textContent).toBe('/alerts/alrt-0000-0000-4000-8000-000000000001'),
     );
   });
 

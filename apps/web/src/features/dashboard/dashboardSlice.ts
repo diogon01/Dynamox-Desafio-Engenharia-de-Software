@@ -1,6 +1,7 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
 import type {
+  AlertListResponseDto,
   FleetConditionResponseDto,
   HeatmapResponseDto,
   SeriesPointsResponseDto,
@@ -46,6 +47,13 @@ export interface DashboardState {
   heatmapStatus: RequestStatus;
   heatmapError: string | null;
   /**
+   * Alertas persistidos: as contagens do universo (KPI) e os últimos episódios por
+   * evidência (feed). Uma requisição serve aos dois — `counts` já descreve tudo.
+   */
+  alerts: AlertListResponseDto | null;
+  alertsStatus: RequestStatus;
+  alertsError: string | null;
+  /**
    * Amostras radiais cruas. Continua existindo para o caminho de cálculo local (testes e
    * cenários sem o endpoint analítico); em produção o painel não as baixa mais.
    */
@@ -83,6 +91,9 @@ export const initialDashboardState: DashboardState = {
   heatmap: null,
   heatmapStatus: 'idle',
   heatmapError: null,
+  alerts: null,
+  alertsStatus: 'idle',
+  alertsError: null,
   radialSamplesBySeries: {},
   radialSampleErrors: {},
   period: '7d',
@@ -191,6 +202,16 @@ export const fetchActivityHeatmap = createAsyncThunk<
   const { period } = getState().dashboard;
   return api.heatmap(rangeForPeriod(period, Date.now()), 'hour');
 });
+
+/**
+ * Resumo de alertas para o painel: os seis episódios com evidência mais recente (ativos ou
+ * não) e as contagens do universo. Alerta tem o próprio tempo — não recebe a janela do
+ * painel: o KPI responde "o que está aberto agora", não "o que abriu nesta semana".
+ */
+export const fetchAlertsSummary = createAsyncThunk<AlertListResponseDto, void>(
+  'dashboard/fetchAlertsSummary',
+  async () => api.alerts({ pageSize: 6, sortBy: 'lastEvaluatedAt', sortDir: 'desc' }),
+);
 
 /**
  * Detalhe da série selecionada, JÁ AGREGADO por bucket. O gráfico precisa de um formato
@@ -302,6 +323,18 @@ const dashboardSlice = createSlice({
       .addCase(fetchFleetCondition.rejected, (state, action) => {
         state.conditionStatus = 'failed';
         state.conditionError = action.error.message ?? 'Não foi possível avaliar a condição.';
+      })
+      .addCase(fetchAlertsSummary.pending, (state) => {
+        state.alertsStatus = 'loading';
+        state.alertsError = null;
+      })
+      .addCase(fetchAlertsSummary.fulfilled, (state, action) => {
+        state.alertsStatus = 'succeeded';
+        state.alerts = action.payload;
+      })
+      .addCase(fetchAlertsSummary.rejected, (state, action) => {
+        state.alertsStatus = 'failed';
+        state.alertsError = action.error.message ?? 'Não foi possível consultar os alertas.';
       })
       .addCase(fetchActivityHeatmap.pending, (state) => {
         state.heatmapStatus = 'loading';

@@ -535,6 +535,22 @@ describe('fronteiras da condição a partir da resposta do servidor', () => {
     expect(cell?.evidence?.deviationRatio).toBeCloseTo(ratio, 10);
   });
 
+  it('a classificação e a recência publicadas pelo servidor prevalecem sobre o recálculo', () => {
+    // O servidor pode saber mais que os números que devolve: aqui ele diz "stale" embora
+    // o resumo das séries no cliente tenha uma leitura recente (de outra grandeza).
+    const state = stateWithServerRatio(1.2, 'normal');
+    state.fleetCondition!.points[1] = {
+      ...state.fleetCondition!.points[1],
+      condition: 'observation',
+      freshness: 'stale',
+    };
+    const view = buildDashboardView(state, NOW);
+    const cell = view.cells.find((item) => item.sensorSerial === 'SIM-HF-002');
+    expect(cell?.condition).toBe('observation');
+    expect(cell?.freshness).toBe('stale');
+    expect(cell?.freshnessLabel).toBe('Desatualizado');
+  });
+
   it('a manchete e a fila seguem a mesma fronteira que a célula', () => {
     const observation = buildDashboardView(stateWithServerRatio(1.5, 'observation'), NOW);
     expect(observation.headline.attention.count).toBe(1);

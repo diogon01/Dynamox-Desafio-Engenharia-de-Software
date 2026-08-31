@@ -48,6 +48,13 @@ export interface SyntheticAssessment {
   baselineStart: string;
   conditionStart: string;
   sampleCount: number;
+  /**
+   * Classificação e recência COMO O SERVIDOR AS PUBLICOU. Quando existem, a célula as usa
+   * em vez de reclassificar a partir dos números: a autoridade da regra é uma só, e a
+   * recência do servidor olha a última leitura radial — a do cliente olharia qualquer série.
+   */
+  serverCondition?: ConditionKind;
+  serverFreshness?: FreshnessKind;
 }
 
 /**
@@ -410,6 +417,8 @@ export function assessmentsFromFleetCondition(
       baselineStart: point.baselineAt,
       conditionStart: point.currentAt,
       sampleCount: point.currentSampleCount ?? 0,
+      serverCondition: point.condition,
+      serverFreshness: point.freshness,
     });
   }
   return assessments;
@@ -610,11 +619,18 @@ function buildCell(
   // Ter dado é ter leitura: `sampleCount` é opcional na listagem (count(*) por série é
   // caro), e `lastTimestamp` responde a mesma pergunta de graça.
   const hasSamples = sensorSeries.some((item) => item.lastTimestamp !== null);
-  const condition = conditionFrom(Boolean(point.sensor), hasSamples, assessment);
+  const localCondition = conditionFrom(Boolean(point.sensor), hasSamples, assessment);
+  // O servidor é a autoridade quando respondeu: o cliente não reclassifica o que já veio
+  // classificado. O cálculo local continua sendo o caminho sem resposta agregada.
+  const condition = assessment?.serverCondition
+    ? { kind: assessment.serverCondition, label: CONDITION_LABELS[assessment.serverCondition] }
+    : localCondition;
   // A recência é do sensor, não da série da evidência: a leitura mais nova de qualquer
   // grandeza prova que o sensor reportou.
   const newest = latestSeries(sensorSeries);
-  const freshness = classifyFreshness(newest?.lastTimestamp ?? null, nowMs);
+  const freshness = assessment?.serverFreshness
+    ? { kind: assessment.serverFreshness, label: FRESHNESS_LABELS[assessment.serverFreshness] }
+    : classifyFreshness(newest?.lastTimestamp ?? null, nowMs);
   // Investigar leva à série da evidência; sem evidência, à série preferida do sensor.
   const preferred = preferredSeries(sensorSeries);
 

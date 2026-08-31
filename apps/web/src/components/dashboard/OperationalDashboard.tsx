@@ -21,6 +21,7 @@ import {
   fetchDashboardSeriesDetail,
   fetchOperationalDashboard,
   periodChanged,
+  rangeForPeriod,
 } from '../../features/dashboard/dashboardSlice';
 import { hourWindowPath } from '../../features/time/instant';
 import { useAppDispatch, useAppSelector } from '../../store';
@@ -65,6 +66,12 @@ export function OperationalDashboard(): JSX.Element {
   const gridGap = useTheme().dashboard.gridGap;
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const navigate = useNavigate();
+  // O mesmo recorte que alimenta as consultas viaja nos links: sair do painel para uma
+  // página de investigação não pode significar recomeçar com outro período.
+  const range = useMemo(() => {
+    const period = rangeForPeriod(dashboard.period, nowMs);
+    return { from: period.from, to: period.to };
+  }, [dashboard.period, nowMs]);
 
   useEffect(() => {
     void dispatch(fetchOperationalDashboard());
@@ -199,7 +206,7 @@ export function OperationalDashboard(): JSX.Element {
         }}
       >
         {/* SITUAÇÃO — quatro perguntas, quatro números */}
-        <KpiRow view={view} loading={inventoryLoading} />
+        <KpiRow view={view} loading={inventoryLoading} range={range} />
 
         {/* ONDE INVESTIGAR — o ranking, e se os sensores que o alimentam estão vivos */}
         <Box sx={slot({ lg: 8, xs: 5 })}>
@@ -208,6 +215,7 @@ export function OperationalDashboard(): JSX.Element {
             loading={inventoryLoading}
             evaluating={evaluating}
             selectedSeriesId={dashboard.selectedSeriesId}
+            range={range}
             onInvestigate={investigate}
           />
         </Box>
@@ -233,7 +241,7 @@ export function OperationalDashboard(): JSX.Element {
         </Box>
         <Box sx={stack('minmax(0, 1fr) auto')}>
           <Box sx={slot({ md: 6, xs: 7 })}>
-            <RecentOccurrences view={view} loading={inventoryLoading} onInvestigate={investigate} />
+            <RecentOccurrences view={view} loading={inventoryLoading} range={range} />
           </Box>
           <Box sx={slot({ md: 6, xs: 9 })}>
             <DataQualityPanel view={view} loading={inventoryLoading} />
@@ -290,7 +298,7 @@ export function OperationalDashboard(): JSX.Element {
               loading={inventoryLoading}
               nowMs={nowMs}
               selectedSeriesId={dashboard.selectedSeriesId}
-              onSelect={investigate}
+              range={range}
             />
           </Box>
         </Box>

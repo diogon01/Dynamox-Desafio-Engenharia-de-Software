@@ -1,4 +1,5 @@
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import Link from '@mui/material/Link';
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
 import Skeleton from '@mui/material/Skeleton';
@@ -10,21 +11,19 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
-import { alpha, useTheme } from '@mui/material/styles';
-import { Line, LineChart, ResponsiveContainer } from 'recharts';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { alpha } from '@mui/material/styles';
 
+import { machineTag } from '@dynamox/domain';
 import { EmptyState } from '@dynamox/ui';
 
-import type {
-  DashboardView,
-  SensorCellView,
-} from '../../features/dashboard/dashboardAggregations';
-import {
-  formatMeasurement,
-  formatNumber,
-} from '../../features/dashboard/dashboardFormatters';
+import type { DashboardView } from '../../features/dashboard/dashboardAggregations';
+import { formatMeasurement } from '../../features/dashboard/dashboardFormatters';
+import { links, type AnalyticsRange } from '../../features/investigation/links';
+import { DeviationBar } from '../investigation/DeviationBar';
+import { TrendSparkline } from '../investigation/TrendSparkline';
 import { DashboardCard } from './DashboardCard';
-import { StatusTag, statusColor } from './StatusTag';
+import { StatusTag } from './StatusTag';
 
 /**
  * O painel operacional central: ranking denso das prioridades reais de inspeção.
@@ -36,72 +35,9 @@ export interface InspectionPriorityTableProps {
   loading: boolean;
   evaluating: boolean;
   selectedSeriesId: string | null;
+  /** Recorte atual do painel — viaja junto em todo link para não recomeçar a análise. */
+  range: AnalyticsRange;
   onInvestigate: (seriesId: string) => void;
-}
-
-function DeviationCell({ cell }: { cell: SensorCellView }): JSX.Element {
-  const muiTheme = useTheme();
-  const ratio = cell.assessment?.deviationRatio ?? null;
-  // O valor medido acompanha a barra: em telas estreitas a coluna própria não cabe.
-  const medida = cell.evidence
-    ? `${cell.evidence.label}: ${formatMeasurement(cell.evidence.value, cell.evidence.unit)}`
-    : undefined;
-  if (ratio === null) {
-    return (
-      <Typography variant="caption" color="text.secondary">
-        —
-      </Typography>
-    );
-  }
-  // Barra proporcional ao índice, saturando em 4× para manter a escala legível.
-  const width = Math.min(1, ratio / 4) * 100;
-  const color = statusColor(cell.condition, muiTheme.palette);
-  return (
-    <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 96 }} title={medida}>
-      <Box
-        aria-hidden="true"
-        sx={{ flexGrow: 1, height: 6, borderRadius: 999, bgcolor: 'action.hover', overflow: 'hidden' }}
-      >
-        <Box sx={{ width: `${width}%`, height: '100%', bgcolor: color }} />
-      </Box>
-      <Typography variant="body2" sx={{ fontWeight: 700, color, whiteSpace: 'nowrap' }}>
-        {formatNumber(ratio, 2)}×
-      </Typography>
-    </Stack>
-  );
-}
-
-function Sparkline({
-  points,
-  cell,
-}: {
-  points: Array<{ t: number; v: number }>;
-  cell: SensorCellView;
-}): JSX.Element {
-  const muiTheme = useTheme();
-  if (points.length < 2) {
-    return (
-      <Typography variant="caption" color="text.secondary">
-        —
-      </Typography>
-    );
-  }
-  return (
-    <Box sx={{ width: 72, height: 22 }} aria-hidden="true">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={points} margin={{ top: 3, right: 2, bottom: 3, left: 2 }}>
-          <Line
-            type="linear"
-            dataKey="v"
-            stroke={statusColor(cell.condition, muiTheme.palette)}
-            strokeWidth={1.6}
-            dot={false}
-            isAnimationActive={false}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </Box>
-  );
 }
 
 export function InspectionPriorityTable({
@@ -109,8 +45,10 @@ export function InspectionPriorityTable({
   loading,
   evaluating,
   selectedSeriesId,
+  range,
   onInvestigate,
 }: InspectionPriorityTableProps): JSX.Element {
+  const navigate = useNavigate();
   const evaluated = view.cells.filter((cell) => cell.sensorSerial).length;
   const rows = view.priority;
 
@@ -199,16 +137,48 @@ export function InspectionPriorityTable({
                     <TableCell sx={{ color: 'text.secondary' }}>{index + 1}</TableCell>
                     <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                       {/* Nome curto na tabela densa; o completo vive no title e no tooltip. */}
-                      <span title={cell.machineName}>{cell.machineName.split(' — ')[0]}</span>
+                      <Link
+                        component={RouterLink}
+                        to={links.asset(cell.machineName, range)}
+                        title={cell.machineName}
+                        onClick={(event) => event.stopPropagation()}
+                        underline="hover"
+                        color="inherit"
+                        sx={{ fontWeight: 700 }}
+                      >
+                        {machineTag(cell.machineName)}
+                      </Link>
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Typography variant="body2" component="span" sx={{ fontWeight: 600 }}>
+                      <Link
+                        component={RouterLink}
+                        to={links.point(cell.machineName, cell.pointName, range)}
+                        onClick={(event) => event.stopPropagation()}
+                        underline="hover"
+                        color="inherit"
+                        sx={{ fontWeight: 600, fontSize: '0.8125rem' }}
+                      >
                         {cell.positionLabel}
-                      </Typography>
+                      </Link>
                       <Typography variant="body2" component="span" color="text.secondary">
-                        {' '}
-                        · {cell.sensorSerial}
+                        {' · '}
                       </Typography>
+                      {cell.sensorSerial ? (
+                        <Link
+                          component={RouterLink}
+                          to={links.sensor(cell.sensorSerial, range)}
+                          onClick={(event) => event.stopPropagation()}
+                          underline="hover"
+                          color="text.secondary"
+                          sx={{ fontSize: '0.8125rem' }}
+                        >
+                          {cell.sensorSerial}
+                        </Link>
+                      ) : (
+                        <Typography variant="body2" component="span" color="text.secondary">
+                          sem sensor
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell>
                       <StatusTag kind={cell.condition} />
@@ -226,20 +196,32 @@ export function InspectionPriorityTable({
                         : '—'}
                     </TableCell>
                     <TableCell>
-                      <DeviationCell cell={cell} />
+                      <DeviationBar
+                        ratio={cell.assessment?.deviationRatio ?? null}
+                        condition={cell.condition}
+                        title={
+                          cell.evidence
+                            ? `${cell.evidence.label}: ${formatMeasurement(cell.evidence.value, cell.evidence.unit)}`
+                            : undefined
+                        }
+                      />
                     </TableCell>
                     <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                      <Sparkline points={view.sparklines[cell.key] ?? []} cell={cell} />
+                      <TrendSparkline
+                        trend={view.sparklines[cell.key] ?? []}
+                        condition={cell.condition}
+                      />
                     </TableCell>
                     <TableCell padding="none" align="center">
+                      {/* A linha troca o contexto NESTA página; a seta desce um nível. */}
                       <IconButton
                         size="small"
                         color="primary"
-                        disabled={!clickable}
-                        aria-label={`Investigar ${cell.machineName} ${cell.positionLabel} ${cell.sensorSerial ?? ''}`}
+                        disabled={!cell.sensorSerial}
+                        aria-label={`Abrir o sensor ${cell.sensorSerial ?? ''} de ${cell.machineName}`}
                         onClick={(event) => {
                           event.stopPropagation();
-                          if (cell.preferredSeriesId) onInvestigate(cell.preferredSeriesId);
+                          if (cell.sensorSerial) navigate(links.sensor(cell.sensorSerial, range));
                         }}
                       >
                         <ArrowForwardIcon fontSize="small" />

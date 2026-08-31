@@ -8,10 +8,13 @@ import TableCell from '@mui/material/TableCell';
 import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
+import Link from '@mui/material/Link';
 import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 
+import { machineTag } from '@dynamox/domain';
 import { EmptyState } from '@dynamox/ui';
 
 import type {
@@ -26,6 +29,7 @@ import {
   formatDateTime,
   formatRelativeTime,
 } from '../../features/time/instant';
+import { links, type AnalyticsRange } from '../../features/investigation/links';
 import { DashboardCard } from './DashboardCard';
 import { statusColor } from './StatusTag';
 
@@ -71,15 +75,16 @@ export function FleetConditionMatrix({
   loading,
   nowMs,
   selectedSeriesId,
-  onSelect,
+  range,
 }: {
   view: DashboardView;
   loading: boolean;
   nowMs: number;
   selectedSeriesId: string | null;
-  onSelect: (seriesId: string) => void;
+  range: AnalyticsRange;
 }): JSX.Element {
   const muiTheme = useTheme();
+  const navigate = useNavigate();
   const machines = view.rows;
   const positions = [...new Set(view.cells.map((cell) => cell.positionLabel))];
   const legend = [...new Set(view.cells.map((cell) => cell.condition))].map((kind) => ({
@@ -92,7 +97,7 @@ export function FleetConditionMatrix({
       title="Matriz de condição da frota"
       titleId="fleet-matrix-title"
       subtitle="Todos os pontos por máquina."
-      info="Cada ponto é um sensor: cor indica a condição demonstrativa. Selecione para investigar."
+      info="Cada célula é um ponto monitorado: a cor indica a condição. Clique para abrir o ponto."
       flush
     >
       {loading ? (
@@ -126,14 +131,17 @@ export function FleetConditionMatrix({
                   <TableCell sx={{ width: 44, pl: 2 }}>Ponto</TableCell>
                   {machines.map((row) => (
                     <TableCell key={row.machine.id} align="center" sx={{ px: 0.25 }}>
-                      <Typography
-                        variant="caption"
-                        sx={{ fontWeight: 700, color: 'text.primary', display: 'block', fontSize: 10 }}
+                      <Link
+                        component={RouterLink}
+                        to={links.asset(row.machine.name, range)}
+                        underline="hover"
+                        color="inherit"
+                        title={`Abrir ${row.machine.name}`}
+                        sx={{ fontWeight: 700, fontSize: 10, display: 'block' }}
                         noWrap
-                        title={row.machine.name}
                       >
-                        {row.machine.name.split(' — ')[0]}
-                      </Typography>
+                        {machineTag(row.machine.name)}
+                      </Link>
                     </TableCell>
                   ))}
                 </TableRow>
@@ -159,17 +167,21 @@ export function FleetConditionMatrix({
                       const selected =
                         Boolean(cell.preferredSeriesId) &&
                         cell.series.some((item) => item.id === selectedSeriesId);
-                      const clickable = Boolean(cell.preferredSeriesId);
+                      // A granularidade visual da célula é o PONTO — e é para ele que ela
+                      // leva. O sensor fica a um clique dali, na própria página do ponto.
+                      const clickable = Boolean(cell.pointName);
                       return (
                         <TableCell key={row.machine.id} align="center">
                           <Tooltip arrow title={<CellTooltip cell={cell} nowMs={nowMs} />}>
                             <span>
                               <ButtonBase
                                 disabled={!clickable}
-                                aria-label={`${cell.machineName}, ${cell.pointName}, ${cell.sensorSerial ?? 'sem sensor'}, ${cell.conditionLabel}`}
-                                aria-pressed={selected}
+                                aria-label={`Abrir ${cell.machineName}, ${cell.pointName}, ${cell.sensorSerial ?? 'sem sensor'}, ${cell.conditionLabel}`}
+                                aria-current={selected ? 'true' : undefined}
                                 onClick={() => {
-                                  if (cell.preferredSeriesId) onSelect(cell.preferredSeriesId);
+                                  if (clickable) {
+                                    navigate(links.point(cell.machineName, cell.pointName, range));
+                                  }
                                 }}
                                 sx={{
                                   width: 26,

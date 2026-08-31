@@ -96,6 +96,14 @@ const POINTS = [
   },
 ] as const;
 
+/** Tendência curta como o endpoint devolve: buckets já agregados, nunca amostras. */
+function trendFixture(values: number[]) {
+  return values.map((value, index) => ({
+    timestamp: new Date(baseMs + index * 2 * 60 * 60 * 1000).toISOString(),
+    value,
+  }));
+}
+
 /**
  * Condição como o servidor devolve — a fixture reproduz a mesma classificação que antes era
  * derivada das amostras: SIM-HF-002 em atenção, 3x o baseline, com a evidência radial.
@@ -128,6 +136,7 @@ function conditionFixture(options: { emptyInventory?: boolean } = {}) {
         currentCycleId: 'c1-cur',
         baselineCycleId: 'c1-base',
         unit: 'g',
+        trend: trendFixture([1, 1, 1]),
       },
       {
         machineName: 'P-102',
@@ -147,6 +156,7 @@ function conditionFixture(options: { emptyInventory?: boolean } = {}) {
         currentCycleId: 'c2-cur',
         baselineCycleId: 'c2-base',
         unit: 'g',
+        trend: trendFixture([1, 2, 3]),
       },
     ],
   };
@@ -342,20 +352,20 @@ describe('OperationalDashboard', () => {
   it('os quatro KPIs separam condição, magnitude, cobertura e recência', async () => {
     renderDashboard();
     // Condição: apenas o sensor com desvio.
-    expect(await screen.findByLabelText('Ativos em atenção: 1')).toBeDefined();
+    expect(await screen.findByLabelText(/^Ativos em atenção: 1\b/)).toBeDefined();
     // Magnitude: o maior desvio atual, com a grandeza que o sustenta.
-    const desvio = screen.getByLabelText('Maior desvio: 3×');
+    const desvio = screen.getByLabelText(/^Maior desvio: 3×/);
     expect(within(desvio).getByText(/Aceleração radial \(Y\/Z\)/i)).toBeDefined();
     // Cobertura: instrumentados e reportando sobre o total de pontos.
-    expect(screen.getByLabelText('Cobertura monitorada: 66,7%')).toBeDefined();
+    expect(screen.getByLabelText(/^Cobertura monitorada: 66,7%/)).toBeDefined();
     // Recência: leituras de 2 dias atrás estão fora da janela de 24 h.
-    expect(screen.getByLabelText('Leituras atuais: 0%')).toBeDefined();
+    expect(screen.getByLabelText(/^Leituras atuais: 0%/)).toBeDefined();
   });
 
   it('a carga não busca métricas por série nem amostra bruta: tudo vem agregado', async () => {
     const fetcher = fixtureFetch();
     renderDashboard(fetcher);
-    await screen.findByLabelText('Ativos em atenção: 1');
+    await screen.findByLabelText(/^Ativos em atenção: 1\b/);
     await waitFor(() => expect(screen.getAllByText(/3×/).length).toBeGreaterThan(0));
 
     const urls = fetcher.mock.calls.map(([input]) => String(input));
@@ -396,11 +406,11 @@ describe('OperationalDashboard', () => {
     expect(linhas[1].textContent).toContain('SIM-HF-001');
   });
 
-  it('investigar leva à evidência temporal com o contexto selecionado', async () => {
+  it('a linha da prioridade troca o contexto na própria página', async () => {
     renderDashboard();
     const fila = await screen.findByRole('region', { name: /Prioridade de inspeção/i });
-    const investigar = within(fila).getAllByRole('button', { name: /Investigar/i })[0];
-    await userEvent.click(investigar);
+    await waitFor(() => expect(within(fila).getByText('Atenção')).toBeDefined());
+    await userEvent.click(within(fila).getAllByRole('row')[1]);
 
     const investigacao = await screen.findByRole('heading', { name: /Investigação — SIM-HF-002/i });
     // O drill-down entrega o foco: o caminho também existe no teclado.
@@ -408,24 +418,61 @@ describe('OperationalDashboard', () => {
     // O painel de tendência crítica declara o contexto completo.
     const trend = screen.getByRole('region', { name: /Tendência crítica/i });
     expect(trend.textContent).toContain('SIM-HF-002');
+    // Trocar o contexto NÃO é navegar: a home continua sendo a rota.
+    expect(screen.getByTestId('rota').textContent).toBe('/');
   });
 
-  it('a matriz da frota leva ao mesmo painel de investigação', async () => {
+  it('a prioridade é ponto de entrada: máquina, ponto e sensor levam às suas páginas', async () => {
     renderDashboard();
+    const fila = await screen.findByRole('region', { name: /Prioridade de inspeção/i });
+    await waitFor(() => expect(within(fila).getByText('Atenção')).toBeDefined());
+
+    // Cada identificador da linha aponta para o seu próprio nível da investigação.
+    const linha = within(fila).getAllByRole('row')[1];
+    expect(within(linha).getByRole('link', { name: 'P-102' }).getAttribute('href')).toMatch(
+      /^\/assets\/P-102\?from=.+&to=/,
+    );
+    expect(within(linha).getByRole('link', { name: 'NDE' }).getAttribute('href')).toMatch(
+      /^\/assets\/P-102\/points\/mancal-lado-oposto-ao-acoplamento\?from=/,
+    );
+    expect(within(linha).getByRole('link', { name: 'SIM-HF-002' }).getAttribute('href')).toMatch(
+      /^\/sensors\/SIM-HF-002\?from=/,
+    );
+
+    // A ação da linha desce um nível de verdade, levando o recorte junto.
+    await userEvent.click(within(linha).getByRole('button', { name: /Abrir o sensor SIM-HF-002/i }));
+    await waitFor(() =>
+      expect(screen.getByTestId('rota').textContent).toMatch(/^\/sensors\/SIM-HF-002\?from=.+&to=/),
+    );
+  });
+
+  it('a miniatura de tendência vem agregada do servidor, sem baixar amostras', async () => {
+    const fetcher = fixtureFetch();
+    renderDashboard(fetcher);
+    const fila = await screen.findByRole('region', { name: /Prioridade de inspeção/i });
+    await waitFor(() => expect(within(fila).getByText('Atenção')).toBeDefined());
+
+    // A condição é pedida COM a tendência — é o que devolve as miniaturas.
+    const urls = fetcher.mock.calls.map(([input]) => String(input));
+    expect(urls.filter((url) => url.includes('/analytics/fleet-condition'))[0]).toContain(
+      'includeTrend=true',
+    );
+    // REGRESSÃO PROTEGIDA: a miniatura voltou sem reabrir a porta da telemetria bruta.
+    expect(urls.filter((url) => url.includes('/samples'))).toHaveLength(0);
+  });
+
+  it('a célula da matriz abre o ponto correspondente', async () => {
+    renderDashboard();
+    // A granularidade visual da célula é o ponto monitorado — e é para ele que ela leva.
     const cell = await screen.findByRole('button', {
-      name: /P-102, Mancal lado oposto ao acoplamento, SIM-HF-002/i,
+      name: /Abrir P-102, Mancal lado oposto ao acoplamento, SIM-HF-002/i,
     });
     await userEvent.click(cell);
     await waitFor(() =>
-      expect(
-        screen
-          .getByRole('button', {
-            name: /P-102, Mancal lado oposto ao acoplamento, SIM-HF-002/i,
-          })
-          .getAttribute('aria-pressed'),
-      ).toBe('true'),
+      expect(screen.getByTestId('rota').textContent).toMatch(
+        /^\/assets\/P-102\/points\/mancal-lado-oposto-ao-acoplamento\?from=.+&to=/,
+      ),
     );
-    expect(await screen.findByRole('heading', { name: /Investigação — SIM-HF-002/i })).toBeDefined();
   });
 
   it('as ocorrências recentes derivam das leituras reais, sem inventar eventos', async () => {
@@ -434,6 +481,16 @@ describe('OperationalDashboard', () => {
     // Uma linha por sensor com leitura, a mais crítica identificável.
     expect(within(painel).getByText(/P-102 · NDE · SIM-HF-002/i)).toBeDefined();
     expect(within(painel).getByText(/não há alarmes persistidos/i)).toBeDefined();
+
+    // Abrir a ocorrência leva ao sensor recortado NA HORA da leitura, não na janela do painel.
+    await userEvent.click(
+      within(painel).getByRole('button', { name: /Abrir P-102 · NDE · SIM-HF-002/i }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('rota').textContent).toMatch(
+        /^\/sensors\/SIM-HF-002\?from=.+&to=.+&bucket=15m/,
+      ),
+    );
   });
 
   it('o mapa de atividade e o perfil 24 h são mestre/detalhe, e a célula abre a janela', async () => {
@@ -457,7 +514,7 @@ describe('OperationalDashboard', () => {
 
   it('quando o período não alcança o dado, oferece o período disponível', async () => {
     renderDashboard();
-    await screen.findByLabelText('Ativos em atenção: 1');
+    await screen.findByLabelText(/^Ativos em atenção: 1\b/);
     await userEvent.click(screen.getByRole('button', { name: /^24 h$/i }));
     expect(await screen.findByText(/Sem dados em 24 horas/i)).toBeDefined();
 
@@ -479,20 +536,20 @@ describe('OperationalDashboard', () => {
   it('orienta o primeiro cadastro quando não há máquinas', async () => {
     renderDashboard(fixtureFetch({ emptyInventory: true }));
     expect(await screen.findByText(/Nenhuma máquina cadastrada/i)).toBeDefined();
-    expect(screen.getByLabelText('Ativos em atenção: 0')).toBeDefined();
+    expect(screen.getByLabelText(/^Ativos em atenção: 0/)).toBeDefined();
     expect(screen.getByText(/Cadastre uma máquina e seus pontos/i)).toBeDefined();
   });
 
   it('mantém sensores instalados como sem dados quando não existem séries', async () => {
     renderDashboard(fixtureFetch({ seriesEmpty: true }));
-    expect(await screen.findByLabelText('Cobertura monitorada: 0%')).toBeDefined();
+    expect(await screen.findByLabelText(/^Cobertura monitorada: 0%/)).toBeDefined();
     expect(screen.getAllByText(/Sem dados/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Nenhuma série persistida/i)).toBeDefined();
   });
 
   it('abre o explorador com quatro filtros hierárquicos e métricas da série', async () => {
     renderDashboard();
-    await screen.findByLabelText('Ativos em atenção: 1');
+    await screen.findByLabelText(/^Ativos em atenção: 1\b/);
     await userEvent.click(screen.getByRole('button', { name: /Explorar série temporal/i }));
     const explorer = document.getElementById('series-explorer-content');
     expect(explorer).not.toBeNull();

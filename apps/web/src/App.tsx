@@ -21,6 +21,16 @@ const TimeWindowPage = lazy(async () => {
   return { default: module.TimeWindowPage };
 });
 
+const AssetPage = lazy(async () => {
+  const module = await import('./pages/investigation/AssetPage');
+  return { default: module.AssetPage };
+});
+
+const PointPage = lazy(async () => {
+  const module = await import('./pages/investigation/PointPage');
+  return { default: module.PointPage };
+});
+
 const SensorPage = lazy(async () => {
   const module = await import('./pages/investigation/SensorPage');
   return { default: module.SensorPage };
@@ -66,6 +76,8 @@ export function App(): JSX.Element {
         <Route path="/monitoring-points" element={<MonitoringPointsPanel />} />
         {/* Investigação: cada rota é um nível do drill-down, com o recorte na URL. */}
         <Route path="/monitoring/windows/:date/:hour" element={<TimeWindowPage />} />
+        <Route path="/assets/:machineKey" element={<AssetPage />} />
+        <Route path="/assets/:machineKey/points/:pointKey" element={<PointPage />} />
         <Route path="/sensors/:serialNumber" element={<SensorPage />} />
         <Route path="/acquisitions/:cycleId" element={<AcquisitionPage />} />
         <Route path="/acquisitions/:cycleId/samples" element={<RawSamplesPage />} />

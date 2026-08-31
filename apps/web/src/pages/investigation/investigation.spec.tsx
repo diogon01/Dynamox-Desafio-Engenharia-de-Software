@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../test/renderWithProviders';
 import { AcquisitionPage } from './AcquisitionPage';
+import { AssetPage } from './AssetPage';
+import { PointPage } from './PointPage';
 import { RawSamplesPage } from './RawSamplesPage';
 import { SensorPage } from './SensorPage';
 import { TimeWindowPage } from './TimeWindowPage';
@@ -13,6 +15,118 @@ const USER = { id: 'u1', email: 'operador@dynamox.local', name: 'Operador', role
 const FROM = '2026-08-30T14:00:00.000Z';
 const TO = '2026-08-30T15:00:00.000Z';
 const CYCLE = '11111111-1111-4111-8111-111111111111';
+
+const TREND = [
+  { timestamp: '2026-08-30T12:00:00.000Z', value: 0.0164 },
+  { timestamp: '2026-08-30T13:00:00.000Z', value: 0.031 },
+  { timestamp: '2026-08-30T14:00:00.000Z', value: 0.0572 },
+];
+
+/** Resumo do ativo como o endpoint devolve: agregado, com uma linha por ponto. */
+const ASSET_SUMMARY = {
+  machineId: 'm1',
+  machineName: 'P-101',
+  machineType: 'Pump',
+  slug: 'P-101',
+  from: FROM,
+  to: TO,
+  kpis: {
+    points: 2,
+    sensors: 2,
+    attention: 1,
+    acquisitionCount: 8,
+    coveragePercent: 100,
+    maxDeviationRatio: 3.49,
+    maxDeviationPoint: 'Mancal lado oposto ao acoplamento',
+  },
+  lastAt: '2026-08-30T14:47:59.000Z',
+  points: [
+    {
+      monitoringPointId: 'p1',
+      monitoringPointName: 'Mancal lado oposto ao acoplamento',
+      slug: 'mancal-lado-oposto-ao-acoplamento',
+      sensorSerialNumber: 'SIM-HF-002',
+      sensorModel: 'HF+',
+      condition: 'attention',
+      freshness: 'current',
+      currentValue: 0.0572,
+      baselineValue: 0.0164,
+      deviationRatio: 3.49,
+      lastAt: '2026-08-30T14:47:59.000Z',
+      acquisitionCount: 4,
+      sampleCount: 240,
+      min: 0.024,
+      max: 0.061,
+      avg: 0.03,
+      unit: 'g',
+      trend: TREND,
+    },
+    {
+      monitoringPointId: 'p2',
+      monitoringPointName: 'Mancal lado acoplamento',
+      slug: 'mancal-lado-acoplamento',
+      sensorSerialNumber: 'SIM-HF-001',
+      sensorModel: 'HF+',
+      condition: 'normal',
+      freshness: 'current',
+      currentValue: 0.0164,
+      baselineValue: 0.0164,
+      deviationRatio: 1,
+      lastAt: '2026-08-30T14:47:59.000Z',
+      acquisitionCount: 4,
+      sampleCount: 240,
+      min: 0.012,
+      max: 0.02,
+      avg: 0.016,
+      unit: 'g',
+      trend: TREND,
+    },
+  ],
+};
+
+const POINT_SUMMARY = {
+  machineId: 'm1',
+  machineName: 'P-101',
+  machineType: 'Pump',
+  machineSlug: 'P-101',
+  monitoringPointId: 'p1',
+  monitoringPointName: 'Mancal lado oposto ao acoplamento',
+  slug: 'mancal-lado-oposto-ao-acoplamento',
+  from: FROM,
+  to: TO,
+  sensorSerialNumber: 'SIM-HF-002',
+  sensorModel: 'HF+',
+  condition: 'attention',
+  freshness: 'current',
+  currentValue: 0.0572,
+  baselineValue: 0.0164,
+  deviationRatio: 3.49,
+  currentAt: '2026-08-30T14:47:59.000Z',
+  baselineAt: '2026-08-30T14:32:00.000Z',
+  currentCycleId: CYCLE,
+  baselineCycleId: 'outro',
+  unit: 'g',
+  window: {
+    acquisitionCount: 4,
+    sampleCount: 240,
+    min: 0.024,
+    max: 0.061,
+    avg: 0.03,
+    lastValue: 0.0572,
+    lastAt: '2026-08-30T14:47:59.000Z',
+  },
+  trend: TREND,
+  series: [
+    {
+      seriesId: 'series-y',
+      physicalQuantity: 'acceleration',
+      axis: 'y',
+      unit: 'g',
+      lastValue: 0.0572,
+      lastAt: '2026-08-30T14:47:59.000Z',
+    },
+  ],
+};
 
 function okJson(payload: unknown): Response {
   return new Response(JSON.stringify(payload), { status: 200 });
@@ -24,6 +138,16 @@ function stubApi(overrides: Record<string, unknown> = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     calls.push(url);
+
+    if (url.includes('/analytics/assets/')) {
+      if (url.includes('/desconhecido')) {
+        return new Response(
+          JSON.stringify({ code: 'MACHINE_NOT_FOUND', message: 'Ativo "desconhecido" não encontrado.' }),
+          { status: 404 },
+        );
+      }
+      return okJson(url.includes('/points/') ? (overrides.point ?? POINT_SUMMARY) : (overrides.asset ?? ASSET_SUMMARY));
+    }
 
     if (url.includes('/analytics/time-windows')) {
       return okJson(
@@ -246,6 +370,8 @@ function renderAt(route: string) {
   return renderWithProviders(
     <Routes>
       <Route path="/monitoring/windows/:date/:hour" element={<TimeWindowPage />} />
+      <Route path="/assets/:machineKey" element={<AssetPage />} />
+      <Route path="/assets/:machineKey/points/:pointKey" element={<PointPage />} />
       <Route path="/sensors/:serialNumber" element={<SensorPage />} />
       <Route path="/acquisitions/:cycleId" element={<AcquisitionPage />} />
       <Route path="/acquisitions/:cycleId/samples" element={<RawSamplesPage />} />
@@ -365,6 +491,81 @@ describe('drill-down analítico', () => {
     });
     // Keyset, nunca offset profundo.
     expect(calls.every((url) => !url.includes('offset='))).toBe(true);
+  });
+
+  it('o ativo agrega os pontos e leva ao ponto escolhido', async () => {
+    const { calls } = stubApi();
+    renderAt(`/assets/P-101?from=${FROM}&to=${TO}`);
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'P-101' })).toBeDefined();
+    // Indicadores do ativo, não da frota.
+    expect(screen.getByText(/2 ponto\(s\) monitorado\(s\)/i)).toBeDefined();
+    expect(screen.getAllByText('3,49×').length).toBeGreaterThan(0);
+
+    // UMA consulta agregada resolve a página inteira — e nenhuma amostra bruta.
+    expect(calls.filter((url) => url.includes('/analytics/assets/'))).toHaveLength(1);
+    expect(calls.filter((url) => url.includes('/samples'))).toHaveLength(0);
+
+    const tabela = screen.getByRole('table', { name: /Pontos e sensores/i });
+    // O serial é atalho para o sensor; a linha inteira abre o ponto.
+    expect(
+      within(tabela).getByRole('link', { name: 'SIM-HF-002' }).getAttribute('href'),
+    ).toMatch(/^\/sensors\/SIM-HF-002\?from=/);
+
+    await userEvent.click(within(tabela).getAllByRole('row')[1]);
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /Mancal lado oposto ao acoplamento/i }),
+    ).toBeDefined();
+  });
+
+  it('o ponto é contexto e entrega o próximo nível, preservando o recorte', async () => {
+    const { calls } = stubApi();
+    renderAt(`/assets/P-101/points/mancal-lado-oposto-ao-acoplamento?from=${FROM}&to=${TO}`);
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /Mancal lado oposto ao acoplamento/i }),
+    ).toBeDefined();
+    // A janela consultada é a da URL, não um padrão do componente.
+    const consulta = calls.find((url) => url.includes('/analytics/assets/'))!;
+    expect(consulta).toContain(`from=${encodeURIComponent(FROM)}`);
+    expect(consulta).toContain(`to=${encodeURIComponent(TO)}`);
+
+    // Subir um nível mantém o recorte.
+    const trilha = screen.getByRole('navigation', { name: /Trilha da investigação/i });
+    expect(within(trilha).getByRole('link', { name: 'P-101' }).getAttribute('href')).toMatch(
+      /^\/assets\/P-101\?from=.+&to=/,
+    );
+    // Descer também: o ponto entrega o sensor, que é onde mora a história completa.
+    expect(screen.getByRole('link', { name: /Abrir sensor/i }).getAttribute('href')).toMatch(
+      /^\/sensors\/SIM-HF-002\?from=/,
+    );
+    // Contexto, não duplicata da página do sensor: as séries aparecem como inventário.
+    expect(screen.getByRole('table', { name: /Séries do ponto/i })).toBeDefined();
+  });
+
+  it('a trilha do sensor reconstrói ativo e ponto', async () => {
+    stubApi();
+    renderAt(`/sensors/SIM-HF-002?from=${FROM}&to=${TO}&bucket=15m`);
+
+    const trilha = await screen.findByRole('navigation', { name: /Trilha da investigação/i });
+    await waitFor(() =>
+      expect(within(trilha).getByRole('link', { name: 'P-101' }).getAttribute('href')).toMatch(
+        /^\/assets\/P-101\?from=/,
+      ),
+    );
+    expect(
+      within(trilha)
+        .getByRole('link', { name: /Mancal lado oposto ao acoplamento/i })
+        .getAttribute('href'),
+    ).toMatch(/^\/assets\/P-101\/points\/mancal-lado-oposto-ao-acoplamento\?from=/);
+  });
+
+  it('identificador inexistente vira "não encontrado", nunca redirecionamento silencioso', async () => {
+    stubApi();
+    renderAt(`/assets/desconhecido?from=${FROM}&to=${TO}`);
+
+    expect(await screen.findByText(/Ativo não encontrado/i)).toBeDefined();
+    expect(screen.getByText(/Nenhuma máquina cadastrada corresponde a "desconhecido"/i)).toBeDefined();
   });
 
   it('mostra estado vazio quando a janela não tem aquisição', async () => {

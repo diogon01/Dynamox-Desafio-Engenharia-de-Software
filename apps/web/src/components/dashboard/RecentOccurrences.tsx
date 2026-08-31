@@ -4,13 +4,14 @@ import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
+import { useNavigate } from 'react-router-dom';
 
+import { machineTag } from '@dynamox/domain';
 import { EmptyState } from '@dynamox/ui';
 
 import type { DashboardView } from '../../features/dashboard/dashboardAggregations';
-import {
-  formatShortDateTime,
-} from '../../features/time/instant';
+import { links, type AnalyticsRange } from '../../features/investigation/links';
+import { formatShortDateTime, hourWindow } from '../../features/time/instant';
 import { DashboardCard } from './DashboardCard';
 import { StatusTag } from './StatusTag';
 
@@ -25,20 +26,32 @@ import { StatusTag } from './StatusTag';
 export function RecentOccurrences({
   view,
   loading,
-  onInvestigate,
+  range,
 }: {
   view: DashboardView;
   loading: boolean;
-  onInvestigate: (seriesId: string) => void;
+  range: AnalyticsRange;
 }): JSX.Element {
+  const navigate = useNavigate();
   const rows = view.occurrences.slice(0, 6);
+
+  /**
+   * A ocorrência tem um instante; abri-la deve levar ao sensor JÁ recortado nele — a hora
+   * da leitura, não a janela inteira do painel. Sem instante (ponto que nunca reportou),
+   * cai no recorte atual, que é o melhor contexto disponível.
+   */
+  const openOccurrence = (row: (typeof rows)[number]) => {
+    if (!row.sensorSerial) return;
+    const period = row.timestamp ? hourWindow(row.timestamp) : null;
+    navigate(links.sensor(row.sensorSerial, period ?? range, period ? '15m' : undefined));
+  };
 
   return (
     <DashboardCard
       title="Ocorrências recentes"
       titleId="occurrences-title"
       subtitle="Última leitura de cada sensor e a classificação atual."
-      info="Derivado das leituras persistidas — o domínio não possui eventos/alarmes persistidos."
+      info="Derivado das leituras persistidas — o domínio não possui eventos/alarmes persistidos. Abrir leva ao sensor na hora da leitura."
       flush
     >
       {loading ? (
@@ -61,16 +74,14 @@ export function RecentOccurrences({
       {!loading && rows.length > 0 ? (
         <Stack component="ul" aria-label="Ocorrências recentes" sx={{ listStyle: 'none', m: 0, p: 0 }}>
           {rows.map((row) => {
-            const shortMachine = row.machineName.split(' — ')[0];
+            const shortMachine = machineTag(row.machineName);
             const identity = `${shortMachine} · ${row.pointLabel} · ${row.sensorSerial}`;
             return (
               <Box component="li" key={row.id}>
                 <ButtonBase
-                  disabled={!row.seriesId}
-                  onClick={() => {
-                    if (row.seriesId) onInvestigate(row.seriesId);
-                  }}
-                  aria-label={`${identity}: ${row.statusLabel} — ${row.message}`}
+                  disabled={!row.sensorSerial}
+                  onClick={() => openOccurrence(row)}
+                  aria-label={`Abrir ${identity}: ${row.statusLabel} — ${row.message}`}
                   sx={(theme) => ({
                     width: '100%',
                     display: 'block',

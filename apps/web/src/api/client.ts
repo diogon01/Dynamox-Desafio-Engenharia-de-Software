@@ -1,7 +1,9 @@
 import type {
   AcquisitionDetailDto,
   AcquisitionPageDto,
+  AssetSummaryDto,
   FleetConditionResponseDto,
+  PointSummaryDto,
   HeatmapResponseDto,
   MachineType,
   RawSamplePageDto,
@@ -341,8 +343,22 @@ export const api = {
    * Condição da frota calculada no BANCO. Substitui o download das séries radiais inteiras:
    * eram ~840 requisições e centenas de MB para chegar à mesma classificação.
    */
-  fleetCondition: (range: AnalyticsRange) =>
-    requestJson<FleetConditionResponseDto>(`/analytics/fleet-condition?${rangeQuery(range)}`),
+  fleetCondition: (range: AnalyticsRange, options: { includeTrend?: boolean } = {}) =>
+    requestJson<FleetConditionResponseDto>(
+      `/analytics/fleet-condition?${rangeQuery(range, options.includeTrend ? { includeTrend: 'true' } : {})}`,
+    ),
+
+  /** Resumo analítico do ativo: cabeçalho, indicadores e uma linha por ponto. */
+  assetSummary: (machineKey: string, range: AnalyticsRange) =>
+    requestJson<AssetSummaryDto>(
+      `/analytics/assets/${encodeURIComponent(machineKey)}?${rangeQuery(range)}`,
+    ),
+
+  /** Resumo analítico do ponto — o contexto entre o ativo e o sensor. */
+  pointSummary: (machineKey: string, pointKey: string, range: AnalyticsRange) =>
+    requestJson<PointSummaryDto>(
+      `/analytics/assets/${encodeURIComponent(machineKey)}/points/${encodeURIComponent(pointKey)}?${rangeQuery(range)}`,
+    ),
 
   /** Mapa de atividade por data × hora, agregado no banco. */
   heatmap: (range: AnalyticsRange, bucket: 'hour' | 'day' = 'hour') =>

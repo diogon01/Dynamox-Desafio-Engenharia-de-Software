@@ -26,6 +26,7 @@ import {
   YAxis,
 } from 'recharts';
 
+import { machineTag } from '@dynamox/domain';
 import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
@@ -43,6 +44,7 @@ import {
   formatChartTick,
   formatDateTime,
 } from '../../features/time/instant';
+import { links } from '../../features/investigation/links';
 import { useAnalyticsQuery, useTimeRange, withRange } from '../../features/investigation/useAnalyticsQuery';
 
 const RANGE_PRESETS = [
@@ -148,8 +150,18 @@ export function SensorPage(): JSX.Element {
       <InvestigationBreadcrumbs
         steps={[
           { label: 'Visão geral', to: '/' },
+          // Ativo e ponto só entram quando a condição já os identificou: um degrau da
+          // trilha nunca pode apontar para uma rota que ainda não sabemos montar.
           ...(point?.machineName
-            ? [{ label: point.machineName.split(' — ')[0], to: withRange(`/assets/${point.machineName.split(' — ')[0]}`, range) }]
+            ? [{ label: machineTag(point.machineName), to: links.asset(point.machineName, range) }]
+            : []),
+          ...(point?.machineName && point.monitoringPointName
+            ? [
+                {
+                  label: point.monitoringPointName,
+                  to: links.point(point.machineName, point.monitoringPointName, range),
+                },
+              ]
             : []),
           { label: serialNumber },
         ]}

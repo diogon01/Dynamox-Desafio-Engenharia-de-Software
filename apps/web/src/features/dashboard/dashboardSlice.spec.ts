@@ -57,6 +57,7 @@ function conditionPayload(
         currentAt: '2026-08-29T11:00:59.000Z',
         baselineAt: '2026-08-29T10:00:00.000Z',
         currentSampleCount: 60,
+        trend: [],
         currentCycleId: 'cycle-current',
         baselineCycleId: 'cycle-baseline',
         unit: 'g',

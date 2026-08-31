@@ -4,6 +4,7 @@ import type {
   SeriesMetrics,
   TimeSeriesSampleDto,
   TimeSeriesSummary,
+  TrendPointDto,
 } from '@dynamox/domain';
 
 import type { MachineDto, MonitoringPointDto } from '../../api/client';
@@ -168,8 +169,12 @@ export interface DashboardView {
   occurrences: OccurrenceRow[];
   activity24h: HourActivityBucket[];
   weekMap: WeekHeatmap;
-  /** Miniaturas de tendência (média radial por aquisição) por célula da fila. */
-  sparklines: Record<string, Array<{ t: number; v: number }>>;
+  /**
+   * Miniaturas de tendência por célula da fila — buckets já agregados no banco, que chegam
+   * junto com a condição. A versão anterior derivava a curva das amostras radiais brutas;
+   * era o mesmo desenho ao custo de baixar a série inteira.
+   */
+  sparklines: Record<string, TrendPointDto[]>;
   /**
    * Um KPI = um conceito. Antes havia um único "sinais de atenção" somando condição,
    * ausência de sensor, ausência de dados e recência — o número resultante era sempre
@@ -863,13 +868,17 @@ export function buildWeeklyAcquisitionMap(
 }
 
 /**
- * Miniatura de tendência de um ponto: a média radial (Y/Z) de cada aquisição. São os
- * mesmos números que sustentam o índice — nunca uma curva decorativa.
+ * Miniatura de tendência derivada das amostras locais: a média radial (Y/Z) de cada
+ * aquisição.
+ *
+ * Continua existindo para o caminho SEM o endpoint analítico (os testes das agregações e
+ * uma eventual falha parcial da avaliação). No caminho normal a curva vem pronta do banco,
+ * em `FleetConditionPoint.trend`.
  */
 export function buildRadialSparkline(
   cell: SensorCellView,
   samplesBySeries: Record<string, TimeSeriesSampleDto[]>,
-): Array<{ t: number; v: number }> {
+): TrendPointDto[] {
   const y = cell.series.find((item) => item.physicalQuantity === 'acceleration' && item.axis === 'y');
   const z = cell.series.find((item) => item.physicalQuantity === 'acceleration' && item.axis === 'z');
   if (!y || !z) return [];
@@ -885,8 +894,8 @@ export function buildRadialSparkline(
   return groupAcquisitionWindows(radial)
     .filter((window) => window.length >= MIN_BASELINE_SAMPLES)
     .map((window) => ({
-      t: Date.parse(window[0].timestamp),
-      v: mean(window.map((sample) => sample.value)),
+      timestamp: window[0].timestamp,
+      value: mean(window.map((sample) => sample.value)),
     }))
     .slice(-8);
 }
@@ -991,10 +1000,20 @@ export function buildDashboardView(
     },
   };
 
+  // A tendência vem do servidor quando ele respondeu; o cálculo local é o caminho de
+  // exceção, igual ao que já acontece com a própria classificação.
+  const trendBySensor = new Map(
+    (state.fleetCondition?.points ?? [])
+      // `trend` é opcional na prática: só vem quando o painel pede (`includeTrend`).
+      .filter((point) => point.sensorSerialNumber !== null && (point.trend ?? []).length > 0)
+      .map((point) => [point.sensorSerialNumber as string, point.trend]),
+  );
   const sparklines: DashboardView['sparklines'] = {};
   const priority = buildPriorityList(cells);
   for (const cell of priority) {
-    sparklines[cell.key] = buildRadialSparkline(cell, state.radialSamplesBySeries);
+    const fromServer = cell.sensorSerial ? trendBySensor.get(cell.sensorSerial) : undefined;
+    sparklines[cell.key] =
+      fromServer ?? buildRadialSparkline(cell, state.radialSamplesBySeries);
   }
 
   return {

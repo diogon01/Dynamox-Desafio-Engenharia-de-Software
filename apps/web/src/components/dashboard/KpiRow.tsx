@@ -10,8 +10,11 @@ import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
 import type { ReactNode } from 'react';
 
+import { Link as RouterLink } from 'react-router-dom';
+
 import type { DashboardView } from '../../features/dashboard/dashboardAggregations';
-import { formatMeasurement, formatNumber } from '../../features/dashboard/dashboardFormatters';
+import { formatMeasurement, formatNumber, formatPercent } from '../../features/dashboard/dashboardFormatters';
+import { links, type AnalyticsRange } from '../../features/investigation/links';
 
 /**
  * Os quatro números do topo — cada um responde a UMA pergunta:
@@ -27,19 +30,23 @@ interface KpiSpec {
   icon: ReactNode;
   tone: 'error' | 'primary' | 'success' | 'warning';
   active: boolean;
-}
-
-function percent(part: number, total: number): string {
-  if (total === 0) return '—';
-  return `${formatNumber((part / total) * 100, 1)}%`;
+  /**
+   * Destino da investigação, quando existe UM lugar claro para continuar. Cobertura e
+   * recência ficam informativas de propósito: não há uma página que responda "quais pontos
+   * estão descobertos" melhor do que a própria matriz logo abaixo, e inventar uma rota só
+   * para o número virar link seria decoração.
+   */
+  to?: string;
 }
 
 export function KpiRow({
   view,
   loading,
+  range,
 }: {
   view: DashboardView;
   loading: boolean;
+  range: AnalyticsRange;
 }): JSX.Element {
   const { headline } = view;
   const top = headline.attention.top;
@@ -57,6 +64,7 @@ export function KpiRow({
       icon: <WarningAmberOutlinedIcon />,
       tone: 'warning',
       active: headline.attention.count > 0,
+      to: top ? links.asset(top.machineName, range) : undefined,
     },
     {
       key: 'deviation',
@@ -68,11 +76,12 @@ export function KpiRow({
       icon: <MonitorHeartOutlinedIcon />,
       tone: 'primary',
       active: Boolean(deviation && deviation.ratio >= 2),
+      to: deviation?.cell.sensorSerial ? links.sensor(deviation.cell.sensorSerial, range) : undefined,
     },
     {
       key: 'coverage',
       label: 'Cobertura monitorada',
-      value: percent(headline.coverage.reporting, headline.coverage.points),
+      value: formatPercent(headline.coverage.reporting, headline.coverage.points),
       context: `${headline.coverage.reporting}/${headline.coverage.points} pontos instrumentados e reportando`,
       icon: <ShieldOutlinedIcon />,
       tone: 'success',
@@ -81,7 +90,7 @@ export function KpiRow({
     {
       key: 'recency',
       label: 'Leituras atuais',
-      value: percent(headline.recency.current, headline.recency.installed),
+      value: formatPercent(headline.recency.current, headline.recency.installed),
       context: 'leituras dentro da janela de 24 h',
       icon: <AccessTimeOutlinedIcon />,
       tone: 'warning',
@@ -105,7 +114,9 @@ export function KpiRow({
         >
           <Card
             variant="outlined"
-            aria-label={`${kpi.label}: ${loading ? 'carregando' : kpi.value}`}
+            {...(kpi.to && !loading
+              ? { component: RouterLink, to: kpi.to, 'aria-label': `${kpi.label}: ${kpi.value}. ${kpi.context}. Abrir investigação.` }
+              : { 'aria-label': `${kpi.label}: ${loading ? 'carregando' : kpi.value}` })}
             sx={(muiTheme) => ({
               flex: 1,
               minWidth: 0,
@@ -115,6 +126,22 @@ export function KpiRow({
               py: 1.5,
               borderColor: 'divider',
               bgcolor: 'background.paper',
+              textDecoration: 'none',
+              // Só quem leva a algum lugar ganha linguagem de item navegável.
+              ...(kpi.to && !loading
+                ? {
+                    cursor: 'pointer',
+                    transition: 'border-color 120ms, background-color 120ms',
+                    '&:hover': {
+                      borderColor: muiTheme.palette[kpi.tone].main,
+                      bgcolor: alpha(muiTheme.palette[kpi.tone].main, 0.04),
+                    },
+                    '&:focus-visible': {
+                      outline: `2px solid ${alpha(muiTheme.palette[kpi.tone].main, 0.6)}`,
+                      outlineOffset: 2,
+                    },
+                  }
+                : {}),
             })}
           >
             <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>

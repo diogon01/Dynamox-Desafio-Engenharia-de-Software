@@ -177,7 +177,9 @@ export const fetchFleetCondition = createAsyncThunk<
   { state: { dashboard: DashboardState } }
 >('dashboard/fetchFleetCondition', async (_, { getState }) => {
   const { period } = getState().dashboard;
-  return api.fleetCondition(rangeForPeriod(period, Date.now()));
+  // A tendência curta vem junto: são doze valores por ponto, agregados no banco, e é o
+  // que devolve as miniaturas da fila de inspeção sem reabrir a porta das amostras brutas.
+  return api.fleetCondition(rangeForPeriod(period, Date.now()), { includeTrend: true });
 });
 
 /** Mapa de atividade da janela — uma consulta agregada, nunca as amostras do período. */

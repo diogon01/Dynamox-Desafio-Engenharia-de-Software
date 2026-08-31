@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { ApiError } from '../../api/client';
 import type { RequestStatus } from '../../store/requestStatus';
 
 /**
@@ -14,6 +15,8 @@ export interface AnalyticsQuery<T> {
   status: RequestStatus;
   data: T | null;
   error: string | null;
+  /** Status HTTP da falha: separa "não existe" (404) de "recorte inválido" (400). */
+  httpStatus: number | null;
   reload: () => void;
 }
 
@@ -24,12 +27,14 @@ export function useAnalyticsQuery<T>(
   const [status, setStatus] = useState<RequestStatus>('idle');
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [httpStatus, setHttpStatus] = useState<number | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let current = true;
     setStatus('loading');
     setError(null);
+    setHttpStatus(null);
     fetcher()
       .then((result) => {
         if (!current) return;
@@ -39,6 +44,7 @@ export function useAnalyticsQuery<T>(
       .catch((reason: unknown) => {
         if (!current) return;
         setError(reason instanceof Error ? reason.message : 'Erro desconhecido.');
+        setHttpStatus(reason instanceof ApiError ? reason.status : null);
         setStatus('failed');
       });
     return () => {
@@ -50,7 +56,7 @@ export function useAnalyticsQuery<T>(
   }, [...deps, attempt]);
 
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
-  return { status, data, error, reload };
+  return { status, data, error, httpStatus, reload };
 }
 
 /**

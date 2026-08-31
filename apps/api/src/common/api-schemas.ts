@@ -1270,3 +1270,312 @@ export class PointSummaryResponse {
   @ApiProperty({ type: [PointSeriesResponse], description: 'Séries disponíveis no ponto.' })
   series!: PointSeriesResponse[];
 }
+
+// ---------------------------------------------------------------------------------------
+// Alertas — episódios persistidos (A1/A2), distintos da condição derivada
+// ---------------------------------------------------------------------------------------
+
+const ALERT_TYPE_VALUES = ['vibration-threshold', 'temperature-threshold', 'sensor-silent', 'fleet-silent'];
+const ALERT_LEVEL_VALUES = ['A1', 'A2'];
+const ALERT_STATE_VALUES = ['active', 'resolved'];
+
+export class AlertRuleResponse {
+  @ApiProperty({ format: 'uuid', description: 'Identificador da regra.' })
+  id!: string;
+
+  @ApiProperty({ description: 'Chave estável da regra na política.', example: 'vibration-radial' })
+  key!: string;
+
+  @ApiProperty({ enum: ALERT_TYPE_VALUES, description: 'Tipo de alerta que a regra produz.', example: 'vibration-threshold' })
+  type!: string;
+
+  @ApiProperty({ enum: ['condition', 'data-quality'], description: 'Família: condição da máquina ou qualidade do dado.', example: 'condition' })
+  family!: string;
+
+  @ApiProperty({ description: 'Regra habilitada.', example: true })
+  enabled!: boolean;
+
+  @ApiProperty({ description: 'Grandeza avaliada.', example: 'radial_rms_g' })
+  metric!: string;
+
+  @ApiProperty({ description: 'Unidade da grandeza.', example: 'g' })
+  unit!: string;
+
+  @ApiProperty({ enum: ['ratio-to-baseline', 'delta-from-baseline', 'elapsed-intervals'], description: 'Como a medida é comparada ao limiar.', example: 'ratio-to-baseline' })
+  thresholdMode!: string;
+
+  @ApiProperty({ description: 'Limiar de A1 (razão, delta ou intervalos).', example: 1.5 })
+  a1Threshold!: number;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Limiar de A2; nulo quando a regra só tem A1.', example: 2 })
+  a2Threshold!: number | null;
+
+  @ApiProperty({ description: 'Abaixo deste valor a leitura conta para resolver (histerese).', example: 1.4 })
+  clearThreshold!: number;
+
+  @ApiProperty({ description: 'Leituras consecutivas acima do limiar para abrir/escalar.', example: 2 })
+  consecutiveTrigger!: number;
+
+  @ApiProperty({ description: 'Leituras consecutivas abaixo do clear para resolver.', example: 4 })
+  consecutiveClear!: number;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Ciclos de aprendizado da baseline por ponto; nulo sem baseline.', example: 192 })
+  learningCycles!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Mínimo de amostras por hora do dia para o bin ter mediana própria.', example: 4 })
+  minBinCount!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Cadência esperada de aquisição, em segundos.', example: 900 })
+  expectedIntervalSeconds!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Minutos de supressão após uma lacuna longa (regra térmica).', example: 120 })
+  postGapSuppressionMinutes!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Fração de pontos silentes acima da qual o silêncio é da planta.', example: 0.5 })
+  fleetCollapseFraction!: number | null;
+
+  @ApiProperty({ description: 'Versão da política de alertas que a regra integra.', example: 1 })
+  policyVersion!: number;
+}
+
+export class AlertReadingResponse {
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Ciclo de ingestão da leitura.' })
+  cycleId!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Instante da leitura.', example: ISO })
+  at!: string | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Valor medido (g, °C ou segundos).', example: 0.0226 })
+  value!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Baseline usada na comparação, quando aplicável.', example: 0.015 })
+  baseline!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Medida comparada ao limiar (razão, delta ou intervalos).', example: 1.5 })
+  measure!: number | null;
+}
+
+export class AlertTriggerResponse extends AlertReadingResponse {
+  @ApiProperty({ description: 'Limiar que a leitura cruzou ao abrir o episódio.', example: 1.5 })
+  threshold!: number;
+
+  @ApiProperty({ description: 'Leituras consecutivas acima do limiar quando o episódio abriu.', example: 2 })
+  consecutiveEvaluations!: number;
+}
+
+export class AlertEventResponse {
+  @ApiProperty({ format: 'uuid', description: 'Identificador do evento.' })
+  id!: string;
+
+  @ApiProperty({ enum: ['opened', 'escalated', 'acknowledged', 'resolved'], description: 'Transição registrada.', example: 'escalated' })
+  type!: string;
+
+  @ApiProperty({ type: String, nullable: true, enum: [...ALERT_STATE_VALUES, null], description: 'Estado anterior.', example: 'active' })
+  fromState!: string | null;
+
+  @ApiProperty({ enum: ALERT_STATE_VALUES, description: 'Estado após a transição.', example: 'active' })
+  toState!: string;
+
+  @ApiProperty({ type: String, nullable: true, enum: [...ALERT_LEVEL_VALUES, null], description: 'Nível anterior.', example: 'A1' })
+  fromLevel!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, enum: [...ALERT_LEVEL_VALUES, null], description: 'Nível após a transição.', example: 'A2' })
+  toLevel!: string | null;
+
+  @ApiProperty({ format: 'date-time', description: 'Instante da transição (tempo do dado; ACK usa o relógio da API).', example: ISO })
+  occurredAt!: string;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Ciclo que provocou a transição.' })
+  cycleId!: string | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Valor medido no ciclo.', example: 0.0377 })
+  value!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Medida comparada ao limiar.', example: 2.51 })
+  measure!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Limiar envolvido.', example: 2 })
+  threshold!: number | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'E-mail de quem reconheceu (só em ACKNOWLEDGED).', example: 'analista@dynamox.local' })
+  actor!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Nota livre.', example: 'Inspeção agendada.' })
+  note!: string | null;
+}
+
+export class AlertOccurrenceResponse {
+  @ApiProperty({ format: 'uuid', description: 'Identificador do episódio.' })
+  id!: string;
+
+  @ApiProperty({ format: 'uuid', description: 'Regra que o abriu.' })
+  ruleId!: string;
+
+  @ApiProperty({ description: 'Chave da regra.', example: 'vibration-radial' })
+  ruleKey!: string;
+
+  @ApiProperty({ enum: ALERT_TYPE_VALUES, description: 'Tipo do alerta — descreve a regra, nunca um diagnóstico.', example: 'vibration-threshold' })
+  type!: string;
+
+  @ApiProperty({ enum: ['condition', 'data-quality'], description: 'Família do alerta.', example: 'condition' })
+  family!: string;
+
+  @ApiProperty({ enum: ['point', 'fleet'], description: 'Escopo: um ponto monitorado ou a planta inteira.', example: 'point' })
+  scope!: string;
+
+  @ApiProperty({ enum: ALERT_LEVEL_VALUES, description: 'Nível vigente (latched: A2 permanece até resolver).', example: 'A2' })
+  level!: string;
+
+  @ApiProperty({ enum: ALERT_STATE_VALUES, description: 'Estado da anomalia.', example: 'active' })
+  state!: string;
+
+  @ApiProperty({ enum: ['open', 'acknowledged', 'resolved'], description: 'Status derivado: estado + reconhecimento.', example: 'open' })
+  status!: string;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Máquina (nula no escopo de frota ou se excluída).' })
+  machineId!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Nome da máquina no momento do alerta.', example: 'P-101' })
+  machineName!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, enum: ['Pump', 'Fan', null], description: 'Tipo público da máquina, se ainda cadastrada.', example: 'Pump' })
+  machineType!: string | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Ponto monitorado.' })
+  monitoringPointId!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Nome do ponto no momento do alerta.', example: 'Mancal lado oposto ao acoplamento' })
+  monitoringPointName!: string | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Sensor.' })
+  sensorId!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Número de série do sensor no momento do alerta.', example: 'SIM-HF-002' })
+  sensorSerialNumber!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, enum: ['TcAg', 'TcAs', 'HF+', null], description: 'Modelo público do sensor, se ainda cadastrado.', example: 'HF+' })
+  sensorModel!: string | null;
+
+  @ApiProperty({ format: 'date-time', description: 'Quando o episódio abriu (tempo do dado).', example: ISO })
+  openedAt!: string;
+
+  @ApiProperty({ format: 'date-time', description: 'Última leitura que atualizou o episódio.', example: ISO })
+  lastEvaluatedAt!: string;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Quando foi reconhecido; nulo se não foi (ou se a escalada limpou).', example: ISO })
+  acknowledgedAt!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'E-mail de quem reconheceu.', example: 'analista@dynamox.local' })
+  acknowledgedBy!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, enum: [...ALERT_LEVEL_VALUES, null], description: 'Nível vigente no reconhecimento.', example: 'A1' })
+  acknowledgedLevel!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Nota do reconhecimento.', example: 'Inspeção agendada.' })
+  acknowledgeNote!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Quando resolveu; nulo enquanto ativo.', example: ISO })
+  resolvedAt!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, enum: ['condition-cleared', 'telemetry-resumed', null], description: 'Por que resolveu.', example: 'condition-cleared' })
+  resolutionReason!: string | null;
+
+  @ApiProperty({ description: 'Grandeza avaliada.', example: 'radial_rms_g' })
+  metric!: string;
+
+  @ApiProperty({ description: 'Unidade da grandeza.', example: 'g' })
+  unit!: string;
+
+  @ApiProperty({ enum: ['ratio-to-baseline', 'delta-from-baseline', 'elapsed-intervals'], description: 'Como a medida é comparada.', example: 'ratio-to-baseline' })
+  thresholdMode!: string;
+
+  @ApiProperty({ type: AlertTriggerResponse, description: 'Evidência do disparo: a leitura que completou o gatilho.' })
+  trigger!: AlertTriggerResponse;
+
+  @ApiProperty({ type: AlertReadingResponse, description: 'Pior leitura do episódio.' })
+  peak!: AlertReadingResponse;
+
+  @ApiProperty({ type: AlertReadingResponse, description: 'Última leitura aplicada ao episódio.' })
+  last!: AlertReadingResponse;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Pontos cobertos por um episódio de frota; nulo no escopo de ponto.', example: 12 })
+  affectedCount!: number | null;
+
+  @ApiProperty({ description: 'Versão da política que gerou o episódio.', example: 1 })
+  policyVersion!: number;
+}
+
+export class AlertDetailResponse extends AlertOccurrenceResponse {
+  @ApiProperty({ type: AlertRuleResponse, description: 'Regra aplicada, com os limiares vigentes.' })
+  rule!: AlertRuleResponse;
+
+  @ApiProperty({ type: [AlertEventResponse], description: 'Linha do tempo: aberto → escalado → reconhecido → resolvido.' })
+  events!: AlertEventResponse[];
+}
+
+export class AlertCountsResponse {
+  @ApiProperty({ description: 'Episódios no universo consultado (antes do recorte por status).', example: 14 })
+  total!: number;
+
+  @ApiProperty({ description: 'Ativos sem reconhecimento.', example: 2 })
+  open!: number;
+
+  @ApiProperty({ description: 'Ativos reconhecidos.', example: 1 })
+  acknowledged!: number;
+
+  @ApiProperty({ description: 'Resolvidos.', example: 11 })
+  resolved!: number;
+
+  @ApiProperty({ description: 'Ativos em A1.', example: 1 })
+  activeA1!: number;
+
+  @ApiProperty({ description: 'Ativos em A2.', example: 2 })
+  activeA2!: number;
+}
+
+export class AlertListResponse {
+  @ApiProperty({ type: [AlertOccurrenceResponse], description: 'Página de episódios.' })
+  items!: AlertOccurrenceResponse[];
+
+  @ApiProperty({ description: 'Total após o recorte por status.', example: 3 })
+  total!: number;
+
+  @ApiProperty({ example: 1 })
+  page!: number;
+
+  @ApiProperty({ example: 25 })
+  pageSize!: number;
+
+  @ApiProperty({ example: 1 })
+  totalPages!: number;
+
+  @ApiProperty({ type: AlertCountsResponse, description: 'Contagens do universo consultado, sem o recorte por status.' })
+  counts!: AlertCountsResponse;
+
+  @ApiProperty({ type: String, nullable: true, enum: ['open', 'acknowledged', 'resolved', 'active', null], description: 'Recorte por status ecoado.', example: 'active' })
+  status!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, enum: [...ALERT_LEVEL_VALUES, null], description: 'Recorte por nível ecoado.', example: null })
+  level!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, enum: [...ALERT_TYPE_VALUES, null], description: 'Recorte por tipo ecoado.', example: null })
+  type!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Recorte por máquina ecoado.', example: null })
+  machine!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Recorte por sensor ecoado.', example: null })
+  sensor!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Início da janela de interseção ecoado.', example: null })
+  from!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Fim da janela de interseção ecoado.', example: null })
+  to!: string | null;
+
+  @ApiProperty({ enum: ['openedAt', 'lastEvaluatedAt', 'level'], example: 'openedAt' })
+  sortBy!: string;
+
+  @ApiProperty({ enum: ['asc', 'desc'], example: 'desc' })
+  sortDir!: string;
+}

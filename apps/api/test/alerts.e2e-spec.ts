@@ -12,6 +12,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { deterministicResourceId, type TelemetryCyclePayload } from '@dynamox/contracts';
+import type { AlertOccurrenceDto } from '@dynamox/domain';
 
 import { AlertsService } from '../src/alerts/alerts.service';
 import { AppModule } from '../src/app.module';
@@ -23,6 +24,8 @@ const POINT_NAME = `${PREFIX}Mancal LA`;
 const SENSOR_SERIAL = `${PREFIX}HF-001`;
 const ADMIN_EMAIL = 'alerts-e2e@dynamox.local';
 const ADMIN_PASSWORD = 'Senha-ALR@2026';
+const VIEWER_EMAIL = 'alerts-e2e-viewer@dynamox.local';
+const VIEWER_PASSWORD = 'Senha-ALR-Viewer@2026';
 const BASELINE_G = 0.02;
 const RESOURCE_ID = deterministicResourceId('dynamox-challenge', 'monitoring-point', MACHINE_NAME, POINT_NAME);
 
@@ -73,6 +76,7 @@ describe('Alertas (e2e) — avaliação após a ingestão', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let bearer: string;
+  let viewerBearer: string;
   let machineId: string;
   let pointId: string;
   let sensorId: string;
@@ -142,24 +146,26 @@ describe('Alertas (e2e) — avaliação após a ingestão', () => {
       },
     });
 
-    const salt = randomBytes(16).toString('hex');
-    await prisma.user.upsert({
-      where: { email: ADMIN_EMAIL },
-      update: {},
-      create: {
-        email: ADMIN_EMAIL,
-        name: 'Alerts E2E',
-        passwordHash: `scrypt$${salt}$${scryptSync(ADMIN_PASSWORD, salt, 64).toString('hex')}`,
-        role: 'ADMIN',
-      },
-    });
+    for (const [email, password, role, name] of [
+      [ADMIN_EMAIL, ADMIN_PASSWORD, 'ADMIN', 'Alerts E2E'],
+      [VIEWER_EMAIL, VIEWER_PASSWORD, 'VIEWER', 'Alerts E2E Viewer'],
+    ] as const) {
+      const salt = randomBytes(16).toString('hex');
+      await prisma.user.upsert({
+        where: { email },
+        update: {},
+        create: { email, name, passwordHash: `scrypt$${salt}$${scryptSync(password, salt, 64).toString('hex')}`, role },
+      });
+    }
     const login = await http().post('/api/auth/login').send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }).expect(201);
     bearer = `Bearer ${login.body.token}`;
+    const viewerLogin = await http().post('/api/auth/login').send({ email: VIEWER_EMAIL, password: VIEWER_PASSWORD }).expect(201);
+    viewerBearer = `Bearer ${viewerLogin.body.token}`;
   }, 60000);
 
   afterAll(async () => {
     await removeFixtures();
-    await prisma.user.deleteMany({ where: { email: ADMIN_EMAIL } });
+    await prisma.user.deleteMany({ where: { email: { in: [ADMIN_EMAIL, VIEWER_EMAIL] } } });
     await app.close();
   });
 
@@ -357,6 +363,143 @@ describe('Alertas (e2e) — avaliação após a ingestão', () => {
       // O episódio de vibração resolvido antes continua sendo o único da família de condição.
       const all = await occurrences();
       expect(all.map((a) => a.type).sort()).toEqual(['SENSOR_SILENT', 'VIBRATION_THRESHOLD']);
+    });
+  });
+
+  describe('API — GET /alerts, GET /alerts/:id, POST /alerts/:id/acknowledge', () => {
+    const get = (url: string, token = bearer) => http().get(url).set('Authorization', token);
+    const ours = (body: { items: AlertOccurrenceDto[] }) => body.items.filter((item) => item.machineName === MACHINE_NAME);
+
+    it('exige token e rejeita parâmetro desconhecido, valores fora do vocabulário e janela invertida', async () => {
+      await http().get('/api/alerts').expect(401);
+      const unknown = await get('/api/alerts?inventado=1').expect(400);
+      expect(unknown.body.code).toBe('INVALID_ALERTS_QUERY');
+      await get('/api/alerts?status=fechado').expect(400);
+      await get('/api/alerts?level=A3').expect(400);
+      await get('/api/alerts?pageSize=0').expect(400);
+      await get('/api/alerts?from=2026-04-02T00:00:00.000Z&to=2026-04-01T00:00:00.000Z').expect(400);
+      await get('/api/alerts/nao-e-uuid').expect(400);
+      const missing = await get('/api/alerts/00000000-0000-4000-8000-000000000000').expect(404);
+      expect(missing.body.code).toBe('ALERT_NOT_FOUND');
+      const machine = await get('/api/alerts?machine=ALR-INEXISTENTE').expect(404);
+      expect(machine.body.code).toBe('MACHINE_NOT_FOUND');
+    });
+
+    it('lista os episódios da máquina com status derivado, contagens do universo e ordenação', async () => {
+      const response = await get(`/api/alerts?machine=${encodeURIComponent(MACHINE_NAME)}&pageSize=50`).expect(200);
+      const items = ours(response.body);
+      expect(items).toHaveLength(2);
+      expect(response.body.total).toBe(2);
+      expect(response.body.counts).toEqual({ total: 2, open: 0, acknowledged: 0, resolved: 2, activeA1: 0, activeA2: 0 });
+      // Padrão: openedAt desc — o silêncio (13:00) vem antes da vibração (10:15).
+      expect(items.map((item) => item.type)).toEqual(['sensor-silent', 'vibration-threshold']);
+      const vibration = items[1];
+      expect(vibration).toMatchObject({
+        family: 'condition',
+        scope: 'point',
+        level: 'A2',
+        state: 'resolved',
+        status: 'resolved',
+        machineType: 'Pump',
+        sensorModel: 'HF+',
+        sensorSerialNumber: SENSOR_SERIAL,
+        resolutionReason: 'condition-cleared',
+        thresholdMode: 'ratio-to-baseline',
+        policyVersion: 1,
+      });
+      expect(vibration.trigger).toMatchObject({ threshold: 1.5, consecutiveEvaluations: 2 });
+      expect(vibration.trigger.measure).toBeCloseTo(1.6, 6);
+      expect(vibration.peak.measure).toBeCloseTo(2.5, 6);
+      expect(items[0]).toMatchObject({ family: 'data-quality', type: 'sensor-silent', resolutionReason: 'telemetry-resumed' });
+
+      const asc = await get(`/api/alerts?machine=${encodeURIComponent(MACHINE_NAME)}&sortBy=openedAt&sortDir=asc`).expect(200);
+      expect(ours(asc.body).map((item) => item.type)).toEqual(['vibration-threshold', 'sensor-silent']);
+      const byLevel = await get(`/api/alerts?machine=${encodeURIComponent(MACHINE_NAME)}&level=A2&type=vibration-threshold`).expect(200);
+      expect(ours(byLevel.body)).toHaveLength(1);
+      expect(byLevel.body.counts.total).toBe(1);
+    });
+
+    it('status recorta a página, mas counts continua descrevendo o universo; from/to é interseção', async () => {
+      const key = `machine=${encodeURIComponent(MACHINE_NAME)}`;
+      const open = await get(`/api/alerts?${key}&status=open`).expect(200);
+      expect(open.body.total).toBe(0);
+      expect(open.body.counts.total).toBe(2);
+      // Janela que contém só o meio do episódio de vibração (10:15 → 11:45): entra por interseção.
+      const inside = await get(`/api/alerts?${key}&from=2026-04-01T11:00:00.000Z&to=2026-04-01T11:10:00.000Z`).expect(200);
+      expect(ours(inside.body).map((item) => item.type)).toEqual(['vibration-threshold']);
+      // Janela antes de tudo: vazia. Janela depois da resolução da vibração: só o silêncio.
+      const before = await get(`/api/alerts?${key}&to=2026-04-01T10:00:00.000Z`).expect(200);
+      expect(ours(before.body)).toHaveLength(0);
+      const after = await get(`/api/alerts?${key}&from=2026-04-01T12:00:00.000Z`).expect(200);
+      expect(ours(after.body).map((item) => item.type)).toEqual(['sensor-silent']);
+      // Recorte por sensor e paginação.
+      const paged = await get(`/api/alerts?sensor=${SENSOR_SERIAL}&pageSize=1&page=2&sortBy=openedAt&sortDir=asc`).expect(200);
+      expect(paged.body.items).toHaveLength(1);
+      expect(paged.body.items[0].type).toBe('sensor-silent');
+      expect(paged.body.totalPages).toBe(2);
+    });
+
+    it('detalhe traz a regra e a linha do tempo completa', async () => {
+      const [alert] = await occurrences();
+      const response = await get(`/api/alerts/${alert.id}`).expect(200);
+      expect(response.body.rule).toMatchObject({ key: 'vibration-radial', a1Threshold: 1.5, a2Threshold: 2, clearThreshold: 1.4, policyVersion: 1 });
+      expect(response.body.events.map((e: { type: string }) => e.type)).toEqual(['opened', 'escalated', 'resolved']);
+      expect(response.body.events[1]).toMatchObject({ fromLevel: 'A1', toLevel: 'A2', fromState: 'active', toState: 'active' });
+      // Leitura liberada ao VIEWER.
+      await get(`/api/alerts/${alert.id}`, viewerBearer).expect(200);
+    });
+
+    it('reconhecer: VIEWER recebe 403; ADMIN reconhece (mesmo resolvido), é idempotente e valida o corpo', async () => {
+      const [alert] = await occurrences();
+      const forbidden = await http().post(`/api/alerts/${alert.id}/acknowledge`).set('Authorization', viewerBearer).send({}).expect(403);
+      expect(forbidden.body.code).toBe('FORBIDDEN');
+      await http().post(`/api/alerts/${alert.id}/acknowledge`).send({}).expect(401);
+      const bad = await http().post(`/api/alerts/${alert.id}/acknowledge`).set('Authorization', bearer).send({ nota: 'x' }).expect(400);
+      expect(bad.body.code).toBe('INVALID_ACKNOWLEDGE_PAYLOAD');
+
+      const first = await http()
+        .post(`/api/alerts/${alert.id}/acknowledge`)
+        .set('Authorization', bearer)
+        .send({ note: 'Voltou ao normal; ciente.' })
+        .expect(200);
+      expect(first.body.status).toBe('resolved');
+      expect(first.body.state).toBe('resolved');
+      expect(first.body.acknowledgedBy).toBe(ADMIN_EMAIL);
+      expect(first.body.acknowledgedLevel).toBe('A2');
+      expect(first.body.acknowledgeNote).toBe('Voltou ao normal; ciente.');
+      expect(first.body.events.map((e: { type: string }) => e.type)).toEqual(['opened', 'escalated', 'resolved', 'acknowledged']);
+      expect(first.body.events[3]).toMatchObject({ actor: ADMIN_EMAIL, note: 'Voltou ao normal; ciente.', fromState: 'resolved', toState: 'resolved' });
+
+      const again = await http().post(`/api/alerts/${alert.id}/acknowledge`).set('Authorization', bearer).send({ note: 'outra' }).expect(200);
+      expect(again.body.acknowledgedAt).toBe(first.body.acknowledgedAt);
+      expect(again.body.acknowledgeNote).toBe('Voltou ao normal; ciente.');
+      expect(again.body.events).toHaveLength(4);
+
+      const list = await get(`/api/alerts?machine=${encodeURIComponent(MACHINE_NAME)}`).expect(200);
+      // Reconhecido depois de resolvido continua contando como resolvido — ACK é ortogonal.
+      expect(list.body.counts).toEqual({ total: 2, open: 0, acknowledged: 0, resolved: 2, activeA1: 0, activeA2: 0 });
+    });
+
+    it('reconhecer um episódio ATIVO muda o status para acknowledged, e a escalada limpa o reconhecimento', async () => {
+      // Novo episódio A1 no mesmo ponto: dois ciclos a 1,7× depois da retomada (03/04 12:00).
+      const day = (hhmm: string) => `2026-04-03T${hhmm}:00.000Z`;
+      await ingest(cyclePayload(day('12:15'), 1.7)).expect(201);
+      await ingest(cyclePayload(day('12:30'), 1.7)).expect(201);
+      const active = await prisma.alertOccurrence.findFirstOrThrow({ where: { monitoringPointId: pointId, state: 'ACTIVE', type: 'VIBRATION_THRESHOLD' } });
+      const acked = await http().post(`/api/alerts/${active.id}/acknowledge`).set('Authorization', bearer).send({}).expect(200);
+      expect(acked.body).toMatchObject({ status: 'acknowledged', state: 'active', level: 'A1', acknowledgedLevel: 'A1' });
+      let list = await get(`/api/alerts?machine=${encodeURIComponent(MACHINE_NAME)}&status=acknowledged`).expect(200);
+      expect(list.body.total).toBe(1);
+      expect(list.body.counts).toMatchObject({ open: 0, acknowledged: 1, activeA1: 1 });
+
+      await ingest(cyclePayload(day('12:45'), 2.6)).expect(201);
+      await ingest(cyclePayload(day('13:00'), 2.6)).expect(201);
+      const escalated = await get(`/api/alerts/${active.id}`).expect(200);
+      expect(escalated.body).toMatchObject({ level: 'A2', status: 'open', acknowledgedAt: null, acknowledgedBy: null, acknowledgedLevel: null });
+      const escalation = escalated.body.events.find((e: { type: string }) => e.type === 'escalated');
+      expect(escalation.note).toMatch(/invalidado pela escalada/);
+      list = await get(`/api/alerts?machine=${encodeURIComponent(MACHINE_NAME)}&status=active`).expect(200);
+      expect(list.body.counts).toMatchObject({ open: 1, acknowledged: 0, activeA2: 1 });
     });
   });
 });

@@ -573,8 +573,41 @@ describe('drill-down analítico', () => {
     stubApi();
     renderAt(`/machines/desconhecido?from=${FROM}&to=${TO}`);
 
-    expect(await screen.findByText(/Ativo não encontrado/i)).toBeDefined();
+    expect(await screen.findByText(/Máquina não encontrada/i)).toBeDefined();
     expect(screen.getByText(/Nenhuma máquina cadastrada corresponde a "desconhecido"/i)).toBeDefined();
+  });
+
+  it('todo salto do drill-down é um link — o caminho existe no teclado', async () => {
+    stubApi();
+    renderAt(`/monitoring/windows/2026-08-30/14?from=${FROM}&to=${TO}`);
+
+    const tabela = await screen.findByRole('table', { name: /Sensores da janela/i });
+    const linha = within(tabela).getAllByRole('row')[1];
+    // Máquina, ponto e sensor: três destinos, três links — nenhuma linha com onClick,
+    // que o teclado não alcança.
+    expect(within(linha).getByRole('link', { name: 'P-101' })).toBeDefined();
+    expect(
+      within(linha).getByRole('link', { name: /Mancal lado oposto ao acoplamento/i }),
+    ).toBeDefined();
+    const sensor = within(linha).getByRole('link', { name: 'SIM-HF-002' });
+    expect(sensor.getAttribute('href')).toMatch(/^\/sensors\/SIM-HF-002\?from=.+&bucket=15m/);
+
+    // Foco e Enter percorrem o mesmo caminho do clique.
+    sensor.focus();
+    expect(document.activeElement).toBe(sensor);
+    await userEvent.keyboard('{Enter}');
+    expect(await screen.findByRole('heading', { level: 1, name: 'SIM-HF-002' })).toBeDefined();
+  });
+
+  it('a aquisição é alcançável por link a partir da lista do sensor', async () => {
+    stubApi();
+    renderAt(`/sensors/SIM-HF-002?from=${FROM}&to=${TO}&bucket=15m`);
+
+    const tabela = await screen.findByRole('table', { name: /Aquisições do sensor/i });
+    const link = within(tabela).getAllByRole('link')[0];
+    expect(link.getAttribute('href')).toMatch(new RegExp(`^/acquisitions/${CYCLE}\\?from=`));
+    await userEvent.click(link);
+    expect(await screen.findByRole('heading', { level: 1, name: /Aquisição ·/i })).toBeDefined();
   });
 
   it('mostra estado vazio quando a janela não tem aquisição', async () => {

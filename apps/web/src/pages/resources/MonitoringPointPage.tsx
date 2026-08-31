@@ -26,7 +26,7 @@ import {
   YAxis,
 } from 'recharts';
 
-import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
+import { EmptyState, ErrorState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
@@ -34,6 +34,7 @@ import { ConditionTag, conditionColor } from '../../components/condition/Conditi
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
 import { DeviationBar } from '../../components/investigation/DeviationBar';
 import { PageHeader } from '../../components/PageHeader';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
 import { RangePresets, type RangePreset } from '../../components/investigation/RangePresets';
 import { trendDirection } from '../../components/investigation/TrendSparkline';
@@ -148,7 +149,7 @@ export function MonitoringPointPage(): JSX.Element {
       />
 
       {query.status === 'loading' || query.status === 'idle' ? (
-        <LoadingState label="Consultando o ponto…" />
+        <PageSkeleton kpis={4} rows={5} />
       ) : null}
 
       {notFound ? (

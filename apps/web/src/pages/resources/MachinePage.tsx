@@ -35,7 +35,7 @@ import {
   machineSlug,
   type ConditionKind,
 } from '@dynamox/domain';
-import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
+import { EmptyState, ErrorState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
@@ -44,6 +44,7 @@ import { ConditionTag, conditionColor } from '../../components/condition/Conditi
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
 import { DeviationBar } from '../../components/investigation/DeviationBar';
 import { PageHeader } from '../../components/PageHeader';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
 import { RangePresets, type RangePreset } from '../../components/investigation/RangePresets';
 import { TrendSparkline, trendDirection } from '../../components/investigation/TrendSparkline';
@@ -204,12 +205,12 @@ export function MachinePage(): JSX.Element {
       />
 
       {query.status === 'loading' || query.status === 'idle' ? (
-        <LoadingState label="Consultando o ativo…" />
+        <PageSkeleton kpis={4} rows={3} />
       ) : null}
 
       {query.status === 'failed' && query.httpStatus === 404 ? (
         <EmptyState
-          title="Ativo não encontrado"
+          title="Máquina não encontrada"
           description={`Nenhuma máquina cadastrada corresponde a "${machineKey}". Verifique o endereço.`}
           action={
             <Button component={RouterLink} to="/" variant="outlined" size="small">

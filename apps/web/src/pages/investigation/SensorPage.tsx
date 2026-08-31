@@ -2,6 +2,7 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Link from '@mui/material/Link';
+import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -15,7 +16,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import { useTheme } from '@mui/material/styles';
 import { useCallback } from 'react';
-import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useParams, useSearchParams } from 'react-router-dom';
 import {
   Area,
   CartesianGrid,
@@ -28,7 +29,7 @@ import {
 } from 'recharts';
 
 import { machineTag } from '@dynamox/domain';
-import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
+import { EmptyState, ErrorState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
 import { PageHeader } from '../../components/PageHeader';
@@ -68,7 +69,6 @@ export function SensorPage(): JSX.Element {
   const { serialNumber = '' } = useParams();
   const [search, setSearch] = useSearchParams();
   const range = useTimeRange();
-  const navigate = useNavigate();
   const muiTheme = useTheme();
   const tooltip = chartTooltipStyles(muiTheme);
 
@@ -247,13 +247,21 @@ export function SensorPage(): JSX.Element {
 
         >
           {points.status === 'loading' || points.status === 'idle' ? (
-            <LoadingState label="Agregando a série…" />
+            <Skeleton
+              variant="rounded"
+              height={280}
+              role="status"
+              aria-label="Agregando a série"
+            />
           ) : null}
           {points.status === 'failed' ? (
             <ErrorState message={points.error ?? 'Falha ao agregar a série.'} onRetry={points.reload} />
           ) : null}
           {points.status === 'succeeded' && chartData.length === 0 ? (
-            <EmptyState title="Sem dados na janela" description="Escolha outro período para investigar." />
+            <EmptyState
+              title="Sem leituras nesta janela"
+              description={`Nenhuma amostra do eixo Y entre ${formatRange(range.from, range.to)} ${TIME_ZONE_LABEL}.`}
+            />
           ) : null}
           {/* Altura explícita: fora do grid do painel não há linha para o card esticar, e o
               ResponsiveContainer precisa de uma altura resolvível. */}
@@ -332,9 +340,11 @@ export function SensorPage(): JSX.Element {
         </Box>
 
         {acquisitions.status === 'loading' || acquisitions.status === 'idle' ? (
-          <Box sx={{ p: 2 }}>
-            <LoadingState label="Carregando aquisições…" />
-          </Box>
+          <Stack spacing={1} sx={{ p: 2 }} role="status" aria-label="Carregando aquisições">
+            {[0, 1, 2, 3, 4].map((key) => (
+              <Skeleton key={key} variant="text" height={28} />
+            ))}
+          </Stack>
         ) : null}
         {acquisitions.status === 'failed' ? (
           <Box sx={{ p: 2 }}>
@@ -344,8 +354,8 @@ export function SensorPage(): JSX.Element {
         {acquisitions.status === 'succeeded' && acquisitions.data?.items.length === 0 ? (
           <Box sx={{ p: 2 }}>
             <EmptyState
-              title="Nenhuma aquisição encontrada neste período"
-              description="Amplie a janela ou escolha outro sensor."
+              title="Nenhuma aquisição neste período"
+              description={`Este sensor não registrou ciclos entre ${formatRange(range.from, range.to)} ${TIME_ZONE_LABEL}. Amplie a janela no seletor acima.`}
             />
           </Box>
         ) : null}
@@ -368,14 +378,18 @@ export function SensorPage(): JSX.Element {
                 </TableHead>
                 <TableBody>
                   {acquisitions.data.items.map((item) => (
-                    <TableRow
-                      key={item.cycleId}
-                      hover
-                      onClick={() => navigate(links.acquisition(item.cycleId, range))}
-                      sx={{ cursor: 'pointer' }}
-                    >
-                      <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
-                        {item.startedAt ? formatDateTime(item.startedAt) : '—'}
+                    <TableRow key={item.cycleId} hover>
+                      <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                        {/* O instante é o link para a aquisição: alvo semântico, alcançável
+                            pelo teclado — a linha inteira com onClick não era. */}
+                        <Link
+                          component={RouterLink}
+                          to={links.acquisition(item.cycleId, range)}
+                          underline="hover"
+                          sx={{ fontWeight: 600 }}
+                        >
+                          {item.startedAt ? formatDateTime(item.startedAt) : 'aquisição'}
+                        </Link>
                       </TableCell>
                       <TableCell align="right">{item.durationSeconds ? `${item.durationSeconds} s` : '—'}</TableCell>
                       <TableCell align="right">{item.rpm ?? '—'}</TableCell>

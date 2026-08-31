@@ -12,13 +12,14 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { useCallback } from 'react';
-import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useParams, useSearchParams } from 'react-router-dom';
 
 import { machineTag } from '@dynamox/domain';
-import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
+import { EmptyState, ErrorState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
 import { InvestigationBreadcrumbs } from '../../components/investigation/InvestigationBreadcrumbs';
+import { PageSkeleton } from '../../components/PageSkeleton';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
 import {
   formatMeasurement,
@@ -47,7 +48,6 @@ export function TimeWindowPage(): JSX.Element {
   const [search, setSearch] = useSearchParams();
   // O caminho já descreve a janela: sem `from`/`to` na query, ele é a fonte do recorte.
   const range = useTimeRange(windowFromPath(date, hour));
-  const navigate = useNavigate();
 
   const page = Number(search.get('page') ?? '1');
   const pageSize = Number(search.get('pageSize') ?? '25');
@@ -95,7 +95,7 @@ export function TimeWindowPage(): JSX.Element {
       </Stack>
 
       {query.status === 'loading' || query.status === 'idle' ? (
-        <LoadingState label="Consultando a janela…" />
+        <PageSkeleton kpis={5} chart={false} rows={6} />
       ) : null}
 
       {query.status === 'failed' ? (
@@ -124,7 +124,7 @@ export function TimeWindowPage(): JSX.Element {
           {data.items.length === 0 ? (
             <EmptyState
               title="Nenhuma aquisição nesta janela"
-              description="Nenhum sensor reportou entre os instantes selecionados."
+              description={`Nenhum sensor da planta reportou entre ${formatRange(range.from, range.to)} ${TIME_ZONE_LABEL}.`}
             />
           ) : (
             <Card variant="outlined" sx={{ mt: 2 }}>
@@ -144,14 +144,7 @@ export function TimeWindowPage(): JSX.Element {
                   </TableHead>
                   <TableBody>
                     {data.items.map((item) => (
-                      <TableRow
-                        key={item.sensorSerialNumber}
-                        hover
-                        onClick={() =>
-                          navigate(links.sensor(item.sensorSerialNumber, range, '15m'))
-                        }
-                        sx={{ cursor: 'pointer' }}
-                      >
+                      <TableRow key={item.sensorSerialNumber} hover>
                         <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
                           {item.machineName ? (
                             <Link
@@ -173,7 +166,6 @@ export function TimeWindowPage(): JSX.Element {
                             <Link
                               component={RouterLink}
                               to={links.point(item.machineName, item.monitoringPointName, range)}
-                              onClick={(event) => event.stopPropagation()}
                               underline="hover"
                               color="inherit"
                             >
@@ -183,8 +175,16 @@ export function TimeWindowPage(): JSX.Element {
                             (item.monitoringPointName ?? '—')
                           )}
                         </TableCell>
-                        <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
-                          {item.sensorSerialNumber}
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                          {/* Link, não linha clicável: o caminho tem de existir no teclado. */}
+                          <Link
+                            component={RouterLink}
+                            to={links.sensor(item.sensorSerialNumber, range, '15m')}
+                            underline="hover"
+                            sx={{ fontWeight: 600 }}
+                          >
+                            {item.sensorSerialNumber}
+                          </Link>
                         </TableCell>
                         <TableCell align="right">{item.acquisitionCount}</TableCell>
                         <TableCell align="right">

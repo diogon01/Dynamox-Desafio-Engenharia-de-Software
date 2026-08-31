@@ -5,7 +5,7 @@ import { Line, LineChart, ResponsiveContainer, YAxis } from 'recharts';
 
 import type { TrendPointDto } from '@dynamox/domain';
 
-import { statusColor, type StatusTagKind } from '../dashboard/StatusTag';
+import { conditionColor, type ConditionTagKind } from '../condition/ConditionTag';
 
 /**
  * Miniatura de tendência: responde "subindo, estável ou caindo" — e só isso.
@@ -24,7 +24,7 @@ export function TrendSparkline({
   height = 22,
 }: {
   trend: TrendPointDto[];
-  condition: StatusTagKind;
+  condition: ConditionTagKind;
   width?: number;
   height?: number;
 }): JSX.Element {
@@ -51,7 +51,7 @@ export function TrendSparkline({
           <Line
             type="linear"
             dataKey="value"
-            stroke={statusColor(condition, muiTheme.palette)}
+            stroke={conditionColor(condition, muiTheme.palette)}
             strokeWidth={1.6}
             dot={false}
             isAnimationActive={false}

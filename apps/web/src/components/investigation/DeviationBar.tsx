@@ -4,7 +4,7 @@ import Typography from '@mui/material/Typography';
 import { useTheme } from '@mui/material/styles';
 
 import { formatNumber } from '../../features/dashboard/dashboardFormatters';
-import { statusColor, type StatusTagKind } from '../dashboard/StatusTag';
+import { conditionColor, type ConditionTagKind } from '../condition/ConditionTag';
 
 /**
  * Razão entre a aquisição atual e a de referência, com barra proporcional.
@@ -18,7 +18,7 @@ export function DeviationBar({
   title,
 }: {
   ratio: number | null;
-  condition: StatusTagKind;
+  condition: ConditionTagKind;
   title?: string;
 }): JSX.Element {
   const muiTheme = useTheme();
@@ -31,7 +31,7 @@ export function DeviationBar({
     );
   }
 
-  const color = statusColor(condition, muiTheme.palette);
+  const color = conditionColor(condition, muiTheme.palette);
   return (
     <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 96 }} title={title}>
       <Box

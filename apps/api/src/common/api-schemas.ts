@@ -450,6 +450,29 @@ export class FleetConditionPointResponse {
   trend!: TrendPointResponse[];
 }
 
+export class ConditionCountsResponse {
+  @ApiProperty({ description: 'Itens no recorte, antes do filtro de condição.', example: 12 })
+  total!: number;
+
+  @ApiProperty({ description: 'Itens em atenção (razão ≥ 2,0×).', example: 1 })
+  attention!: number;
+
+  @ApiProperty({ description: 'Itens em observação (razão ≥ 1,5×).', example: 0 })
+  observation!: number;
+
+  @ApiProperty({ description: 'Itens dentro do esperado.', example: 11 })
+  normal!: number;
+
+  @ApiProperty({ description: 'Itens com leitura mas sem referência comparável.', example: 0 })
+  unclassified!: number;
+
+  @ApiProperty({ description: 'Pontos instrumentados que não reportaram.', example: 0 })
+  noData!: number;
+
+  @ApiProperty({ description: 'Pontos sem sensor instalado.', example: 0 })
+  noSensor!: number;
+}
+
 export class FleetConditionResponse {
   @ApiProperty({ format: 'date-time', description: 'Início da janela consultada.', example: ISO })
   from!: string;
@@ -462,6 +485,18 @@ export class FleetConditionResponse {
 
   @ApiProperty({ type: [FleetConditionPointResponse], description: 'Um item por ponto de monitoramento.' })
   points!: FleetConditionPointResponse[];
+
+  @ApiProperty({ type: ConditionCountsResponse, description: 'Contagem por condição ANTES do filtro.' })
+  counts!: ConditionCountsResponse;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Recorte de condição aplicado; nulo quando nenhum foi pedido.',
+    enum: ['attention', 'observation', 'normal', 'unclassified', 'no-data', 'no-sensor'],
+    example: 'attention',
+  })
+  condition!: string | null;
 }
 
 export class SeriesBucketPointResponse {
@@ -990,6 +1025,12 @@ export class MachineSummaryResponse {
   @ApiProperty({ description: 'Segmento de URL do ativo.', example: 'P-101' })
   slug!: string;
 
+  @ApiProperty({ format: 'date-time', description: 'Cadastro da máquina.', example: ISO })
+  createdAt!: string;
+
+  @ApiProperty({ format: 'date-time', description: 'Última alteração do cadastro.', example: ISO })
+  updatedAt!: string;
+
   @ApiProperty({ format: 'date-time', description: 'Início da janela.', example: ISO })
   from!: string;
 
@@ -1004,6 +1045,101 @@ export class MachineSummaryResponse {
 
   @ApiProperty({ type: [MachinePointSummaryResponse], description: 'Um item por ponto do ativo.' })
   points!: MachinePointSummaryResponse[];
+
+  @ApiProperty({ type: ConditionCountsResponse, description: 'Contagem por condição ANTES do filtro.' })
+  counts!: ConditionCountsResponse;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Recorte de condição aplicado aos pontos; nulo quando nenhum foi pedido.',
+    enum: ['attention', 'observation', 'normal', 'unclassified', 'no-data', 'no-sensor'],
+    example: 'attention',
+  })
+  condition!: string | null;
+}
+
+export class MachineListItemResponse {
+  @ApiProperty({ format: 'uuid', description: 'Identificador da máquina.' })
+  machineId!: string;
+
+  @ApiProperty({ description: 'Nome cadastrado.', example: 'P-101' })
+  machineName!: string;
+
+  @ApiProperty({ description: 'Tipo público.', enum: ['Pump', 'Fan'], example: 'Pump' })
+  machineType!: string;
+
+  @ApiProperty({ description: 'Segmento de URL da máquina.', example: 'P-101' })
+  slug!: string;
+
+  @ApiProperty({ description: 'Pontos de monitoramento cadastrados.', example: 2 })
+  pointCount!: number;
+
+  @ApiProperty({ description: 'Pontos com sensor instalado.', example: 2 })
+  sensorCount!: number;
+
+  @ApiProperty({ description: 'Pontos em atenção ou observação.', example: 1 })
+  attentionCount!: number;
+
+  @ApiProperty({
+    description: 'Condição da máquina: a pior entre os seus pontos.',
+    enum: ['normal', 'observation', 'attention', 'unclassified', 'no-data', 'no-sensor'],
+    example: 'attention',
+  })
+  condition!: string;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Última leitura conhecida.', example: ISO })
+  lastAt!: string | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Maior razão observada na máquina.', example: 3.49 })
+  maxDeviationRatio!: number | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Ponto de maior razão.', example: 'Mancal lado oposto ao acoplamento' })
+  maxDeviationPoint!: string | null;
+}
+
+export class MachineListResponse {
+  @ApiProperty({ format: 'date-time', description: 'Início da janela.', example: ISO })
+  from!: string;
+
+  @ApiProperty({ format: 'date-time', description: 'Fim exclusivo da janela.', example: ISO })
+  to!: string;
+
+  @ApiProperty({ type: [MachineListItemResponse], description: 'Página de máquinas.' })
+  items!: MachineListItemResponse[];
+
+  @ApiProperty({ description: 'Total após o recorte.', example: 6 })
+  total!: number;
+
+  @ApiProperty({ description: 'Página corrente (1-based).', example: 1 })
+  page!: number;
+
+  @ApiProperty({ description: 'Tamanho da página.', example: 25 })
+  pageSize!: number;
+
+  @ApiProperty({ description: 'Total de páginas.', example: 1 })
+  totalPages!: number;
+
+  @ApiProperty({ type: ConditionCountsResponse, description: 'Contagem por condição ANTES do filtro.' })
+  counts!: ConditionCountsResponse;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Recorte de condição aplicado.',
+    enum: ['attention', 'observation', 'normal', 'unclassified', 'no-data', 'no-sensor'],
+    example: 'attention',
+  })
+  condition!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Busca aplicada ao nome da máquina.', example: 'P-10' })
+  search!: string | null;
+
+  @ApiProperty({ description: 'Coluna de ordenação.', enum: ['name', 'condition', 'deviation', 'lastAt'], example: 'name' })
+  sortBy!: string;
+
+  @ApiProperty({ description: 'Direção da ordenação.', enum: ['asc', 'desc'], example: 'asc' })
+  sortDir!: string;
 }
 
 export class PointSeriesResponse {

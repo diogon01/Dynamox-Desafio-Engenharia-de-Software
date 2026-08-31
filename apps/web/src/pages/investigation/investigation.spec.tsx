@@ -40,6 +40,10 @@ const ASSET_SUMMARY = {
     maxDeviationPoint: 'Mancal lado oposto ao acoplamento',
   },
   lastAt: '2026-08-30T14:47:59.000Z',
+  createdAt: FROM,
+  updatedAt: FROM,
+  counts: { total: 2, attention: 1, observation: 0, normal: 1, unclassified: 0, noData: 0, noSensor: 0 },
+  condition: null,
   points: [
     {
       monitoringPointId: 'p1',
@@ -512,7 +516,10 @@ describe('drill-down analítico', () => {
       within(tabela).getByRole('link', { name: 'SIM-HF-002' }).getAttribute('href'),
     ).toMatch(/^\/sensors\/SIM-HF-002\?from=/);
 
-    await userEvent.click(within(tabela).getAllByRole('row')[1]);
+    // O ponto é um link, não uma linha com onClick: alcançável também pelo teclado.
+    await userEvent.click(
+      within(tabela).getByRole('link', { name: 'Mancal lado oposto ao acoplamento' }),
+    );
     expect(
       await screen.findByRole('heading', { level: 1, name: /Mancal lado oposto ao acoplamento/i }),
     ).toBeDefined();

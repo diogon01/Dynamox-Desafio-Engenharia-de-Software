@@ -32,7 +32,7 @@ import { api } from '../../api/client';
 import { PageHeader } from '../../components/PageHeader';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
-import { StatusTag } from '../../components/dashboard/StatusTag';
+import { ConditionTag } from '../../components/condition/ConditionTag';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
 import {
   formatAxisValue,
@@ -174,7 +174,7 @@ export function SensorPage(): JSX.Element {
         }
         chips={
           <>
-            {point ? <StatusTag kind={point.condition} /> : null}
+            {point ? <ConditionTag kind={point.condition} /> : null}
             <Chip size="small" variant="outlined" label={formatRange(range.from, range.to)} />
             <Chip size="small" variant="outlined" label={TIME_ZONE_LABEL} />
             <Chip size="small" variant="outlined" label={`Bucket: ${bucket}`} />

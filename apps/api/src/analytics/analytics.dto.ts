@@ -110,8 +110,21 @@ export function parseEnum<T extends string>(
   return value as T;
 }
 
-export const FLEET_CONDITION_QUERY_KEYS = ['from', 'to', 'includeTrend'] as const;
-export const ASSET_QUERY_KEYS = ['from', 'to'] as const;
+export const FLEET_CONDITION_QUERY_KEYS = ['from', 'to', 'includeTrend', 'condition'] as const;
+/** A máquina aceita recorte por condição (ela lista pontos); o ponto, não — ele é um só. */
+export const MACHINE_QUERY_KEYS = ['from', 'to', 'condition'] as const;
+export const POINT_QUERY_KEYS = ['from', 'to'] as const;
+export const MACHINE_LIST_QUERY_KEYS = [
+  'from',
+  'to',
+  'condition',
+  'search',
+  'page',
+  'pageSize',
+  'sortBy',
+  'sortDir',
+] as const;
+export const SORT_DIRECTIONS = ['asc', 'desc'] as const;
 export const SERIES_POINTS_QUERY_KEYS = ['from', 'to', 'bucket'] as const;
 export const HEATMAP_QUERY_KEYS = ['from', 'to', 'bucket'] as const;
 export const TIME_WINDOW_QUERY_KEYS = ['from', 'to', 'page', 'pageSize'] as const;

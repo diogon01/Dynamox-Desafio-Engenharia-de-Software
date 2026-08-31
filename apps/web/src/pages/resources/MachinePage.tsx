@@ -16,7 +16,7 @@ import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
 import { useState } from 'react';
-import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useParams } from 'react-router-dom';
 import {
   CartesianGrid,
   Legend,
@@ -28,13 +28,19 @@ import {
   YAxis,
 } from 'recharts';
 
-import type { MachinePointSummaryDto } from '@dynamox/domain';
-import { machineSlug } from '@dynamox/domain';
+import {
+  CONDITION_KINDS,
+  conditionCountKey,
+  isConditionKind,
+  machineSlug,
+  type ConditionKind,
+} from '@dynamox/domain';
 import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
-import { StatusTag, statusColor } from '../../components/dashboard/StatusTag';
+import { ConditionFilter } from '../../components/condition/ConditionFilter';
+import { ConditionTag, conditionColor } from '../../components/condition/ConditionTag';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
 import { DeviationBar } from '../../components/investigation/DeviationBar';
 import { PageHeader } from '../../components/PageHeader';
@@ -48,6 +54,7 @@ import {
 } from '../../features/dashboard/dashboardFormatters';
 import { selectCanMutate } from '../../features/auth/authSlice';
 import { links } from '../../features/investigation/links';
+import { useQueryParams } from '../../features/navigation/useQueryParams';
 import { useAnalyticsQuery, useTimeRange } from '../../features/investigation/useAnalyticsQuery';
 import { useAppSelector } from '../../store';
 import { DeleteMachineDialog } from './DeleteMachineDialog';
@@ -58,6 +65,15 @@ import {
   formatRange,
   formatRelativeTime,
 } from '../../features/time/instant';
+
+const CONDITION_LABELS: Record<ConditionKind, string> = {
+  attention: 'Em atenção',
+  observation: 'Em observação',
+  normal: 'Normal',
+  unclassified: 'Sem classificação',
+  'no-data': 'Sem dados',
+  'no-sensor': 'Sem sensor',
+};
 
 /**
  * PÁGINA CANÔNICA DA MÁQUINA — operação e cadastro no mesmo lugar.
@@ -73,7 +89,6 @@ import {
  */
 export function MachinePage(): JSX.Element {
   const { machineKey = '' } = useParams();
-  const [, setSearch] = useSearchParams();
   const range = useTimeRange();
   const navigate = useNavigate();
   const muiTheme = useTheme();
@@ -81,16 +96,21 @@ export function MachinePage(): JSX.Element {
   const canMutate = useAppSelector(selectCanMutate);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+  const params = useQueryParams();
+  const conditionParam = params.get('condition');
+  const condition = isConditionKind(conditionParam) ? conditionParam : null;
+
   const query = useAnalyticsQuery(
-    () => api.machineSummary(machineKey, { from: range.from, to: range.to }),
-    [machineKey, range.from, range.to],
+    () => api.machineSummary(machineKey, { from: range.from, to: range.to }, { condition }),
+    [machineKey, range.from, range.to, condition],
   );
   const asset = query.data;
 
   const applyPreset = (preset: RangePreset) => {
     const to = new Date();
     const from = new Date(to.getTime() - preset.days * 86_400_000);
-    setSearch(new URLSearchParams({ from: from.toISOString(), to: to.toISOString() }));
+    // Trocar o período não descarta o recorte de condição: são perguntas diferentes.
+    params.set({ from: from.toISOString(), to: to.toISOString() });
   };
 
   /**
@@ -113,15 +133,17 @@ export function MachinePage(): JSX.Element {
       .map(([t, values]) => ({ t, ...values }));
   })();
 
-  const conditionCounts = (asset?.points ?? []).reduce<Record<string, number>>((counts, point) => {
-    counts[point.condition] = (counts[point.condition] ?? 0) + 1;
-    return counts;
-  }, {});
+  /**
+   * Distribuição vem das CONTAGENS do servidor — que descrevem a máquina inteira —, não da
+   * lista de pontos, que o filtro recorta. Um resumo que encolhe junto com o filtro deixa
+   * de ser resumo.
+   */
+  const distribution = CONDITION_KINDS.map((kind) => ({
+    kind,
+    label: CONDITION_LABELS[kind],
+    count: asset?.counts?.[conditionCountKey(kind)] ?? 0,
+  })).filter((slice) => slice.count > 0);
 
-  const openPoint = (point: MachinePointSummaryDto) => {
-    if (!asset) return;
-    navigate(links.point(asset.machineName, point.monitoringPointName, range));
-  };
 
   return (
     <Box sx={{ pb: 3 }}>
@@ -252,12 +274,14 @@ export function MachinePage(): JSX.Element {
                   hint: 'ciclos de 60 s persistidos',
                 },
                 {
-                  label: 'Maior desvio',
+                  label: 'Maior desvio radial',
                   value:
                     asset.kpis.maxDeviationRatio === null
                       ? '—'
                       : `${formatNumber(asset.kpis.maxDeviationRatio, 2)}×`,
-                  hint: asset.kpis.maxDeviationPoint ?? undefined,
+                  hint: asset.kpis.maxDeviationPoint
+                    ? `${asset.kpis.maxDeviationPoint} · RMS radial Y/Z`
+                    : undefined,
                   tone: (asset.kpis.maxDeviationRatio ?? 0) >= 2 ? 'warning' : 'default',
                 },
               ]}
@@ -266,11 +290,11 @@ export function MachinePage(): JSX.Element {
 
           <Box sx={{ gridColumn: { xs: 'span 12', lg: 'span 8' }, display: 'flex', minWidth: 0 }}>
             <DashboardCard
-              title="Tendência dos pontos"
+              title="Tendência — aceleração eixo Y (RMS)"
               titleId="asset-trend-title"
               size="primaryChart"
-              subtitle="RMS do eixo âncora por bucket, nas últimas 24 h da janela. Um traço por ponto, no mesmo eixo."
-              info="Agregado no banco. A razão publicada continua vindo do RMS radial (Y/Z pareados)."
+              subtitle="Um traço por ponto, no mesmo eixo, nas últimas 24 h da janela."
+              info="A CURVA é o RMS do eixo Y por bucket — é o que descreve a forma da evolução. A CONDIÇÃO e o desvio usam o RMS radial (Y e Z pareados por instante); são grandezas diferentes, por isso os nomes também são."
             >
               {chartData.length === 0 ? (
                 <EmptyState
@@ -320,7 +344,7 @@ export function MachinePage(): JSX.Element {
                           stroke={
                             point.condition === 'normal'
                               ? [muiTheme.palette.primary.main, muiTheme.palette.secondary.main][index % 2]
-                              : statusColor(point.condition, muiTheme.palette)
+                              : conditionColor(point.condition, muiTheme.palette)
                           }
                           strokeWidth={2}
                           dot={false}
@@ -339,61 +363,70 @@ export function MachinePage(): JSX.Element {
             <DashboardCard
               title="Estado do ativo"
               titleId="asset-state-title"
-              subtitle="Como os pontos se distribuem agora."
+              subtitle="Distribuição dos pontos e disponibilidade — sempre da máquina inteira."
+              info="Este resumo ignora o filtro de condição de propósito: um painel que muda junto com o recorte deixa de responder “como está a máquina”."
             >
-              <Stack spacing={1.25} sx={{ flexGrow: 1 }}>
+              <Stack spacing={1.5} sx={{ flexGrow: 1 }}>
                 <Box
                   aria-hidden="true"
                   sx={{ display: 'flex', height: 8, borderRadius: 999, overflow: 'hidden', bgcolor: 'action.hover' }}
                 >
-                  {Object.entries(conditionCounts).map(([condition, count]) => (
+                  {distribution.map((slice) => (
                     <Box
-                      key={condition}
+                      key={slice.kind}
                       sx={{
-                        width: `${(count / Math.max(1, asset.points.length)) * 100}%`,
-                        bgcolor: statusColor(condition as never, muiTheme.palette),
+                        width: `${(slice.count / Math.max(1, asset.counts.total)) * 100}%`,
+                        bgcolor: conditionColor(slice.kind, muiTheme.palette),
                       }}
                     />
                   ))}
                 </Box>
 
-                <Stack component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }} spacing={1}>
-                  {asset.points.map((point) => (
-                    <Box
+                <Stack component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }} spacing={0.5}>
+                  {distribution.map((slice) => (
+                    <Stack
                       component="li"
-                      key={point.monitoringPointId}
-                      sx={{ borderTop: 1, borderColor: 'divider', pt: 1 }}
+                      key={slice.kind}
+                      direction="row"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      gap={1}
                     >
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-                        <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0 }} noWrap>
-                          {point.monitoringPointName}
-                        </Typography>
-                        <StatusTag kind={point.condition} />
-                      </Stack>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
-                        <Typography variant="caption" color="text.secondary" noWrap>
-                          {point.sensorSerialNumber ?? 'sem sensor'} ·{' '}
-                          {point.currentValue === null
-                            ? 'sem leitura'
-                            : formatMeasurement(point.currentValue, point.unit)}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          sx={{ fontWeight: 700, color: statusColor(point.condition, muiTheme.palette) }}
-                        >
-                          {point.deviationRatio === null ? '—' : `${formatNumber(point.deviationRatio, 2)}×`}
+                      <Stack direction="row" alignItems="center" gap={0.75} sx={{ minWidth: 0 }}>
+                        <Box
+                          aria-hidden="true"
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                            bgcolor: conditionColor(slice.kind, muiTheme.palette),
+                          }}
+                        />
+                        <Typography variant="body2" noWrap>
+                          {slice.label}
                         </Typography>
                       </Stack>
-                    </Box>
+                      <Typography variant="body2" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                        {slice.count}
+                      </Typography>
+                    </Stack>
                   ))}
                 </Stack>
 
                 <Box sx={{ mt: 'auto', pt: 0.5 }}>
                   <Typography variant="caption" color="text.secondary" component="div">
-                    Última comunicação: {formatDateTime(asset.lastAt)} {TIME_ZONE_LABEL}
+                    Última comunicação: {formatDateTime(asset.lastAt, 'ainda sem leituras')}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" component="div">
-                    Cobertura na janela: {formatNumber(asset.kpis.coveragePercent, 1)}% dos pontos.
+                    Cobertura na janela: {formatNumber(asset.kpis.coveragePercent, 1)}% dos pontos
+                    reportaram.
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" component="div">
+                    Maior desvio radial:{' '}
+                    {asset.kpis.maxDeviationRatio === null
+                      ? '—'
+                      : `${formatNumber(asset.kpis.maxDeviationRatio, 2)}× em ${asset.kpis.maxDeviationPoint}`}
                   </Typography>
                 </Box>
               </Stack>
@@ -414,8 +447,16 @@ export function MachinePage(): JSX.Element {
                     Pontos e sensores
                   </Typography>
                   <Typography variant="caption" color="text.secondary" component="div">
-                    Clique na linha para abrir o ponto; no serial, para ir direto ao sensor.
+                    Clique no ponto para abrir o contexto; no serial, para ir direto ao sensor.
                   </Typography>
+                  <Box sx={{ mt: 1 }}>
+                    <ConditionFilter
+                      counts={asset.counts}
+                      value={condition}
+                      label="Filtrar pontos por condição"
+                      onChange={(next) => params.set({ condition: next })}
+                    />
+                  </Box>
                 </Box>
                 {canMutate ? (
                   <Button
@@ -442,32 +483,35 @@ export function MachinePage(): JSX.Element {
                       <TableCell>Sensor</TableCell>
                       <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Modelo</TableCell>
                       <TableCell>Estado</TableCell>
-                      <TableCell align="right">Valor atual</TableCell>
+                      <TableCell align="right">RMS radial</TableCell>
                       <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                         Referência
                       </TableCell>
                       <TableCell sx={{ minWidth: 104 }}>Desvio</TableCell>
-                      <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>Tendência</TableCell>
+                      <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
+                        Tendência (Y)
+                      </TableCell>
                       <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Última leitura</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {asset.points.map((point) => (
-                      <TableRow
-                        key={point.monitoringPointId}
-                        hover
-                        onClick={() => openPoint(point)}
-                        sx={{ cursor: 'pointer' }}
-                      >
+                      <TableRow key={point.monitoringPointId} hover>
                         <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
-                          {point.monitoringPointName}
+                          <Link
+                            component={RouterLink}
+                            to={links.point(asset.machineName, point.monitoringPointName, range)}
+                            underline="hover"
+                            color="inherit"
+                          >
+                            {point.monitoringPointName}
+                          </Link>
                         </TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>
                           {point.sensorSerialNumber ? (
                             <Link
                               component={RouterLink}
                               to={links.sensor(point.sensorSerialNumber, range)}
-                              onClick={(event) => event.stopPropagation()}
                               underline="hover"
                               sx={{ fontWeight: 600 }}
                             >
@@ -483,7 +527,7 @@ export function MachinePage(): JSX.Element {
                           {point.sensorModel ?? '—'}
                         </TableCell>
                         <TableCell>
-                          <StatusTag kind={point.condition} />
+                          <ConditionTag kind={point.condition} />
                         </TableCell>
                         <TableCell align="right" sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
                           {point.currentValue === null ? '—' : formatMeasurement(point.currentValue, point.unit)}
@@ -523,6 +567,45 @@ export function MachinePage(): JSX.Element {
                   </TableBody>
                 </Table>
               </TableContainer>
+              {asset.points.length === 0 ? (
+                <EmptyState
+                  title="Nenhum ponto neste recorte"
+                  description="Nenhum ponto desta máquina está no estado selecionado neste período."
+                  action={
+                    <Button variant="outlined" size="small" onClick={() => params.set({ condition: null })}>
+                      Ver todos os pontos
+                    </Button>
+                  }
+                />
+              ) : null}
+            </Card>
+          </Box>
+
+          {/*
+            CADASTRO — fecha a página canônica: quem chega aqui pela operação também
+            consegue ver e alterar o registro, sem trocar de tela. É também o ponto de
+            costura previsto para a próxima frente: uma seção de alertas entra ENTRE os
+            pontos e o cadastro sem mexer em nada que já existe.
+          */}
+          <Box sx={{ gridColumn: 'span 12' }}>
+            <Card variant="outlined">
+              <Stack
+                direction="row"
+                gap={{ xs: 2, md: 4 }}
+                flexWrap="wrap"
+                useFlexGap
+                sx={(theme) => ({ p: `${theme.dashboard.cardPadding}px`, minWidth: 0 })}
+              >
+                <Stack direction="row" gap={{ xs: 2, md: 4 }} flexWrap="wrap" useFlexGap>
+                  <Field label="Identificação" value={asset.machineName} />
+                  <Field
+                    label="Tipo"
+                    value={asset.machineType === 'Pump' ? 'Bomba (Pump)' : 'Ventilador (Fan)'}
+                  />
+                  <Field label="Cadastrada em" value={formatDateTime(asset.createdAt)} />
+                  <Field label="Atualizada em" value={formatDateTime(asset.updatedAt)} />
+                </Stack>
+              </Stack>
             </Card>
           </Box>
         </Box>
@@ -544,6 +627,20 @@ export function MachinePage(): JSX.Element {
           }}
         />
       ) : null}
+    </Box>
+  );
+}
+
+/** Par rótulo/valor do bloco de cadastro: rótulo discreto, valor legível. */
+function Field({ label, value }: { label: string; value: string }): JSX.Element {
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Typography variant="overline" color="text.secondary" component="div" noWrap>
+        {label}
+      </Typography>
+      <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={value}>
+        {value}
+      </Typography>
     </Box>
   );
 }

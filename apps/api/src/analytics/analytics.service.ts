@@ -8,6 +8,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import type {
   AcquisitionDetailDto,
   AcquisitionPageDto,
+  MachineListItemDto,
+  MachineListResponseDto,
+  MachineListSortColumn,
   MachinePointSummaryDto,
   MachineSummaryDto,
   ConditionKind,
@@ -21,7 +24,7 @@ import type {
   SeriesPointsResponseDto,
   TrendPointDto,
 } from '@dynamox/domain';
-import { machineSlug, pointSlug } from '@dynamox/domain';
+import { countConditions, machineSlug, naturalKey, pointSlug, worstCondition, CONDITION_SEVERITY } from '@dynamox/domain';
 import { toDomainAxis, toDomainPhysicalQuantity } from '../telemetry/telemetry.mappers';
 
 import { toDomainMachineType } from '../common/machine-type.mapper';
@@ -257,7 +260,7 @@ export class AnalyticsService {
 
   async fleetCondition(
     range: TimeRange,
-    options: { includeTrend?: boolean } = {},
+    options: { includeTrend?: boolean; condition?: ConditionKind | null } = {},
     nowMs = Date.now(),
   ): Promise<FleetConditionResponseDto> {
     return this.measured(
@@ -299,11 +302,18 @@ export class AnalyticsService {
           };
         });
 
+        // A contagem é do universo INTEIRO, não do recorte: é ela que diz ao seletor
+        // quantos itens cada condição tem — inclusive a que está filtrada agora.
+        const counts = countConditions(points.map((point) => point.condition));
+        const condition = options.condition ?? null;
+
         return {
           from: range.from.toISOString(),
           to: range.to.toISOString(),
           generatedAt: new Date(nowMs).toISOString(),
-          points,
+          points: condition ? points.filter((point) => point.condition === condition) : points,
+          counts,
+          condition,
         };
       },
       (result) => result.points.length,
@@ -633,8 +643,9 @@ export class AnalyticsService {
    * sim, são recortadas: dois sensores em vez de doze.
    */
   async machineSummary(
-    machine: { id: string; name: string; type: 'PUMP' | 'FAN' },
+    machine: { id: string; name: string; type: 'PUMP' | 'FAN'; createdAt: Date; updatedAt: Date },
     range: TimeRange,
+    options: { condition?: ConditionKind | null } = {},
     nowMs = Date.now(),
   ): Promise<MachineSummaryDto> {
     return this.measured(
@@ -687,6 +698,10 @@ export class AnalyticsService {
           };
         });
 
+        // Indicadores e contagens descrevem a MÁQUINA inteira; o filtro recorta só a lista.
+        // Um seletor que muda o KPI ao lado dele responde a pergunta errada.
+        const counts = countConditions(points.map((point) => point.condition));
+        const condition = options.condition ?? null;
         const reporting = points.filter((point) => point.sampleCount > 0);
         const worst = points.reduce<MachinePointSummaryDto | null>(
           (best, point) =>
@@ -706,6 +721,8 @@ export class AnalyticsService {
           machineName: machine.name,
           machineType: toDomainMachineType(machine.type) ?? 'Pump',
           slug: machineSlug(machine.name),
+          createdAt: machine.createdAt.toISOString(),
+          updatedAt: machine.updatedAt.toISOString(),
           from: range.from.toISOString(),
           to: range.to.toISOString(),
           kpis: {
@@ -723,10 +740,142 @@ export class AnalyticsService {
             maxDeviationPoint: worst?.monitoringPointName ?? null,
           },
           lastAt,
-          points,
+          points: condition ? points.filter((point) => point.condition === condition) : points,
+          counts,
+          condition,
         };
       },
       (result) => result.points.length,
+    );
+  }
+
+  /**
+   * LISTAGEM OPERACIONAL DE MÁQUINAS — recorte, ordenação e paginação no servidor.
+   *
+   * Existe porque a listagem precisa responder "quais ativos estão em atenção", e condição
+   * é derivada: não há coluna para filtrar. Em vez de baixar tudo e filtrar no navegador —
+   * que é exatamente o padrão que este projeto passou a rodada anterior removendo —, a
+   * mesma `fleetConditionSql` do painel classifica, e o recorte acontece aqui.
+   *
+   * Ordenar e paginar em memória é honesto NESTA tabela: a planta tem unidades de máquinas,
+   * e o custo não cresce com o histórico. O que nunca pode ser ordenado em memória é
+   * amostra — e amostra não passa por aqui.
+   */
+  async machineList(
+    range: TimeRange,
+    options: {
+      condition?: ConditionKind | null;
+      search?: string | null;
+      page: number;
+      pageSize: number;
+      sortBy: MachineListSortColumn;
+      sortDir: 'asc' | 'desc';
+    },
+  ): Promise<MachineListResponseDto> {
+    return this.measured(
+      'analytics/machine-list',
+      async () => {
+        const [machines, conditionRows] = await Promise.all([
+          this.prisma.machine.findMany({
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              _count: { select: { monitoringPoints: true } },
+            },
+          }),
+          this.prisma.$queryRaw<FleetConditionRow[]>(fleetConditionSql(range.from, range.to)),
+        ]);
+
+        const byMachine = new Map<string, FleetConditionRow[]>();
+        for (const row of conditionRows) {
+          byMachine.set(row.machine_id, [...(byMachine.get(row.machine_id) ?? []), row]);
+        }
+
+        const all: MachineListItemDto[] = machines.map((machine) => {
+          const rows = byMachine.get(machine.id) ?? [];
+          const classified = rows.map((row) =>
+            classifyCondition(row.sensor_serial !== null, row.current_rms !== null, deviationRatio(row.current_rms, row.baseline_rms)),
+          );
+          const worst = rows.reduce<{ ratio: number; point: string } | null>((best, row) => {
+            const ratio = deviationRatio(row.current_rms, row.baseline_rms);
+            return ratio !== null && (best === null || ratio > best.ratio)
+              ? { ratio, point: row.monitoring_point_name }
+              : best;
+          }, null);
+          const lastAt = rows.reduce<Date | null>((latest, row) => {
+            const at = row.last_seen_at ?? row.current_at;
+            return at && (!latest || at > latest) ? at : latest;
+          }, null);
+
+          return {
+            machineId: machine.id,
+            machineName: machine.name,
+            machineType: toDomainMachineType(machine.type) ?? 'Pump',
+            slug: machineSlug(machine.name),
+            pointCount: machine._count.monitoringPoints,
+            sensorCount: rows.filter((row) => row.sensor_serial !== null).length,
+            attentionCount: classified.filter(
+              (kind) => kind === 'attention' || kind === 'observation',
+            ).length,
+            // Máquina sem ponto algum não tem condição a mostrar: "sem sensor" é o estado
+            // honesto, e é o que o vocabulário do domínio já diz.
+            condition: worstCondition(classified) ?? 'no-sensor',
+            lastAt: lastAt?.toISOString() ?? null,
+            maxDeviationRatio: worst?.ratio ?? null,
+            maxDeviationPoint: worst?.point ?? null,
+          };
+        });
+
+        const counts = countConditions(all.map((item) => item.condition));
+        const search = options.search ?? null;
+        const wanted = search ? naturalKey(search) : null;
+        const filtered = all.filter(
+          (item) =>
+            (options.condition ? item.condition === options.condition : true) &&
+            (wanted ? naturalKey(item.machineName).includes(wanted) : true),
+        );
+
+        const direction = options.sortDir === 'desc' ? -1 : 1;
+        const sorted = [...filtered].sort((a, b) => {
+          switch (options.sortBy) {
+            case 'condition':
+              return (
+                (CONDITION_SEVERITY[a.condition] - CONDITION_SEVERITY[b.condition]) * direction ||
+                a.machineName.localeCompare(b.machineName, 'pt-BR')
+              );
+            case 'deviation':
+              return (
+                ((a.maxDeviationRatio ?? -Infinity) - (b.maxDeviationRatio ?? -Infinity)) * direction ||
+                a.machineName.localeCompare(b.machineName, 'pt-BR')
+              );
+            case 'lastAt':
+              return (
+                ((a.lastAt ?? '') < (b.lastAt ?? '') ? -1 : (a.lastAt ?? '') > (b.lastAt ?? '') ? 1 : 0) *
+                  direction || a.machineName.localeCompare(b.machineName, 'pt-BR')
+              );
+            default:
+              return a.machineName.localeCompare(b.machineName, 'pt-BR') * direction;
+          }
+        });
+
+        const start = (options.page - 1) * options.pageSize;
+        return {
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          items: sorted.slice(start, start + options.pageSize),
+          total: sorted.length,
+          page: options.page,
+          pageSize: options.pageSize,
+          totalPages: Math.max(1, Math.ceil(sorted.length / options.pageSize)),
+          counts,
+          condition: options.condition ?? null,
+          search,
+          sortBy: options.sortBy,
+          sortDir: options.sortDir,
+        };
+      },
+      (result) => result.items.length,
     );
   }
 

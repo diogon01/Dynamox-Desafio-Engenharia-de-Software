@@ -31,7 +31,7 @@ import {
 } from '../../features/time/instant';
 import { links, type AnalyticsRange } from '../../features/investigation/links';
 import { DashboardCard } from './DashboardCard';
-import { statusColor } from './StatusTag';
+import { conditionColor } from '../condition/ConditionTag';
 
 function CellTooltip({ cell, nowMs }: { cell: SensorCellView; nowMs: number }): JSX.Element {
   return (
@@ -163,7 +163,7 @@ export function FleetConditionMatrix({
                           </TableCell>
                         );
                       }
-                      const color = statusColor(cell.condition, muiTheme.palette);
+                      const color = conditionColor(cell.condition, muiTheme.palette);
                       const selected =
                         Boolean(cell.preferredSeriesId) &&
                         cell.series.some((item) => item.id === selectedSeriesId);
@@ -228,7 +228,7 @@ export function FleetConditionMatrix({
                     width: 9,
                     height: 9,
                     borderRadius: '50%',
-                    bgcolor: statusColor(entry.kind, muiTheme.palette),
+                    bgcolor: conditionColor(entry.kind, muiTheme.palette),
                   }}
                 />
                 <Typography variant="caption" noWrap>

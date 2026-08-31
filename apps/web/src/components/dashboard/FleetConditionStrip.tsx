@@ -9,7 +9,7 @@ import type {
   DashboardView,
 } from '../../features/dashboard/dashboardAggregations';
 import { formatNumber } from '../../features/dashboard/dashboardFormatters';
-import { statusColor } from './StatusTag';
+import { conditionColor } from '../condition/ConditionTag';
 
 /** Ordem canônica dos segmentos: do melhor para o pior, depois os não medidos. */
 const SEGMENTS: Array<{ kind: ConditionKind; label: string }> = [
@@ -60,7 +60,7 @@ export function FleetConditionStrip({ view }: { view: DashboardView }): JSX.Elem
               sx={{
                 width: `${(segment.count / total) * 100}%`,
                 minWidth: 8,
-                bgcolor: statusColor(segment.kind, muiTheme.palette),
+                bgcolor: conditionColor(segment.kind, muiTheme.palette),
               }}
             />
           </Tooltip>
@@ -80,7 +80,7 @@ export function FleetConditionStrip({ view }: { view: DashboardView }): JSX.Elem
                 height: 8,
                 borderRadius: '50%',
                 flexShrink: 0,
-                bgcolor: statusColor(segment.kind, muiTheme.palette),
+                bgcolor: conditionColor(segment.kind, muiTheme.palette),
               }}
             />
             <Typography variant="caption" noWrap>

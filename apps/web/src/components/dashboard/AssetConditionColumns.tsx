@@ -23,7 +23,7 @@ import {
   chartTooltipStyles,
 } from './chartTheme';
 import { FleetConditionStrip } from './FleetConditionStrip';
-import { statusColor } from './StatusTag';
+import { conditionColor } from '../condition/ConditionTag';
 
 /** Nome curto da máquina para o eixo X (antes do primeiro separador). */
 function shortName(name: string): string {
@@ -118,7 +118,7 @@ export function AssetConditionColumns({
                   dataKey={key}
                   name={CONDITION_STACK_LABELS[key]}
                   stackId="condition"
-                  fill={statusColor(key === 'noData' ? 'no-data' : key, muiTheme.palette)}
+                  fill={conditionColor(key === 'noData' ? 'no-data' : key, muiTheme.palette)}
                   isAnimationActive={false}
                   maxBarSize={34}
                 />

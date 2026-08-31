@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { EMPTY_CONDITION_COUNTS } from '@dynamox/domain';
 import type { FleetConditionResponseDto, SeriesPointsResponseDto } from '@dynamox/domain';
 import type { TimeSeriesSummary } from '@dynamox/domain';
 
@@ -41,6 +42,8 @@ function conditionPayload(
     from: '2026-08-22T12:00:00.000Z',
     to: '2026-08-29T12:00:00.000Z',
     generatedAt: '2026-08-29T12:00:00.000Z',
+    counts: { ...EMPTY_CONDITION_COUNTS, total: 1, attention: 1 },
+    condition: null,
     points: [
       {
         machineName: 'P-101',

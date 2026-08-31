@@ -273,6 +273,86 @@ export type ConditionKind =
 
 export type FreshnessKind = 'current' | 'stale' | 'future' | 'unknown';
 
+/** Vocabulário fechado das condições — o que o filtro aceita, nem mais nem menos. */
+export const CONDITION_KINDS: readonly ConditionKind[] = [
+  'attention',
+  'observation',
+  'normal',
+  'unclassified',
+  'no-data',
+  'no-sensor',
+];
+
+export function isConditionKind(value: unknown): value is ConditionKind {
+  return typeof value === 'string' && (CONDITION_KINDS as readonly string[]).includes(value);
+}
+
+/**
+ * Gravidade relativa de uma condição. Serve para eleger a condição de um AGREGADO (uma
+ * máquina é a sua pior leitura, nunca a média das leituras) e para ordenar filas de
+ * inspeção. Ausência de dado fica abaixo de "normal" de propósito: é um problema de
+ * cobertura, não de condição, e não deve competir por atenção com um desvio real.
+ */
+export const CONDITION_SEVERITY: Record<ConditionKind, number> = {
+  attention: 5,
+  observation: 4,
+  normal: 3,
+  unclassified: 2,
+  'no-data': 1,
+  'no-sensor': 0,
+};
+
+/** Condição de um agregado: a pior entre as partes. Vazio não vira "normal" por omissão. */
+export function worstCondition(conditions: readonly ConditionKind[]): ConditionKind | null {
+  return conditions.reduce<ConditionKind | null>(
+    (worst, kind) =>
+      worst === null || CONDITION_SEVERITY[kind] > CONDITION_SEVERITY[worst] ? kind : worst,
+    null,
+  );
+}
+
+/**
+ * Contagem por condição do recorte consultado.
+ *
+ * Vem junto da própria resposta para que o seletor de condição mostre quantos itens cada
+ * estado tem sem uma segunda ida ao servidor — e para que a interface só ofereça os
+ * estados que realmente ocorrem na janela, em vez de um seletor com opções mortas.
+ *
+ * As chaves são camelCase porque `no-data` não é um identificador válido; a tradução para
+ * o vocabulário do domínio fica em `conditionCountKey`.
+ */
+export interface ConditionCounts {
+  total: number;
+  attention: number;
+  observation: number;
+  normal: number;
+  unclassified: number;
+  noData: number;
+  noSensor: number;
+}
+
+export const EMPTY_CONDITION_COUNTS: ConditionCounts = {
+  total: 0,
+  attention: 0,
+  observation: 0,
+  normal: 0,
+  unclassified: 0,
+  noData: 0,
+  noSensor: 0,
+};
+
+export function conditionCountKey(kind: ConditionKind): keyof Omit<ConditionCounts, 'total'> {
+  if (kind === 'no-data') return 'noData';
+  if (kind === 'no-sensor') return 'noSensor';
+  return kind;
+}
+
+export function countConditions(conditions: readonly ConditionKind[]): ConditionCounts {
+  const counts: ConditionCounts = { ...EMPTY_CONDITION_COUNTS, total: conditions.length };
+  for (const kind of conditions) counts[conditionCountKey(kind)] += 1;
+  return counts;
+}
+
 /**
  * Condição de um ponto na janela consultada.
  *
@@ -317,6 +397,10 @@ export interface FleetConditionResponseDto {
   to: string;
   generatedAt: string;
   points: FleetConditionPoint[];
+  /** Contagem por condição ANTES do filtro — é o que o seletor precisa para se desenhar. */
+  counts: ConditionCounts;
+  /** Eco do recorte aplicado; `null` quando nenhum foi pedido. */
+  condition: ConditionKind | null;
 }
 
 /** Ponto de uma série já agregado no banco — a unidade que os gráficos consomem. */
@@ -529,6 +613,9 @@ export interface MachineSummaryDto {
   machineType: MachineType;
   /** Segmento de URL do ativo. */
   slug: string;
+  /** Identidade cadastral — a página da máquina é canônica, então ela não omite o cadastro. */
+  createdAt: string;
+  updatedAt: string;
   from: string;
   to: string;
   kpis: {
@@ -544,6 +631,44 @@ export interface MachineSummaryDto {
   };
   lastAt: string | null;
   points: MachinePointSummaryDto[];
+  /** Contagem por condição dos pontos da máquina, antes do filtro. */
+  counts: ConditionCounts;
+  condition: ConditionKind | null;
+}
+
+/** Linha da listagem operacional de máquinas. */
+export interface MachineListItemDto {
+  machineId: string;
+  machineName: string;
+  machineType: MachineType;
+  slug: string;
+  pointCount: number;
+  sensorCount: number;
+  /** Pontos em atenção ou observação — o número que decide se a linha merece um clique. */
+  attentionCount: number;
+  /** Condição da máquina: a pior entre os seus pontos. */
+  condition: ConditionKind;
+  lastAt: string | null;
+  maxDeviationRatio: number | null;
+  maxDeviationPoint: string | null;
+}
+
+export const MACHINE_LIST_SORT_COLUMNS = ['name', 'condition', 'deviation', 'lastAt'] as const;
+export type MachineListSortColumn = (typeof MACHINE_LIST_SORT_COLUMNS)[number];
+
+export interface MachineListResponseDto {
+  from: string;
+  to: string;
+  items: MachineListItemDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  counts: ConditionCounts;
+  condition: ConditionKind | null;
+  search: string | null;
+  sortBy: MachineListSortColumn;
+  sortDir: 'asc' | 'desc';
 }
 
 /** Série disponível num ponto — o inventário de grandezas, sem trazer amostra. */

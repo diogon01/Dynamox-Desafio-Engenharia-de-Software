@@ -29,7 +29,7 @@ import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
-import { StatusTag, statusColor } from '../../components/dashboard/StatusTag';
+import { ConditionTag, conditionColor } from '../../components/condition/ConditionTag';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
 import { DeviationBar } from '../../components/investigation/DeviationBar';
 import { PageHeader } from '../../components/PageHeader';
@@ -112,7 +112,7 @@ export function MonitoringPointPage(): JSX.Element {
         }
         chips={
           <>
-            {point ? <StatusTag kind={point.condition} /> : null}
+            {point ? <ConditionTag kind={point.condition} /> : null}
             <Chip size="small" variant="outlined" label={formatRange(range.from, range.to)} />
             <Chip size="small" variant="outlined" label={TIME_ZONE_LABEL} />
           </>
@@ -261,7 +261,7 @@ export function MonitoringPointPage(): JSX.Element {
                         type="monotone"
                         dataKey="value"
                         name="RMS do bucket"
-                        stroke={statusColor(point.condition, muiTheme.palette)}
+                        stroke={conditionColor(point.condition, muiTheme.palette)}
                         strokeWidth={2}
                         dot={false}
                         isAnimationActive={false}

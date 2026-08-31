@@ -13,7 +13,7 @@ import type { DashboardView } from '../../features/dashboard/dashboardAggregatio
 import { links, type AnalyticsRange } from '../../features/investigation/links';
 import { formatShortDateTime, hourWindow } from '../../features/time/instant';
 import { DashboardCard } from './DashboardCard';
-import { StatusTag } from './StatusTag';
+import { ConditionTag } from '../condition/ConditionTag';
 
 /**
  * Ocorrências recentes — derivadas honestamente do estado disponível: cada item é a
@@ -102,7 +102,7 @@ export function RecentOccurrences({
                     <Typography variant="body2" sx={{ fontWeight: 650 }} noWrap title={row.machineName}>
                       {identity}
                     </Typography>
-                    <StatusTag kind={row.statusKind} label={row.statusLabel} />
+                    <ConditionTag kind={row.statusKind} label={row.statusLabel} />
                   </Stack>
                   <Typography variant="caption" color="text.secondary" component="div" noWrap title={row.message}>
                     {formatShortDateTime(row.timestamp)} · {row.message}

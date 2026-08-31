@@ -1,6 +1,9 @@
 import type {
   AcquisitionDetailDto,
   AcquisitionPageDto,
+  ConditionKind,
+  MachineListResponseDto,
+  MachineListSortColumn,
   MachineSummaryDto,
   FleetConditionResponseDto,
   PointSummaryDto,
@@ -343,15 +346,55 @@ export const api = {
    * Condição da frota calculada no BANCO. Substitui o download das séries radiais inteiras:
    * eram ~840 requisições e centenas de MB para chegar à mesma classificação.
    */
-  fleetCondition: (range: AnalyticsRange, options: { includeTrend?: boolean } = {}) =>
+  fleetCondition: (
+    range: AnalyticsRange,
+    options: { includeTrend?: boolean; condition?: ConditionKind | null } = {},
+  ) =>
     requestJson<FleetConditionResponseDto>(
-      `/analytics/fleet-condition?${rangeQuery(range, options.includeTrend ? { includeTrend: 'true' } : {})}`,
+      `/analytics/fleet-condition?${rangeQuery(range, {
+        ...(options.includeTrend ? { includeTrend: 'true' } : {}),
+        ...(options.condition ? { condition: options.condition } : {}),
+      })}`,
+    ),
+
+  /**
+   * Listagem operacional de máquinas: recorte por condição, busca, ordenação e paginação
+   * resolvidos no servidor. Condição é derivada — não existe coluna para filtrar —, então
+   * é a camada analítica que responde, e não um `filter()` sobre tudo o que foi baixado.
+   */
+  machineList: (
+    range: AnalyticsRange,
+    options: {
+      condition?: ConditionKind | null;
+      search?: string | null;
+      page?: number;
+      pageSize?: number;
+      sortBy?: MachineListSortColumn;
+      sortDir?: 'asc' | 'desc';
+    } = {},
+  ) =>
+    requestJson<MachineListResponseDto>(
+      `/analytics/machines?${rangeQuery(range, {
+        ...(options.condition ? { condition: options.condition } : {}),
+        ...(options.search ? { search: options.search } : {}),
+        ...(options.page ? { page: String(options.page) } : {}),
+        ...(options.pageSize ? { pageSize: String(options.pageSize) } : {}),
+        ...(options.sortBy ? { sortBy: options.sortBy } : {}),
+        ...(options.sortDir ? { sortDir: options.sortDir } : {}),
+      })}`,
     ),
 
   /** Resumo analítico da máquina: cabeçalho, indicadores e uma linha por ponto. */
-  machineSummary: (machineKey: string, range: AnalyticsRange) =>
+  machineSummary: (
+    machineKey: string,
+    range: AnalyticsRange,
+    options: { condition?: ConditionKind | null } = {},
+  ) =>
     requestJson<MachineSummaryDto>(
-      `/analytics/machines/${encodeURIComponent(machineKey)}?${rangeQuery(range)}`,
+      `/analytics/machines/${encodeURIComponent(machineKey)}?${rangeQuery(
+        range,
+        options.condition ? { condition: options.condition } : {},
+      )}`,
     ),
 
   /** Resumo analítico do ponto — o contexto entre o ativo e o sensor. */

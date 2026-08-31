@@ -9,6 +9,7 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@ne
 import type {
   AcquisitionDetailDto,
   AcquisitionPageDto,
+  MachineListResponseDto,
   MachineSummaryDto,
   FleetConditionResponseDto,
   PointSummaryDto,
@@ -17,11 +18,19 @@ import type {
   SeriesPointsResponseDto,
   TimeWindowResponseDto,
 } from '@dynamox/domain';
-import { matchesPointKey, resolveByNaturalKey } from '@dynamox/domain';
+import {
+  CONDITION_KINDS,
+  MACHINE_LIST_SORT_COLUMNS,
+  matchesPointKey,
+  resolveByNaturalKey,
+  type ConditionKind,
+  type MachineListSortColumn,
+} from '@dynamox/domain';
 
 import {
   AcquisitionDetailResponse,
   AcquisitionPageResponse,
+  MachineListResponse,
   MachineSummaryResponse,
   ErrorResponse,
   PointSummaryResponse,
@@ -34,8 +43,11 @@ import {
 import { AnalyticsService } from './analytics.service';
 import {
   ACQUISITIONS_QUERY_KEYS,
-  ASSET_QUERY_KEYS,
+  MACHINE_QUERY_KEYS,
+  POINT_QUERY_KEYS,
   DEFAULT_PAGE_SIZE,
+  MACHINE_LIST_QUERY_KEYS,
+  SORT_DIRECTIONS,
   DEFAULT_SAMPLES_LIMIT,
   FLEET_CONDITION_QUERY_KEYS,
   HEATMAP_QUERY_KEYS,
@@ -79,10 +91,36 @@ export class AnalyticsController {
   @ApiQuery({ name: 'includeTrend', required: false, description: 'Inclui a tendência curta de cada ponto (até 12 buckets das últimas 24 h).', schema: { type: 'boolean', default: false } })
   @ApiResponse({ status: 200, description: 'Condição por ponto monitorado.', type: FleetConditionResponse })
   @ApiResponse({ status: 400, description: 'Janela ausente, invertida, longa demais ou parâmetro desconhecido.', type: ErrorResponse })
+  @ApiQuery({ name: 'condition', required: false, description: 'Recorta os pontos por condição; `counts` continua descrevendo o universo inteiro.', schema: { type: 'string', enum: [...CONDITION_KINDS] } })
   fleetCondition(@Query() query: Record<string, unknown>): Promise<FleetConditionResponseDto> {
     assertKnownKeys(query, FLEET_CONDITION_QUERY_KEYS);
     return this.analytics.fleetCondition(parseTimeRange(query), {
       includeTrend: parseOptionalBoolean(query.includeTrend, 'includeTrend'),
+      condition: parseOptionalEnum<ConditionKind>(query.condition, 'condition', CONDITION_KINDS),
+    });
+  }
+
+  @Get('machines')
+  @ApiOperation({ summary: 'Listagem operacional de máquinas, com recorte por condição' })
+  @ApiQuery({ name: 'from', required: false, description: 'Início da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
+  @ApiQuery({ name: 'to', required: false, description: 'Fim exclusivo da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
+  @ApiQuery({ name: 'condition', required: false, description: 'Recorta pelas máquinas cuja condição (a pior entre os pontos) seja esta.', schema: { type: 'string', enum: [...CONDITION_KINDS] } })
+  @ApiQuery({ name: 'search', required: false, description: 'Busca no nome da máquina, sem distinguir acento nem caixa.', schema: { type: 'string' } })
+  @ApiQuery({ name: 'page', required: false, schema: { type: 'integer', minimum: 1, maximum: MAX_PAGE, default: 1 } })
+  @ApiQuery({ name: 'pageSize', required: false, schema: { type: 'integer', minimum: 1, maximum: MAX_PAGE_SIZE, default: DEFAULT_PAGE_SIZE } })
+  @ApiQuery({ name: 'sortBy', required: false, schema: { type: 'string', enum: [...MACHINE_LIST_SORT_COLUMNS], default: 'name' } })
+  @ApiQuery({ name: 'sortDir', required: false, schema: { type: 'string', enum: [...SORT_DIRECTIONS], default: 'asc' } })
+  @ApiResponse({ status: 200, description: 'Página de máquinas com condição, inventário e maior desvio.', type: MachineListResponse })
+  @ApiResponse({ status: 400, description: 'Janela, recorte ou paginação inválidos.', type: ErrorResponse })
+  machineList(@Query() query: Record<string, unknown>): Promise<MachineListResponseDto> {
+    assertKnownKeys(query, MACHINE_LIST_QUERY_KEYS);
+    return this.analytics.machineList(parseTimeRange(query), {
+      condition: parseOptionalEnum<ConditionKind>(query.condition, 'condition', CONDITION_KINDS),
+      search: parseOptionalString(query.search, 'search', 120),
+      page: parseBoundedInt(query.page, 'page', 1, 1, MAX_PAGE),
+      pageSize: parseBoundedInt(query.pageSize, 'pageSize', DEFAULT_PAGE_SIZE, 1, MAX_PAGE_SIZE),
+      sortBy: parseEnum<MachineListSortColumn>(query.sortBy, 'sortBy', MACHINE_LIST_SORT_COLUMNS, 'name'),
+      sortDir: parseEnum(query.sortDir, 'sortDir', SORT_DIRECTIONS, 'asc'),
     });
   }
 
@@ -90,6 +128,7 @@ export class AnalyticsController {
   @ApiOperation({ summary: 'Resumo analítico de uma máquina e dos seus pontos na janela' })
   @ApiQuery({ name: 'from', required: false, description: 'Início da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
   @ApiQuery({ name: 'to', required: false, description: 'Fim exclusivo da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
+  @ApiQuery({ name: 'condition', required: false, description: 'Recorta os pontos listados; os indicadores continuam descrevendo a máquina inteira.', schema: { type: 'string', enum: [...CONDITION_KINDS] } })
   @ApiResponse({ status: 200, description: 'Máquina, indicadores e pontos monitorados.', type: MachineSummaryResponse })
   @ApiResponse({ status: 400, description: 'Janela inválida ou identificador ambíguo.', type: ErrorResponse })
   @ApiResponse({ status: 404, description: 'Máquina inexistente.', type: ErrorResponse })
@@ -97,9 +136,11 @@ export class AnalyticsController {
     @Param('machineKey') machineKey: string,
     @Query() query: Record<string, unknown>,
   ): Promise<MachineSummaryDto> {
-    assertKnownKeys(query, ASSET_QUERY_KEYS);
+    assertKnownKeys(query, MACHINE_QUERY_KEYS);
     const machine = await this.resolveMachine(machineKey);
-    return this.analytics.machineSummary(machine, parseTimeRange(query));
+    return this.analytics.machineSummary(machine, parseTimeRange(query), {
+      condition: parseOptionalEnum<ConditionKind>(query.condition, 'condition', CONDITION_KINDS),
+    });
   }
 
   @Get('machines/:machineKey/points/:pointKey')
@@ -114,7 +155,7 @@ export class AnalyticsController {
     @Param('pointKey') pointKey: string,
     @Query() query: Record<string, unknown>,
   ): Promise<PointSummaryDto> {
-    assertKnownKeys(query, ASSET_QUERY_KEYS);
+    assertKnownKeys(query, POINT_QUERY_KEYS);
     const machine = await this.resolveMachine(machineKey);
     const points = await this.prisma.monitoringPoint.findMany({
       where: { machineId: machine.id },
@@ -286,9 +327,9 @@ export class AnalyticsController {
    */
   private async resolveMachine(
     machineKey: string,
-  ): Promise<{ id: string; name: string; type: 'PUMP' | 'FAN' }> {
+  ): Promise<{ id: string; name: string; type: 'PUMP' | 'FAN'; createdAt: Date; updatedAt: Date }> {
     const machines = await this.prisma.machine.findMany({
-      select: { id: true, name: true, type: true },
+      select: { id: true, name: true, type: true, createdAt: true, updatedAt: true },
     });
     const resolved = resolveByNaturalKey(machines, machineKey, (machine) => machine.name);
     if (resolved.kind === 'ambiguous') {

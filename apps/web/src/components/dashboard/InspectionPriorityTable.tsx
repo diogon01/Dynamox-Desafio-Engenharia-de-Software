@@ -23,7 +23,7 @@ import { links, type AnalyticsRange } from '../../features/investigation/links';
 import { DeviationBar } from '../investigation/DeviationBar';
 import { TrendSparkline } from '../investigation/TrendSparkline';
 import { DashboardCard } from './DashboardCard';
-import { StatusTag } from './StatusTag';
+import { ConditionTag } from '../condition/ConditionTag';
 
 /**
  * O painel operacional central: ranking denso das prioridades reais de inspeção.
@@ -181,7 +181,7 @@ export function InspectionPriorityTable({
                       )}
                     </TableCell>
                     <TableCell>
-                      <StatusTag kind={cell.condition} />
+                      <ConditionTag kind={cell.condition} />
                     </TableCell>
                     <TableCell
                       align="right"

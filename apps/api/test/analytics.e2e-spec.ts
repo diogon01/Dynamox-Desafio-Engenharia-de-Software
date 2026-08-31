@@ -194,6 +194,80 @@ describe('Analytics (e2e)', () => {
     expect(b.condition).toBe('normal');
   });
 
+  it('lista máquinas com recorte por condição resolvido no servidor', async () => {
+    const listagem = await authed(
+      `/api/analytics/machines?from=${WINDOW_FROM}&to=${WINDOW_TO}&pageSize=100`,
+    ).expect(200);
+
+    const nossa = listagem.body.items.find(
+      (item: { machineName: string }) => item.machineName === `${PREFIX}P-900`,
+    );
+    // A condição da máquina é a PIOR entre os seus pontos, nunca uma média.
+    expect(nossa.condition).toBe('attention');
+    expect(nossa.pointCount).toBe(2);
+    expect(nossa.sensorCount).toBe(2);
+    expect(nossa.attentionCount).toBe(1);
+    expect(nossa.maxDeviationRatio).toBeCloseTo(2, 5);
+    expect(listagem.body.counts.total).toBe(listagem.body.total);
+
+    // O recorte é do servidor: o cliente não recebe o que não pediu.
+    const recorte = await authed(
+      `/api/analytics/machines?from=${WINDOW_FROM}&to=${WINDOW_TO}&condition=attention&pageSize=100`,
+    ).expect(200);
+    expect(
+      recorte.body.items.every((item: { condition: string }) => item.condition === 'attention'),
+    ).toBe(true);
+    expect(recorte.body.items.length).toBeLessThan(listagem.body.items.length);
+    // A contagem continua descrevendo o universo inteiro — é o que o seletor precisa.
+    expect(recorte.body.counts.total).toBe(listagem.body.counts.total);
+
+    // Busca sem acento e sem caixa, ordenação e paginação também no servidor.
+    const busca = await authed(
+      `/api/analytics/machines?from=${WINDOW_FROM}&to=${WINDOW_TO}&search=${PREFIX.toLowerCase()}p-900`,
+    ).expect(200);
+    expect(busca.body.total).toBe(1);
+    expect(busca.body.search).toBe(`${PREFIX.toLowerCase()}p-900`);
+
+    const paginada = await authed(
+      `/api/analytics/machines?from=${WINDOW_FROM}&to=${WINDOW_TO}&page=1&pageSize=1&sortBy=deviation&sortDir=desc`,
+    ).expect(200);
+    expect(paginada.body.items).toHaveLength(1);
+    expect(paginada.body.sortBy).toBe('deviation');
+    expect(paginada.body.totalPages).toBeGreaterThan(1);
+
+    // Vocabulário fechado: "crítico" não existe na regra de condição deste domínio.
+    const invalida = await authed(
+      `/api/analytics/machines?from=${WINDOW_FROM}&to=${WINDOW_TO}&condition=critical`,
+    ).expect(400);
+    expect(invalida.body.code).toBe('INVALID_ANALYTICS_QUERY');
+    await authed(`/api/analytics/machines?from=${WINDOW_FROM}&to=${WINDOW_TO}&sortBy=inventado`).expect(400);
+    await authed('/api/analytics/machines').expect(400);
+  });
+
+  it('o recorte por condição vale para a frota e para os pontos de uma máquina', async () => {
+    const frota = await authed(
+      `/api/analytics/fleet-condition?from=${WINDOW_FROM}&to=${WINDOW_TO}&condition=attention`,
+    ).expect(200);
+    expect(frota.body.points.every((p: { condition: string }) => p.condition === 'attention')).toBe(true);
+    expect(frota.body.condition).toBe('attention');
+    expect(frota.body.counts.total).toBeGreaterThan(frota.body.points.length);
+
+    const maquina = await authed(
+      `/api/analytics/machines/${PREFIX}P-900?from=${WINDOW_FROM}&to=${WINDOW_TO}&condition=attention`,
+    ).expect(200);
+    expect(maquina.body.points).toHaveLength(1);
+    expect(maquina.body.points[0].sensorSerialNumber).toBe(SENSOR_A);
+    // Indicadores continuam descrevendo a máquina inteira, não o recorte.
+    expect(maquina.body.kpis.points).toBe(2);
+    expect(maquina.body.counts.total).toBe(2);
+    expect(maquina.body.counts.attention).toBe(1);
+
+    // O ponto é um só: não faz sentido recortá-lo por condição.
+    await authed(
+      `/api/analytics/machines/${PREFIX}P-900/points/anl-ponto-0?from=${WINDOW_FROM}&to=${WINDOW_TO}&condition=attention`,
+    ).expect(400);
+  });
+
   it('resume o ativo pelo identificador legível, reaproveitando a classificação da frota', async () => {
     const response = await authed(
       `/api/analytics/machines/${PREFIX}P-900?from=${WINDOW_FROM}&to=${WINDOW_TO}`,

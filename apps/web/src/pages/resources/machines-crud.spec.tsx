@@ -145,6 +145,55 @@ const POINT_SUMMARY_SEM_SENSOR = {
   series: [],
 };
 
+/** Listagem como a camada analítica devolve: já recortada, contada e ordenada. */
+function machineListPayload(url: string) {
+  const query = new URL(url, 'http://x').searchParams;
+  const todas = [
+    {
+      machineId: 'm1',
+      machineName: 'P-101',
+      machineType: 'Pump',
+      slug: 'P-101',
+      pointCount: 2,
+      sensorCount: 1,
+      attentionCount: 1,
+      condition: 'attention',
+      lastAt: '2026-08-30T23:00:59.000Z',
+      maxDeviationRatio: 3.49,
+      maxDeviationPoint: 'Mancal lado acoplamento',
+    },
+    {
+      machineId: 'm2',
+      machineName: 'VE-201 — Ventilador de tiragem',
+      machineType: 'Fan',
+      slug: 'VE-201',
+      pointCount: 2,
+      sensorCount: 2,
+      attentionCount: 0,
+      condition: 'normal',
+      lastAt: '2026-08-30T22:00:59.000Z',
+      maxDeviationRatio: 1,
+      maxDeviationPoint: 'Mancal lado acoplamento',
+    },
+  ];
+  const condition = query.get('condition');
+  const items = condition ? todas.filter((item) => item.condition === condition) : todas;
+  return {
+    from: FROM,
+    to: TO,
+    items,
+    total: items.length,
+    page: Number(query.get('page') ?? '1'),
+    pageSize: Number(query.get('pageSize') ?? '25'),
+    totalPages: 1,
+    counts: { total: 2, attention: 1, observation: 0, normal: 1, unclassified: 0, noData: 0, noSensor: 0 },
+    condition,
+    search: query.get('search'),
+    sortBy: query.get('sortBy') ?? 'name',
+    sortDir: query.get('sortDir') ?? 'asc',
+  };
+}
+
 function okJson(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), { status });
 }
@@ -180,6 +229,7 @@ function stubApi(options: StubOptions = {}) {
       return okJson(POINT_SUMMARY_SEM_SENSOR);
     }
     if (url.includes('/analytics/machines/')) return okJson(MACHINE_SUMMARY);
+    if (url.includes('/analytics/machines')) return okJson(machineListPayload(url));
     if (url.includes('/analytics/fleet-condition')) return okJson(CONDITION);
     if (url.includes('/monitoring-points')) {
       return okJson({
@@ -246,21 +296,73 @@ afterEach(() => {
 });
 
 describe('gestão de máquinas', () => {
-  it('lista as máquinas com inventário e condição, e cada linha abre o recurso', async () => {
+  it('lista as máquinas com inventário e condição, e o nome abre o recurso', async () => {
     stubApi();
     renderAt(`/machines?${RANGE}`);
 
     const tabela = await screen.findByRole('table', { name: /Máquinas cadastradas/i });
     const linhas = within(tabela).getAllByRole('row').slice(1);
     expect(linhas).toHaveLength(2);
-    // Pontos, sensores e condição vêm das consultas que já existem — sem endpoint novo.
-    expect(within(linhas[0]).getByText('P-101')).toBeDefined();
+    // A linha responde "essa precisa de mim?": condição, quantos pontos e o maior desvio.
     expect(within(linhas[0]).getByText('Atenção')).toBeDefined();
+    expect(within(linhas[0]).getByText('3,49×')).toBeDefined();
 
-    await userEvent.click(linhas[0]);
+    await userEvent.click(within(linhas[0]).getByRole('link', { name: 'P-101' }));
     await waitFor(() =>
       expect(screen.getByTestId('rota').textContent).toMatch(/^\/machines\/P-101\?from=/),
     );
+  });
+
+  it('o filtro de condição vai para a URL e para a consulta, com as contagens do servidor', async () => {
+    const { calls } = stubApi();
+    renderAt(`/machines?${RANGE}`);
+    await screen.findByRole('table', { name: /Máquinas cadastradas/i });
+
+    // O seletor só oferece estados que existem na janela, com a contagem de cada um.
+    const filtro = screen.getByRole('group', { name: /Filtrar máquinas por condição/i });
+    expect(within(filtro).getByRole('button', { name: /^Todos — 2$/ })).toBeDefined();
+    expect(within(filtro).getByRole('button', { name: /^Atenção — 1$/ })).toBeDefined();
+    expect(within(filtro).queryByRole('button', { name: /Sem sensor/i })).toBeNull();
+
+    await userEvent.click(within(filtro).getByRole('button', { name: /^Atenção — 1$/ }));
+
+    // O recorte é do SERVIDOR: vira parâmetro de consulta, não filter() no navegador.
+    await waitFor(() =>
+      expect(calls.some((call) => call.url.includes('condition=attention'))).toBe(true),
+    );
+    expect(screen.getByTestId('rota').textContent).toContain('condition=attention');
+    await waitFor(() => {
+      const tabela = screen.getByRole('table', { name: /Máquinas cadastradas/i });
+      expect(within(tabela).getAllByRole('row').slice(1)).toHaveLength(1);
+    });
+    // A contagem continua descrevendo o universo inteiro, não o recorte.
+    expect(within(filtro).getByRole('button', { name: /^Todos — 2$/ })).toBeDefined();
+  });
+
+  it('recorte vazio explica o filtro e oferece limpá-lo', async () => {
+    stubApi();
+    renderAt(`/machines?${RANGE}&condition=observation`);
+
+    expect(await screen.findByText(/Nenhuma máquina neste recorte/i)).toBeDefined();
+    await userEvent.click(screen.getByRole('button', { name: /Limpar filtros/i }));
+    await waitFor(() => expect(screen.getByTestId('rota').textContent).not.toContain('condition='));
+  });
+
+  it('busca e ordenação também são resolvidas no servidor', async () => {
+    const { calls } = stubApi();
+    renderAt(`/machines?${RANGE}`);
+    await screen.findByRole('table', { name: /Máquinas cadastradas/i });
+
+    await userEvent.type(screen.getByRole('textbox', { name: /Buscar máquina/i }), 'VE');
+    await waitFor(() => expect(calls.some((call) => call.url.includes('search=VE'))).toBe(true), {
+      timeout: 2000,
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Maior desvio/i }));
+    await waitFor(() =>
+      expect(calls.some((call) => call.url.includes('sortBy=deviation'))).toBe(true),
+    );
+    expect(screen.getByTestId('rota').textContent).toContain('sortBy=deviation');
   });
 
   it('perfil somente leitura não recebe ações de mutação', async () => {
@@ -269,8 +371,14 @@ describe('gestão de máquinas', () => {
 
     await screen.findByRole('table', { name: /Máquinas cadastradas/i });
     expect(screen.queryByRole('link', { name: /Nova máquina/i })).toBeNull();
-    expect(screen.getByRole('button', { name: /Editar P-101/i }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByText(/somente leitura/i)).toBeDefined();
+
+    await userEvent.click(screen.getByRole('button', { name: /Ações de P-101/i }));
+    const menu = await screen.findByRole('menu');
+    // Consultar continua liberado; alterar, não.
+    expect(within(menu).getByRole('menuitem', { name: /Abrir máquina/i }).getAttribute('aria-disabled')).toBeNull();
+    expect(within(menu).getByRole('menuitem', { name: /Editar/i }).getAttribute('aria-disabled')).toBe('true');
+    expect(within(menu).getByRole('menuitem', { name: /Excluir/i }).getAttribute('aria-disabled')).toBe('true');
   });
 
   it('criar envia o cadastro e leva ao detalhe da máquina nova', async () => {
@@ -345,7 +453,8 @@ describe('gestão de máquinas', () => {
     renderAt(`/machines?${RANGE}`);
 
     await screen.findByRole('table', { name: /Máquinas cadastradas/i });
-    await userEvent.click(screen.getByRole('button', { name: /Excluir P-101/i }));
+    await userEvent.click(screen.getByRole('button', { name: /Ações de P-101/i }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Excluir/i }));
 
     const dialogo = await screen.findByRole('dialog');
     // A cascata é regra do backend; a tela a torna visível ANTES do clique.

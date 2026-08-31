@@ -61,6 +61,25 @@ describe('App — autenticação e proteção de rotas', () => {
             JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', bucket: 'hour', expectedSensors: 0, buckets: [] }),
             { status: 200 },
           );
+        // A listagem de máquinas é servida pela camada analítica (condição é derivada).
+        if (url.includes('/analytics/machines'))
+          return new Response(
+            JSON.stringify({
+              from: '2026-08-29T00:00:00.000Z',
+              to: '2026-08-29T12:00:00.000Z',
+              items: [],
+              total: 0,
+              page: 1,
+              pageSize: 25,
+              totalPages: 1,
+              counts: { total: 0, attention: 0, observation: 0, normal: 0, unclassified: 0, noData: 0, noSensor: 0 },
+              condition: null,
+              search: null,
+              sortBy: 'name',
+              sortDir: 'asc',
+            }),
+            { status: 200 },
+          );
         if (url.includes('/monitoring-points'))
           return new Response(
             JSON.stringify({
@@ -115,6 +134,25 @@ describe('App — autenticação e proteção de rotas', () => {
         if (url.includes('/analytics/heatmap'))
           return new Response(
             JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', bucket: 'hour', expectedSensors: 0, buckets: [] }),
+            { status: 200 },
+          );
+        // A listagem de máquinas é servida pela camada analítica (condição é derivada).
+        if (url.includes('/analytics/machines'))
+          return new Response(
+            JSON.stringify({
+              from: '2026-08-29T00:00:00.000Z',
+              to: '2026-08-29T12:00:00.000Z',
+              items: [],
+              total: 0,
+              page: 1,
+              pageSize: 25,
+              totalPages: 1,
+              counts: { total: 0, attention: 0, observation: 0, normal: 0, unclassified: 0, noData: 0, noSensor: 0 },
+              condition: null,
+              search: null,
+              sortBy: 'name',
+              sortDir: 'asc',
+            }),
             { status: 200 },
           );
         if (url.includes('/monitoring-points'))
@@ -176,6 +214,25 @@ describe('App — autenticação e proteção de rotas', () => {
         if (url.includes('/analytics/heatmap'))
           return new Response(
             JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', bucket: 'hour', expectedSensors: 0, buckets: [] }),
+            { status: 200 },
+          );
+        // A listagem de máquinas é servida pela camada analítica (condição é derivada).
+        if (url.includes('/analytics/machines'))
+          return new Response(
+            JSON.stringify({
+              from: '2026-08-29T00:00:00.000Z',
+              to: '2026-08-29T12:00:00.000Z',
+              items: [],
+              total: 0,
+              page: 1,
+              pageSize: 25,
+              totalPages: 1,
+              counts: { total: 0, attention: 0, observation: 0, normal: 0, unclassified: 0, noData: 0, noSensor: 0 },
+              condition: null,
+              search: null,
+              sortBy: 'name',
+              sortDir: 'asc',
+            }),
             { status: 200 },
           );
         if (url.includes('/monitoring-points'))
@@ -279,6 +336,25 @@ describe('AppShell — navegação lateral', () => {
         if (url.includes('/analytics/heatmap'))
           return new Response(
             JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', bucket: 'hour', expectedSensors: 0, buckets: [] }),
+            { status: 200 },
+          );
+        // A listagem de máquinas é servida pela camada analítica (condição é derivada).
+        if (url.includes('/analytics/machines'))
+          return new Response(
+            JSON.stringify({
+              from: '2026-08-29T00:00:00.000Z',
+              to: '2026-08-29T12:00:00.000Z',
+              items: [],
+              total: 0,
+              page: 1,
+              pageSize: 25,
+              totalPages: 1,
+              counts: { total: 0, attention: 0, observation: 0, normal: 0, unclassified: 0, noData: 0, noSensor: 0 },
+              condition: null,
+              search: null,
+              sortBy: 'name',
+              sortDir: 'asc',
+            }),
             { status: 200 },
           );
         if (url.includes('/monitoring-points'))

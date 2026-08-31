@@ -1,11 +1,22 @@
 import Box from '@mui/material/Box';
 import { alpha, useTheme, type Theme } from '@mui/material/styles';
 
-import type { ConditionKind } from '../../features/dashboard/dashboardAggregations';
+import type { ConditionKind } from '@dynamox/domain';
 
-export type StatusTagKind = ConditionKind | 'stale' | 'future';
+/**
+ * CONDIÇÃO ≠ ALERTA.
+ *
+ * O que este componente pinta é o estado DERIVADO da telemetria — a leitura atual contra
+ * uma aquisição de referência. Alerta é outro conceito: evento persistido, com ciclo de
+ * vida próprio, que este produto ainda não tem. Manter os nomes separados agora é o que
+ * evita, depois, uma tela em que "atenção" signifique duas coisas diferentes.
+ *
+ * `stale`/`future` entram aqui porque a interface precisa de um rótulo para recência com
+ * a mesma gramática visual — não porque sejam condições do domínio.
+ */
+export type ConditionTagKind = ConditionKind | 'stale' | 'future';
 
-const LABELS: Record<StatusTagKind, string> = {
+const LABELS: Record<ConditionTagKind, string> = {
   normal: 'Normal',
   observation: 'Observação',
   attention: 'Atenção',
@@ -16,7 +27,7 @@ const LABELS: Record<StatusTagKind, string> = {
   future: 'Relógio divergente',
 };
 
-export function statusColor(kind: StatusTagKind, palette: Theme['palette']): string {
+export function conditionColor(kind: ConditionTagKind, palette: Theme['palette']): string {
   switch (kind) {
     case 'normal':
       return palette.condition.normal;
@@ -36,18 +47,18 @@ export function statusColor(kind: StatusTagKind, palette: Theme['palette']): str
 }
 
 /**
- * Rótulo de estado — é informação, não ação: nunca parece um botão. Cor + texto sempre
- * juntos (cor não é o único canal).
+ * Rótulo de condição — é informação, não ação: nunca parece um botão. Cor + texto sempre
+ * juntos, porque cor não pode ser o único canal.
  */
-export function StatusTag({
+export function ConditionTag({
   kind,
   label,
 }: {
-  kind: StatusTagKind;
+  kind: ConditionTagKind;
   label?: string;
 }): JSX.Element {
   const muiTheme = useTheme();
-  const color = statusColor(kind, muiTheme.palette);
+  const color = conditionColor(kind, muiTheme.palette);
   return (
     <Box
       component="span"

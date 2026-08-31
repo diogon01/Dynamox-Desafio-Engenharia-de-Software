@@ -29,7 +29,15 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
     .addTag('telemetry', 'Ingestão idempotente de ciclos (contrato SCP-04)')
     .addTag('time-series', 'Leitura paginada, métricas e exclusão de séries')
     .addTag('analytics', 'Consultas agregadas por janela temporal para investigação')
-    .addTag('alerts', 'Episódios de alerta persistidos (A1/A2), linha do tempo e reconhecimento')
+    .addTag(
+      'alerts',
+      'Episódios de alerta persistidos (A1/A2) — uma regra da política disparou contra a ' +
+        'BASELINE APRENDIDA do ponto, por leituras consecutivas, e o episódio tem abertura, ' +
+        'escalada, reconhecimento e resolução. Não confundir com a CONDIÇÃO de /analytics, que é ' +
+        'derivada e compara a aquisição atual com a anterior: as duas referências são diferentes e ' +
+        'os números podem divergir legitimamente. O tipo do alerta descreve a regra que disparou, ' +
+        'nunca um diagnóstico — e os alertas de telemetria afirmam ausência de dado, não causa.',
+    )
     .build();
 
   return SwaggerModule.createDocument(app, config);

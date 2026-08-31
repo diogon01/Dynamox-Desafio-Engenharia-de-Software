@@ -58,7 +58,9 @@ export class AlertsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Um episódio de alerta com a regra aplicada e a linha do tempo de transições' })
+  @ApiOperation({
+    summary: 'Um episódio com a regra aplicada, a baseline aprendida do ponto e a linha do tempo de transições',
+  })
   @ApiParam({ name: 'id', description: 'Identificador do alerta.', schema: { type: 'string', format: 'uuid' } })
   @ApiResponse({ status: 200, description: 'Episódio, regra e eventos.', type: AlertDetailResponse })
   @ApiResponse({ status: 400, description: 'INVALID_ALERTS_QUERY (identificador não é UUID).', type: ErrorResponse })

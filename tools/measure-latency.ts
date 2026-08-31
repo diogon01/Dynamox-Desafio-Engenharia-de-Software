@@ -110,6 +110,18 @@ async function main(): Promise<void> {
   }
   const seriesId = series[0].id;
 
+  // As rotas do painel e dos alertas são as que a demonstração usa de fato; um episódio
+  // qualquer serve de amostra para o detalhe (se não houver nenhum, a rota é pulada).
+  const now = new Date();
+  const window7d = new URLSearchParams({
+    from: new Date(now.getTime() - 7 * 86_400_000).toISOString(),
+    to: now.toISOString(),
+  }).toString();
+  const alertsResponse = await fetch(`${BASE_URL}/alerts?pageSize=1`, { headers: AUTH });
+  const alertId = alertsResponse.ok
+    ? (((await alertsResponse.json()) as { items: Array<{ id: string }> }).items[0]?.id ?? null)
+    : null;
+
   // Nomes únicos por execução: duas rodadas seguidas não conflitam entre si.
   const runId = Date.now().toString(36);
   const createdIds: string[] = [];
@@ -139,6 +151,22 @@ async function main(): Promise<void> {
       name: 'GET /time-series/:id/metrics',
       request: () => fetch(`${BASE_URL}/time-series/${seriesId}/metrics`, { headers: AUTH }),
     },
+    {
+      name: 'GET /analytics/fleet-condition (7 d)',
+      request: () => fetch(`${BASE_URL}/analytics/fleet-condition?${window7d}`, { headers: AUTH }),
+    },
+    {
+      name: 'GET /alerts?status=active',
+      request: () => fetch(`${BASE_URL}/alerts?status=active`, { headers: AUTH }),
+    },
+    ...(alertId
+      ? [
+          {
+            name: 'GET /alerts/:id',
+            request: () => fetch(`${BASE_URL}/alerts/${alertId}`, { headers: AUTH }),
+          } satisfies RouteSpec,
+        ]
+      : []),
     {
       name: 'POST /machines (escrita)',
       request: (i) =>

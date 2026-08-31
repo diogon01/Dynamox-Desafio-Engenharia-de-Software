@@ -6,6 +6,35 @@ sozinho. Lido de [`libs/domain/src/alerts.ts`](../../../libs/domain/src/alerts.t
 [`apps/api/src/alerts/`](../../../apps/api/src/alerts/). Por que foi decidido assim:
 [ADR-0011](../06-decisions/adr-0011-condition-policy-and-alert-occurrences.md).
 
+## Do ciclo ao alerta
+
+```
+POST /telemetry-cycles ─► IngestionCycle ─► TimeSeriesSample        (telemetria: o fato medido)
+                                │
+                                ▼
+                      AlertCycleEvidence          RMS radial, temperatura, rpm de UM ciclo.
+                      (cycleId é a PK)            Imutável: calculada uma vez, nunca de novo.
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+        AlertRuleEvaluation           AlertRuleState             Condition (derivada)
+        UNIQUE(cycle, rule,           baseline aprendida,        calculada na consulta
+        policyVersion)                streaks, marca d'água      analítica, não persistida
+        = exactly-once                       │
+                                             ▼
+                                    AlertOccurrence  ──►  AlertEvent
+                                    (episódio A1/A2)      (opened, escalated,
+                                             │             acknowledged, resolved)
+                                             ▼
+                                     GET /alerts · GET /alerts/:id · POST .../acknowledge
+                                             │
+                                             ▼
+                                   UI: /alerts, /alerts/:id, seções e KPI
+
+metadata.history.groundTruth ──► SOMENTE alerts:validate (mede o motor)
+                                 ✗ nunca entra no motor — garantido por leakage.spec.ts
+```
+
 ## Taxonomia — cinco coisas que não são a mesma
 
 | Conceito | O que é | Onde vive | Muda quando |
@@ -118,6 +147,14 @@ Ciclo mais antigo que a marca d'água do ponto (`lastEvaluatedAt`) é registrado
 `metadata.history.groundTruth`, `configuration` e `scenario` do ciclo. Só o CLI de validação
 os lê, para medir o motor; `apps/api/src/alerts/leakage.spec.ts` varre o diretório do motor
 e falha se qualquer arquivo mencionar essas palavras.
+
+## O gatilho consecutivo, em um caso
+
+SIM-HF-005 tem, em 09/08, **uma** aquisição a 2,49× da baseline — um transiente rotulado pelo
+gerador. Ela cruza A1 e A2 com folga e **não abre episódio algum**, porque a leitura seguinte
+volta ao normal e a regra exige duas consecutivas. É a evidência mais direta de por que o
+gatilho existe: sem ele, cada pico isolado viraria um alarme, e o operador aprenderia a
+ignorar a tela. O mesmo mecanismo descarta o pico de 3,59× de SIM-HF-001 em 30/08.
 
 ## Validação contra a verdade-terreno
 

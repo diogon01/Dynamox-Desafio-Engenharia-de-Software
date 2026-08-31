@@ -23,6 +23,15 @@ temporais — frontend React integrado de ponta a ponta a uma API NestJS com Pos
 | Monorepo | Nx 20 sobre npm workspaces | grafo de build `libs → api → web`, cache de alvos |
 | Contratos | JSON Schema + Ajv | contrato de telemetria como fonte única de verdade |
 
+Dois conceitos que a aplicação mantém separados de propósito, e que valem a leitura antes da
+demonstração: **condição** é uma leitura derivada (a aquisição atual contra a anterior,
+recalculável a qualquer momento) e **alerta** é um episódio persistido (uma regra da política
+disparou contra a *baseline aprendida do ponto*, com nível A1/A2, escalada, reconhecimento e
+resolução). Os dois números podem divergir legitimamente — a tela mostra os dois lado a lado
+e explica a diferença. Decisão em
+[ADR-0011](./docs/analysis/06-decisions/adr-0011-condition-policy-and-alert-occurrences.md);
+domínio em [`docs/analysis/03-domain/alert-domain.md`](./docs/analysis/03-domain/alert-domain.md).
+
 A regra central de arquitetura: **o backend é a autoridade**. Toda validação relevante
 (unicidade, regra Pump × sensores, contratos de payload) é aplicada e testada na API e no
 banco; o frontend apenas antecipa mensagens e espelha o estado.
@@ -61,7 +70,28 @@ npm run dev:web               # web em http://localhost:5173
 ```
 
 Todas as variáveis têm padrão local documentado no próprio [`.env.example`](./.env.example)
-(porta do banco, segredo do JWT, credencial do seed). Nenhum segredo real é versionado.
+(porta do banco, segredo do JWT, credenciais do seed, motor de alertas). Nenhum segredo real
+é versionado.
+
+### Demonstração completa, em um comando
+
+O passo a passo acima sobe a aplicação com os dados do seed. Para a demonstração inteira —
+planta com 12 sensores, **30 dias de telemetria (10 M amostras)** e os alertas já
+processados — use o preparador, **com a API parada**:
+
+```bash
+npm run demo:prepare          # banco do zero -> planta -> 30 dias -> alertas -> validação
+npm run demo:verify           # confere os invariantes da demo (use -- --api com a API no ar)
+```
+
+São alguns minutos (a carga passa pelo `POST /telemetry-cycles` real, ciclo a ciclo). O
+script cuida da única ordem que funciona: ele sobe uma API temporária **com o motor de
+alertas desligado** para a carga, derruba-a e só então reprocessa o histórico com
+`alerts:backfill`, que replaya o tempo do dado. Rodar o backfill com a API no ar é recusado
+com uma mensagem explicando por quê. Detalhes e execução manual em
+[`docs/SETUP.md`](./docs/SETUP.md#alertas-motor-backfill-e-validação).
+
+Ao final, suba `dev:api` e `dev:web` normalmente.
 
 ### Credenciais de demonstração
 
@@ -89,7 +119,14 @@ A autorização vive no backend: com o perfil `VIEWER`, qualquer operação de e
 4. **Pontos e sensores**: criar pontos para uma máquina, associar sensor
    (`TcAg`/`TcAs`/`HF+`, modelos proibidos desabilitados para Pump) e navegar na tabela
    paginada de 5 em 5, ordenável por qualquer coluna nos dois sentidos.
-5. **Swagger** (atalho no menu lateral): ingestão de um novo ciclo de telemetria e
+5. **Alertas** (`/alerts`): os episódios abertos pelo motor — A1/A2, com status, tipo,
+   máquina, ponto, sensor e desvio; filtros por status, nível, tipo, máquina e sensor, todos
+   na URL. Abrir um episódio (`/alerts/:id`) responde **por que ele disparou**: leitura,
+   baseline aprendida do ponto, período de aprendizado, limiar, quantas leituras
+   consecutivas, o ciclo que o abriu, a linha do tempo (aberto → escalado → reconhecido →
+   resolvido) e os links para máquina, ponto, sensor e aquisição. **Reconhecer** exige
+   `ADMIN`; o `VIEWER` vê tudo e recebe `403` se tentar.
+6. **Swagger** (atalho no menu lateral): ingestão de um novo ciclo de telemetria e
    demais operações, autenticando pelo botão **Authorize**.
 
 ### Documentação interativa da API
@@ -117,6 +154,7 @@ npm run typecheck             # tsc estrito em todos os projetos
 npm run test                  # suítes API (Jest, contra PostgreSQL real) + web (Vitest)
 npm run build                 # Nx: libs -> api -> web
 npm run contracts:validate    # SCP-04: sintaxe, hash do snapshot público, exemplo × schema
+npm run demo:verify -- --api  # invariantes da demonstração (cadastro, motor, cenários, rotas)
 ```
 
 ## Modelo de domínio

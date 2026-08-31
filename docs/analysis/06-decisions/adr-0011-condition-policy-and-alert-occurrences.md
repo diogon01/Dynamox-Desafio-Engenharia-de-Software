@@ -63,9 +63,13 @@ sensor tem 24 ciclos de fumaça de junho (aprendizado "pelas primeiras 48 h" que
 8. **O motor nunca lê a verdade-terreno do gerador** (`metadata.history.groundTruth`,
    `configuration`, `scenario`); só o CLI de validação a lê, e um teste-guarda varre o
    diretório do motor para garantir isso.
-9. **`GET /alerts?from&to` é interseção**: `openedAt < to AND (resolvedAt IS NULL OR
+9. **Os alertas de telemetria afirmam ausência, nunca causa.** `SENSOR_SILENT` significa "este
+   ponto parou de reportar", não "o sensor quebrou"; `FLEET_SILENT` significa "perda ampla de
+   telemetria", não trip, parada planejada nem falha de gateway. A interface usa esse
+   vocabulário e o tooltip explica o que o alerta **não** afirma.
+10. **`GET /alerts?from&to` é interseção**: `openedAt < to AND (resolvedAt IS NULL OR
    resolvedAt >= from)` — "o que estava acontecendo", não "o que abriu".
-10. **Reconhecer só ADMIN** (regra padrão do guard para mutações), idempotente, permitido em
+11. **Reconhecer só ADMIN** (regra padrão do guard para mutações), idempotente, permitido em
     episódio resolvido; **escalar A1 → A2 limpa o reconhecimento**.
 
 ## Alternativas consideradas
@@ -90,6 +94,12 @@ sensor tem 24 ciclos de fumaça de junho (aprendizado "pelas primeiras 48 h" que
   para um fato operacional ("a planta parou junto") escondem o único caso que importa (um
   sensor mudo sozinho). O colapso de frota é factual; distinguir parada planejada de falha
   de gateway exigiria calendário de operação — fora de escopo, registrado como limitação.
+- **Nomear os alertas de telemetria pela causa** ("sensor com defeito", "parada", "falha de
+  gateway"). Rejeitada: o motor observa AUSÊNCIA de dado e nada mais. A causa pode ser
+  sensor, gateway, rede, energia, máquina parada ou manutenção, e escolher uma delas seria
+  diagnóstico inventado. Daí os rótulos "Ponto sem telemetria" e "Perda ampla de telemetria",
+  e a descrição factual "mais de 50 % dos pontos monitorados deixaram de reportar dentro da
+  janela esperada".
 - **Alerta de RPM / parada inesperada.** Adiado: não há modelo de expectativa operacional
   (rpm 0 não existe no dataset — a parada é ausência de ciclo); seria inventar semântica.
 - **Alerta espectral.** Extension point apenas: o contrato traz RMS por janela de 1 s, não

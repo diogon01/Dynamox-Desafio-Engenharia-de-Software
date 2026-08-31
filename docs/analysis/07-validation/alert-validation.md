@@ -1,11 +1,23 @@
 # Validação do motor de alertas contra a verdade-terreno sintética
 
-Gerado em 2026-08-31 14:09 UTC pelo `npm run alerts:validate` — regras `telemetry-presence` v1, `temperature-delta` v1, `vibration-radial` v1.
+Gerado em 2026-08-31 14:36 UTC pelo `npm run alerts:validate` — regras `telemetry-presence` v1, `temperature-delta` v1, `vibration-radial` v1.
 Universo rotulado: **33.552 ciclos `dataset:history`** de 12 sensores; ocorrências no banco: **12** (3 ativas).
 
-O motor nunca lê o rótulo; este relatório o lê para medir o motor. "FP-antecipado" é um ciclo já em
-degradação (`fault=true`) que o rótulo ainda não chama de alerta — o motor viu antes; "FP-sadio" é
-alarme em máquina sadia, o único falso positivo de fato.
+O motor nunca lê o rótulo; este relatório o lê para medir o motor.
+
+**Como ler as colunas de falso positivo.** Elas medem coisas diferentes e não devem ser somadas:
+
+- **FP-antecipado** — o motor abriu alerta num ciclo que o gerador marca como `fault=true`
+  (degradação já em curso), mas cujo rótulo `expectedAlert` ainda é `false`. O defeito existe; o
+  que diverge é o instante em que cada um chama aquilo de alerta. **Não é falso alarme** — é
+  detecção antecipada, e é o comportamento desejado de uma baseline de comissionamento.
+- **FP-sadio** — alerta em ciclo com `fault=false`. Esse sim é falso alarme, e é a coluna que
+  precisa ficar em zero.
+
+Os falsos negativos também são declarados, não escondidos: onde o limiar da política v1 é mais
+exigente que o limiar didático do gerador, o motor demora mais a abrir e a diferença aparece como FN.
+Nenhum limiar foi ajustado para zerar esta matriz — o objetivo é explicar o comportamento, não
+fabricar 100 % de acerto.
 
 ## Matriz de confusão por sensor (alertas de condição)
 
@@ -17,6 +29,10 @@ alarme em máquina sadia, o único falso positivo de fato.
 | **todos** | **temperatura** | **505** | **0** | **0** | **33016** | **31** | | | |
 
 Sensores sem qualquer alerta de condição esperado nem previsto: SIM-HF-001, SIM-HF-003, SIM-HF-004, SIM-HF-005, SIM-HF-006, SIM-HF-008, SIM-TCAG-001, SIM-TCAG-002, SIM-TCAS-001, SIM-TCAS-002.
+
+## O gatilho consecutivo (SIM-HF-005)
+
+SIM-HF-005 tem um transiente isolado no mês e **nenhum** episódio de vibração persistido: um pico único cruza o limiar e é descartado porque a leitura seguinte volta ao normal. É o gatilho de duas leituras consecutivas fazendo exatamente o que existe para fazer.
 
 ## Episódios de condição
 

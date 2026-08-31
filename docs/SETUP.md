@@ -385,6 +385,26 @@ supervisor do twin e o dashboard degradam — de propósito. Os gargalos exposto
 da próxima fase estão em
 [`analysis/07-validation/testing-strategy.md`](analysis/07-validation/testing-strategy.md#bottlenecks-expostos-pelo-histórico-e-direção-da-próxima-fase).
 
+## Preparação da demonstração (caminho recomendado)
+
+Um comando, na ordem que funciona, **com a API parada**:
+
+```bash
+npm run demo:prepare                       # tudo: banco, planta, 30 dias, alertas, validação
+npm run demo:prepare -- --skip-history     # sem o mês sintético (rápido, para conferir a UI)
+npm run demo:prepare -- --skip-reset       # mantém o banco atual e só recarrega/reprocessa
+npm run demo:verify                        # invariantes; -- --api inclui as rotas HTTP
+```
+
+O script sobe uma **API temporária com `ALERTS_EVALUATE_ON_INGEST=false` e sem varredura de
+presença** para a carga, derruba-a e só então roda `alerts:backfill`. Essa é a única ordem
+correta, e é a armadilha que ele existe para eliminar: o motor online avalia pelo relógio de
+parede, então avaliar trinta dias de histórico ao vivo produziria episódios datados de hoje.
+Qualquer passo que falhe interrompe a preparação com o código de saída do comando — nada é
+mascarado.
+
+Ao final: `npm run dev:api` e `npm run dev:web`.
+
 ## Alertas: motor, backfill e validação
 
 O motor avalia cada ciclo logo depois do commit da ingestão e varre a presença por timer

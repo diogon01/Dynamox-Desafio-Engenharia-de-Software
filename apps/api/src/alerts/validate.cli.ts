@@ -192,9 +192,21 @@ async function main(): Promise<void> {
     push(`Universo rotulado: **${totalLabeled.toLocaleString('pt-BR')} ciclos \`dataset:history\`** de ${serials.length} sensores; ` +
       `ocorrências no banco: **${occurrences.length}** (${occurrences.filter((o) => o.state === 'ACTIVE').length} ativas).`);
     push();
-    push('O motor nunca lê o rótulo; este relatório o lê para medir o motor. "FP-antecipado" é um ciclo já em');
-    push('degradação (`fault=true`) que o rótulo ainda não chama de alerta — o motor viu antes; "FP-sadio" é');
-    push('alarme em máquina sadia, o único falso positivo de fato.');
+    push('O motor nunca lê o rótulo; este relatório o lê para medir o motor.');
+    push('');
+    push('**Como ler as colunas de falso positivo.** Elas medem coisas diferentes e não devem ser somadas:');
+    push('');
+    push('- **FP-antecipado** — o motor abriu alerta num ciclo que o gerador marca como `fault=true`');
+    push('  (degradação já em curso), mas cujo rótulo `expectedAlert` ainda é `false`. O defeito existe; o');
+    push('  que diverge é o instante em que cada um chama aquilo de alerta. **Não é falso alarme** — é');
+    push('  detecção antecipada, e é o comportamento desejado de uma baseline de comissionamento.');
+    push('- **FP-sadio** — alerta em ciclo com `fault=false`. Esse sim é falso alarme, e é a coluna que');
+    push('  precisa ficar em zero.');
+    push('');
+    push('Os falsos negativos também são declarados, não escondidos: onde o limiar da política v1 é mais');
+    push('exigente que o limiar didático do gerador, o motor demora mais a abrir e a diferença aparece como FN.');
+    push('Nenhum limiar foi ajustado para zerar esta matriz — o objetivo é explicar o comportamento, não');
+    push('fabricar 100 % de acerto.');
     push();
     push('## Matriz de confusão por sensor (alertas de condição)');
     push();
@@ -223,6 +235,20 @@ async function main(): Promise<void> {
     });
     push(`Sensores sem qualquer alerta de condição esperado nem previsto: ${healthy.length ? healthy.join(', ') : 'nenhum'}.`);
     push();
+
+    // Um caso vale mais que a matriz: o transiente que NÃO virou alerta.
+    const transientCycles = cycles.filter((cycle) => cycle.serial === 'SIM-HF-005');
+    const transientEpisodes = occurrences.filter((o) => o.sensorSerialNumber === 'SIM-HF-005' && o.type === 'VIBRATION_THRESHOLD');
+    if (transientCycles.length > 0) {
+      push('## O gatilho consecutivo (SIM-HF-005)');
+      push();
+      push(
+        `SIM-HF-005 tem um transiente isolado no mês e **${transientEpisodes.length === 0 ? 'nenhum' : String(transientEpisodes.length)}** ` +
+          'episódio de vibração persistido: um pico único cruza o limiar e é descartado porque a leitura seguinte volta ao ' +
+          'normal. É o gatilho de duas leituras consecutivas fazendo exatamente o que existe para fazer.',
+      );
+      push();
+    }
 
     push('## Episódios de condição');
     push();

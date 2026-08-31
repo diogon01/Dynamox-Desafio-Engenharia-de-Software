@@ -56,7 +56,9 @@ const ALERT = {
 
 /** Tokens de layout do dashboard: uma fonte só para dimensões repetidas. */
 const DASHBOARD = {
-  sidebarWidth: 232,
+  // Dois níveis de texto por item (destino + para que serve) precisam de largura para não
+  // truncar; 264 px acomoda a descrição mais longa sem roubar área do conteúdo.
+  sidebarWidth: 264,
   appBarHeight: 56,
   pagePaddingX: { xs: 16, md: 24 },
   gridGap: 14,

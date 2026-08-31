@@ -1,5 +1,6 @@
 import ApiOutlinedIcon from '@mui/icons-material/ApiOutlined';
 import NotificationsActiveOutlinedIcon from '@mui/icons-material/NotificationsActiveOutlined';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PrecisionManufacturingOutlinedIcon from '@mui/icons-material/PrecisionManufacturingOutlined';
 import SensorsOutlinedIcon from '@mui/icons-material/SensorsOutlined';
 import SpaceDashboardOutlinedIcon from '@mui/icons-material/SpaceDashboardOutlined';
@@ -11,60 +12,120 @@ import List from '@mui/material/List';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemIcon from '@mui/material/ListItemIcon';
 import ListItemText from '@mui/material/ListItemText';
-import ListSubheader from '@mui/material/ListSubheader';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
-import { alpha, useTheme } from '@mui/material/styles';
+import { alpha, useTheme, type Theme } from '@mui/material/styles';
 import { Suspense, useState, type ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
 
 import { LoadingState } from '@dynamox/ui';
 
 import { API_BASE_URL } from '../api/client';
+import { NAV_GROUPS, isNavItemActive, type NavItem } from '../features/navigation/navigation';
 import { AppHeader } from './AppHeader';
 
+/**
+ * Um ícone por destino, ao lado do destino — o vocabulário visual mora aqui, a arquitetura
+ * de navegação mora em `features/navigation`. Semelhantes usam o mesmo ícone: ponto e sensor
+ * são a mesma família de "o que mede".
+ */
+const NAV_ICONS: Record<string, ReactNode> = {
+  '/': <SpaceDashboardOutlinedIcon />,
+  '/alerts': <NotificationsActiveOutlinedIcon />,
+  '/machines': <PrecisionManufacturingOutlinedIcon />,
+  '/monitoring-points': <SensorsOutlinedIcon />,
+};
 
-
-interface NavItem {
-  to: string;
-  label: string;
-  description: string;
-  icon: ReactNode;
+/** Rótulo de seção: presente para orientar, discreto para não competir com os destinos. */
+function SectionLabel({ id, children }: { id: string; children: string }): JSX.Element {
+  return (
+    <Typography
+      id={id}
+      variant="overline"
+      component="h2"
+      color="text.secondary"
+      sx={{ display: 'block', px: 1.75, pb: 0.5, fontSize: '0.63rem', letterSpacing: 0.9 }}
+    >
+      {children}
+    </Typography>
+  );
 }
 
-/** Ícone + rótulo + descrição de uma linha, como no shell de referência. */
-const NAV_ITEMS: NavItem[] = [
-  {
-    to: '/',
-    label: 'Visão geral',
-    description: 'Condição, prioridade e tendência',
-    icon: <SpaceDashboardOutlinedIcon />,
+/**
+ * Estado do item de navegação. O ativo se anuncia por quatro canais somados — trilho lateral,
+ * fundo tonal, ícone colorido e peso do texto —, porque cor sozinha não é acessível e um
+ * botão inteiro preenchido gritaria mais que o conteúdo da página.
+ */
+const navItemSx = (theme: Theme) => ({
+  position: 'relative' as const,
+  minHeight: 46,
+  borderRadius: 2,
+  px: 1.75,
+  py: 0.85,
+  mb: 0.25,
+  color: 'text.primary',
+  '& .MuiListItemIcon-root': { minWidth: 32, color: 'text.secondary', '& svg': { fontSize: 19 } },
+  '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.06) },
+  '&:focus-visible': {
+    outline: `2px solid ${alpha(theme.palette.primary.main, 0.6)}`,
+    outlineOffset: -2,
   },
-  {
-    to: '/alerts',
-    label: 'Alertas',
-    description: 'Episódios A1/A2 abertos pelo motor',
-    icon: <NotificationsActiveOutlinedIcon />,
+  '&.active': {
+    bgcolor: alpha(theme.palette.primary.main, 0.1),
+    '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.15) },
+    '& .MuiListItemIcon-root': { color: 'primary.main' },
+    '& .MuiListItemText-primary': { fontWeight: 750, color: 'primary.dark' },
+    // Trilho: identifica o item ativo mesmo em escala de cinza.
+    '&::before': {
+      content: '""',
+      position: 'absolute',
+      left: 6,
+      top: 9,
+      bottom: 9,
+      width: 3,
+      borderRadius: 999,
+      bgcolor: 'primary.main',
+    },
   },
-  {
-    to: '/machines',
-    label: 'Máquinas',
-    description: 'Cadastro e operação dos ativos',
-    icon: <PrecisionManufacturingOutlinedIcon />,
-  },
-  {
-    to: '/monitoring-points',
-    label: 'Pontos e sensores',
-    description: 'Registro de toda a planta, com busca',
-    icon: <SensorsOutlinedIcon />,
-  },
-];
+});
+
+function ariaCurrent(item: NavItem, pathname: string): 'page' | 'true' | undefined {
+  if (pathname === item.to) return 'page';
+  return isNavItemActive(item, pathname) ? 'true' : undefined;
+}
+
+const primaryTypographyProps = { fontWeight: 650, fontSize: '0.78rem', lineHeight: 1.3 } as const;
+const secondaryTypographyProps = { variant: 'caption', sx: { lineHeight: 1.3 } } as const;
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Element {
+  const { pathname } = useLocation();
+
   return (
-    <Box sx={(muiTheme) => ({ width: muiTheme.dashboard.sidebarWidth, display: 'flex', flexDirection: 'column', height: '100%' })}>
-      <Stack direction="row" spacing={1.25} alignItems="center" sx={{ px: 2, py: 1.75 }}>
+    <Box
+      sx={(muiTheme) => ({
+        width: muiTheme.dashboard.sidebarWidth,
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+      })}
+    >
+      {/* MARCA — identifica o produto e volta ao início; compacta, nunca um hero. */}
+      <Stack
+        component={RouterLink}
+        to="/"
+        onClick={onNavigate}
+        direction="row"
+        spacing={1.25}
+        alignItems="center"
+        sx={{
+          px: 2,
+          py: 1.75,
+          textDecoration: 'none',
+          color: 'inherit',
+          '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
+        }}
+      >
         <Avatar
           variant="rounded"
           sx={{
@@ -79,11 +140,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Elemen
         >
           DX
         </Avatar>
-        <Box>
-          <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: 0.45 }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: 0.45 }} component="div" noWrap>
             CONDITION MONITORING
           </Typography>
-          <Typography variant="subtitle2" sx={{ lineHeight: 1.2 }}>
+          <Typography variant="subtitle2" sx={{ lineHeight: 1.2 }} noWrap>
             Desafio Dynamox
           </Typography>
         </Box>
@@ -91,73 +152,82 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Elemen
 
       <Divider sx={{ mx: 2 }} />
 
-      <List
-        component="nav"
-        aria-label="Navegação principal"
-        sx={{ px: 1.25, py: 1.25, flexGrow: 1 }}
-        subheader={
-          <ListSubheader disableSticky sx={{ bgcolor: 'transparent', lineHeight: 2.7, px: 1.5, fontSize: '0.68rem' }}>
-            Monitoramento
-          </ListSubheader>
-        }
-      >
-        {NAV_ITEMS.map((item) => (
-            <ListItemButton
-              key={item.to}
-              component={NavLink}
-              to={item.to}
-              end={item.to === '/'}
-              onClick={onNavigate}
-              sx={(theme) => ({
-                mb: 0.35,
-                minHeight: 54,
-                px: 1.5,
-                '&.active': {
-                  bgcolor: alpha(theme.palette.primary.main, 0.1),
-                  boxShadow: `inset 3px 0 0 ${theme.palette.primary.main}`,
-                  '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.16) },
-                  '& .MuiListItemIcon-root': { color: 'primary.main' },
-                  '& .MuiListItemText-primary': { fontWeight: 700 },
-                },
-              })}
-            >
-              <ListItemIcon sx={{ minWidth: 36, '& svg': { fontSize: 18 } }}>
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText
-                primary={item.label}
-                secondary={item.description}
-                primaryTypographyProps={{ fontWeight: 650, fontSize: '0.76rem' }}
-                secondaryTypographyProps={{ variant: 'caption' }}
-              />
-            </ListItemButton>
-          ))}
+      {/*
+        Uma landmark de navegação só, com os grupos dentro: quem usa leitor de tela pula para
+        "navegação principal" uma vez e ouve as seções, em vez de tropeçar em duas landmarks.
+      */}
+      <Box component="nav" aria-label="Navegação principal" sx={{ px: 1, pt: 1.5, flexGrow: 1, overflowY: 'auto' }}>
+        {NAV_GROUPS.map((group, index) => (
+          <Box key={group.id} sx={{ mb: index === NAV_GROUPS.length - 1 ? 0 : 2 }}>
+            <SectionLabel id={`nav-group-${group.id}`}>{group.label}</SectionLabel>
+            <List disablePadding aria-labelledby={`nav-group-${group.id}`}>
+              {group.items.map((item) => (
+                <ListItemButton
+                  key={item.to}
+                  /*
+                   * `Link`, não `NavLink`: o NavLink calcularia o próprio "ativo" a partir do
+                   * prefixo da rota e só então emitiria `aria-current` — o que discordaria do
+                   * destaque visual justamente nas rotas de investigação, que vivem fora do
+                   * prefixo. Uma fonte de verdade só: `isNavItemActive`.
+                   */
+                  component={RouterLink}
+                  to={item.to}
+                  className={isNavItemActive(item, pathname) ? 'active' : undefined}
+                  /*
+                   * "page" só onde a pessoa realmente está; "true" quando o item é o ramo que
+                   * contém a página (um sensor está sob Máquinas, mas não É a página Máquinas).
+                   */
+                  aria-current={ariaCurrent(item, pathname)}
+                  onClick={onNavigate}
+                  sx={navItemSx}
+                >
+                  <ListItemIcon>{NAV_ICONS[item.to]}</ListItemIcon>
+                  <ListItemText
+                    primary={item.label}
+                    secondary={item.description}
+                    primaryTypographyProps={primaryTypographyProps}
+                    secondaryTypographyProps={secondaryTypographyProps}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
+          </Box>
+        ))}
+      </Box>
 
-        <ListSubheader disableSticky sx={{ bgcolor: 'transparent', lineHeight: 2.2, px: 1.5, mt: -1.1, fontSize: '0.68rem' }}>
-          Ferramentas
-        </ListSubheader>
-        <ListItemButton
-          component="a"
-          href={`${API_BASE_URL}/docs`}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <ListItemIcon sx={{ minWidth: 36, '& svg': { fontSize: 18 } }}>
-            <ApiOutlinedIcon />
-          </ListItemIcon>
-          <ListItemText
-            primary="API (Swagger)"
-            secondary="Documentação interativa"
-            primaryTypographyProps={{ fontWeight: 650, fontSize: '0.76rem' }}
-            secondaryTypographyProps={{ variant: 'caption' }}
-          />
-        </ListItemButton>
-      </List>
+      {/*
+        RODAPÉ — ferramenta de desenvolvimento e a ressalva sobre os dados. Ficam fora da
+        navegação de operação de propósito: nenhum dos dois é um destino do trabalho diário.
+        Usuário, perfil e sair já vivem no cabeçalho; duplicá-los aqui só ocuparia espaço.
+      */}
+      <Box sx={{ px: 1, pb: 0.5 }}>
+        <Divider sx={{ mx: 1, mb: 1 }} />
+        <List disablePadding>
+          <ListItemButton
+            component="a"
+            href={`${API_BASE_URL}/docs`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="API (Swagger) — documentação interativa, abre em nova aba"
+            sx={navItemSx}
+          >
+            <ListItemIcon>
+              <ApiOutlinedIcon />
+            </ListItemIcon>
+            <ListItemText
+              primary="API (Swagger)"
+              secondary="Documentação interativa"
+              primaryTypographyProps={primaryTypographyProps}
+              secondaryTypographyProps={secondaryTypographyProps}
+            />
+            <OpenInNewIcon aria-hidden sx={{ fontSize: 14, color: 'text.disabled', ml: 0.5 }} />
+          </ListItemButton>
+        </List>
+      </Box>
 
-      <Divider sx={{ mx: 2 }} />
-      <Typography variant="caption" color="text.secondary" sx={{ p: 2, pt: 1.25 }}>
-        Dados sintéticos de demonstração. A aplicação nunca acessa a plataforma produtiva
-        da Dynamox.
+      <Typography variant="caption" color="text.secondary" sx={{ px: 2, pb: 2, pt: 0.5 }}>
+        Dados sintéticos de demonstração. A aplicação nunca acessa a plataforma produtiva da
+        Dynamox.
       </Typography>
     </Box>
   );

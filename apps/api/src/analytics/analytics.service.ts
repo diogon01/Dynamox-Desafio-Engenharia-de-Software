@@ -1,0 +1,596 @@
+/**
+ * Camada analítica: consulta recortada, agregação no PostgreSQL, DTO pequeno.
+ *
+ * Regra do módulo: nenhuma resposta daqui pode crescer com o tamanho do histórico.
+ * Quem quiser telemetria bruta usa as rotas de amostras, sempre paginadas.
+ */
+import { Injectable, Logger } from '@nestjs/common';
+import type {
+  AcquisitionDetailDto,
+  AcquisitionPageDto,
+  ConditionKind,
+  HeatmapResponseDto,
+  RawSamplePageDto,
+  TimeWindowResponseDto,
+  FleetConditionPoint,
+  FleetConditionResponseDto,
+  FreshnessKind,
+  SeriesPointsResponseDto,
+} from '@dynamox/domain';
+import { toDomainAxis, toDomainPhysicalQuantity } from '../telemetry/telemetry.mappers';
+
+import { toDomainMachineType } from '../common/machine-type.mapper';
+import { toDomainSensorModel } from '../common/sensor-model.mapper';
+import { PrismaService } from '../prisma/prisma.service';
+import type { TimeRange } from './analytics.dto';
+import {
+  acquisitionSamplesSql,
+  acquisitionSeriesSql,
+  fleetConditionSql,
+  heatmapSql,
+  sensorAcquisitionsCountSql,
+  sensorAcquisitionsSql,
+  seriesPointsSql,
+  seriesStatsSql,
+  timeWindowSql,
+  type HeatmapBucket,
+  type SeriesBucket,
+} from './analytics.sql';
+
+/** Limiares didáticos — os MESMOS que o painel aplicava no cliente. */
+export const ATTENTION_RATIO = 2;
+export const OBSERVATION_RATIO = 1.5;
+export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
+export const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+
+interface TimeWindowRow {
+  serial: string;
+  model: 'TC_AG' | 'TC_AS' | 'HF_PLUS';
+  series_id: string;
+  point_name: string | null;
+  point_id: string | null;
+  machine_name: string | null;
+  machine_type: 'PUMP' | 'FAN' | null;
+  samples: bigint | null;
+  acquisitions: bigint | null;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  last_at: Date | null;
+  last_value: number | null;
+}
+
+interface AcquisitionRow {
+  cycle_id: string;
+  external_cycle_id: string | null;
+  sample_count: number;
+  measurement_count: number;
+  configuration: unknown;
+  metadata: unknown;
+  tags: string[];
+  ingested_at: Date;
+  started_at: Date | null;
+  ended_at: Date | null;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  samples: bigint | null;
+}
+
+interface AcquisitionSeriesRow {
+  series_id: string;
+  physical_quantity: 'ACCELERATION' | 'VELOCITY' | 'TEMPERATURE' | 'ROTATIONAL_SPEED';
+  axis: 'X' | 'Y' | 'Z' | 'NONE';
+  unit: string;
+  samples: bigint;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  rms: number | null;
+  started_at: Date | null;
+  ended_at: Date | null;
+}
+
+interface RawSampleRow {
+  id: string;
+  timestamp: Date;
+  value: number;
+  physical_quantity: 'ACCELERATION' | 'VELOCITY' | 'TEMPERATURE' | 'ROTATIONAL_SPEED';
+  axis: 'X' | 'Y' | 'Z' | 'NONE';
+  unit: string;
+}
+
+/** Cursor keyset opaco: instante + id da última linha entregue. */
+export function encodeCursor(timestamp: Date, id: string): string {
+  return Buffer.from(`${timestamp.toISOString()}|${id}`).toString('base64url');
+}
+
+export function decodeCursor(cursor: string | null): { timestamp: Date; id: string } | null {
+  if (!cursor) return null;
+  const [timestamp, id] = Buffer.from(cursor, 'base64url').toString('utf8').split('|');
+  const parsed = Date.parse(timestamp ?? '');
+  if (!Number.isFinite(parsed) || !id) return null;
+  return { timestamp: new Date(parsed), id };
+}
+
+interface HeatmapRow {
+  day: Date;
+  hour: number;
+  samples: bigint;
+  acquisitions: string | number;
+  sensors: bigint;
+}
+
+interface SeriesPointRow {
+  bucket_start: Date;
+  samples: bigint;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+  last_at: Date | null;
+  acquisitions: bigint;
+}
+
+interface SeriesStatsRow {
+  samples: bigint;
+  acquisitions: bigint;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  first_at: Date | null;
+  last_at: Date | null;
+}
+
+interface FleetConditionRow {
+  machine_name: string;
+  machine_type: 'PUMP' | 'FAN';
+  monitoring_point_id: string;
+  monitoring_point_name: string;
+  sensor_serial: string | null;
+  sensor_model: 'TC_AG' | 'TC_AS' | 'HF_PLUS' | null;
+  current_rms: number | null;
+  baseline_rms: number | null;
+  current_at: Date | null;
+  baseline_at: Date | null;
+  current_samples: bigint | null;
+  current_cycle_id: string | null;
+  baseline_cycle_id: string | null;
+  last_seen_at: Date | null;
+}
+
+export function classifyFreshness(at: Date | null, nowMs: number): FreshnessKind {
+  if (!at) return 'unknown';
+  const age = nowMs - at.getTime();
+  if (age < -FUTURE_TOLERANCE_MS) return 'future';
+  if (age > STALE_AFTER_MS) return 'stale';
+  return 'current';
+}
+
+export function classifyCondition(
+  hasSensor: boolean,
+  hasReading: boolean,
+  ratio: number | null,
+): ConditionKind {
+  if (!hasSensor) return 'no-sensor';
+  if (!hasReading) return 'no-data';
+  if (ratio === null || !Number.isFinite(ratio)) return 'unclassified';
+  if (ratio >= ATTENTION_RATIO) return 'attention';
+  if (ratio >= OBSERVATION_RATIO) return 'observation';
+  return 'normal';
+}
+
+@Injectable()
+export class AnalyticsService {
+  private readonly logger = new Logger(AnalyticsService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** Observabilidade barata: endpoint, duração e itens devolvidos, sem instrumentação nova. */
+  private async measured<T>(label: string, run: () => Promise<T>, size: (result: T) => number): Promise<T> {
+    const startedAt = Date.now();
+    const result = await run();
+    this.logger.debug(`${label} · ${Date.now() - startedAt} ms · ${size(result)} item(s)`);
+    return result;
+  }
+
+  async fleetCondition(range: TimeRange, nowMs = Date.now()): Promise<FleetConditionResponseDto> {
+    return this.measured(
+      'analytics/fleet-condition',
+      async () => {
+        const rows = await this.prisma.$queryRaw<FleetConditionRow[]>(
+          fleetConditionSql(range.from, range.to),
+        );
+
+        const points: FleetConditionPoint[] = rows.map((row) => {
+          const hasSensor = row.sensor_serial !== null;
+          const currentValue = row.current_rms;
+          const baselineValue = row.baseline_rms;
+          const ratio =
+            currentValue !== null && baselineValue !== null && baselineValue > 0
+              ? currentValue / baselineValue
+              : null;
+
+          return {
+            machineName: row.machine_name,
+            machineType: toDomainMachineType(row.machine_type),
+            monitoringPointId: row.monitoring_point_id,
+            monitoringPointName: row.monitoring_point_name,
+            sensorSerialNumber: row.sensor_serial,
+            sensorModel: row.sensor_model ? toDomainSensorModel(row.sensor_model) : null,
+            condition: classifyCondition(hasSensor, currentValue !== null, ratio),
+            freshness: classifyFreshness(row.last_seen_at ?? row.current_at, nowMs),
+            currentValue,
+            baselineValue,
+            deviationRatio: ratio,
+            currentAt: row.current_at?.toISOString() ?? null,
+            baselineAt: row.baseline_at?.toISOString() ?? null,
+            // count(*) chega como bigint: sem Number() o JSON da resposta quebraria.
+            currentSampleCount: row.current_samples === null ? null : Number(row.current_samples),
+            currentCycleId: row.current_cycle_id,
+            baselineCycleId: row.baseline_cycle_id,
+            unit: 'g',
+          };
+        });
+
+        return {
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          generatedAt: new Date(nowMs).toISOString(),
+          points,
+        };
+      },
+      (result) => result.points.length,
+    );
+  }
+
+  /**
+   * Série agregada por bucket + estatísticas da janela. Nenhuma amostra bruta sai daqui:
+   * um gráfico de 30 dias recebe ~180 pontos, não as ~170 mil amostras do período.
+   */
+  async seriesPoints(
+    seriesId: string,
+    range: TimeRange,
+    bucket: SeriesBucket,
+  ): Promise<SeriesPointsResponseDto> {
+    return this.measured(
+      `analytics/series-points bucket=${bucket}`,
+      async () => {
+        const [points, stats] = await this.prisma.$transaction([
+          this.prisma.$queryRaw<SeriesPointRow[]>(
+            seriesPointsSql(seriesId, range.from, range.to, bucket),
+          ),
+          this.prisma.$queryRaw<SeriesStatsRow[]>(seriesStatsSql(seriesId, range.from, range.to)),
+        ]);
+        const summary = stats[0];
+
+        return {
+          seriesId,
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          bucket,
+          stats: {
+            sampleCount: Number(summary?.samples ?? 0),
+            acquisitionCount: Number(summary?.acquisitions ?? 0),
+            min: summary?.min ?? null,
+            max: summary?.max ?? null,
+            avg: summary?.avg ?? null,
+            firstAt: summary?.first_at?.toISOString() ?? null,
+            lastAt: summary?.last_at?.toISOString() ?? null,
+          },
+          points: points.map((row) => ({
+            bucketStart: row.bucket_start.toISOString(),
+            sampleCount: Number(row.samples),
+            acquisitionCount: Number(row.acquisitions),
+            avg: row.avg,
+            min: row.min,
+            max: row.max,
+            lastAt: row.last_at?.toISOString() ?? null,
+          })),
+        };
+      },
+      (result) => result.points.length,
+    );
+  }
+
+  /**
+   * Mapa de atividade da frota por bucket. A série âncora (aceleração Y) de cada sensor
+   * representa a aquisição; a resposta tem no máximo dias × 24 células, independentemente
+   * de quantas amostras existam na janela.
+   */
+  async heatmap(range: TimeRange, bucket: HeatmapBucket): Promise<HeatmapResponseDto> {
+    return this.measured(
+      `analytics/heatmap bucket=${bucket}`,
+      async () => {
+        const anchors = await this.prisma.timeSeries.findMany({
+          where: { physicalQuantity: 'ACCELERATION', axis: 'Y' },
+          select: { id: true },
+        });
+        const expectedSensors = anchors.length;
+        if (expectedSensors === 0) {
+          return {
+            from: range.from.toISOString(),
+            to: range.to.toISOString(),
+            bucket,
+            expectedSensors: 0,
+            buckets: [],
+          };
+        }
+
+        const rows = await this.prisma.$queryRaw<HeatmapRow[]>(
+          heatmapSql(
+            anchors.map((series) => series.id),
+            range.from,
+            range.to,
+            bucket,
+          ),
+        );
+        const spanMs = bucket === 'hour' ? 3_600_000 : 86_400_000;
+
+        return {
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          bucket,
+          expectedSensors,
+          buckets: rows.map((row) => {
+            const start = new Date(row.day.getTime() + row.hour * 3_600_000);
+            const reporting = Number(row.sensors);
+            return {
+              bucketStart: start.toISOString(),
+              bucketEnd: new Date(start.getTime() + spanMs).toISOString(),
+              day: row.day.toISOString().slice(0, 10),
+              hour: row.hour,
+              sampleCount: Number(row.samples),
+              acquisitionCount: Math.round(Number(row.acquisitions)),
+              reportingSensors: reporting,
+              expectedSensors,
+              coveragePercent: Number(((reporting / expectedSensors) * 100).toFixed(1)),
+            };
+          }),
+        };
+      },
+      (result) => result.buckets.length,
+    );
+  }
+
+  /**
+   * Janela temporal: uma linha por sensor com o que ele fez no intervalo. A paginação é
+   * feita sobre 12 linhas já agregadas — não sobre amostras.
+   */
+  async timeWindow(
+    range: TimeRange,
+    page: number,
+    pageSize: number,
+  ): Promise<TimeWindowResponseDto> {
+    return this.measured(
+      'analytics/time-window',
+      async () => {
+        const rows = await this.prisma.$queryRaw<TimeWindowRow[]>(
+          timeWindowSql(range.from, range.to),
+        );
+
+        const items = rows.map((row) => ({
+          sensorSerialNumber: row.serial,
+          sensorModel: toDomainSensorModel(row.model),
+          seriesId: row.series_id,
+          machineName: row.machine_name,
+          machineType: row.machine_type ? toDomainMachineType(row.machine_type) : null,
+          monitoringPointId: row.point_id,
+          monitoringPointName: row.point_name,
+          sampleCount: Number(row.samples ?? 0),
+          acquisitionCount: Number(row.acquisitions ?? 0),
+          min: row.min,
+          max: row.max,
+          avg: row.avg,
+          lastValue: row.last_value,
+          lastAt: row.last_at?.toISOString() ?? null,
+          unit: 'g',
+        }));
+
+        const reporting = items.filter((item) => item.sampleCount > 0);
+        const strongest = reporting.reduce<(typeof items)[number] | null>(
+          (best, item) => (item.max !== null && (best?.max ?? -Infinity) < item.max ? item : best),
+          null,
+        );
+        const total = items.length;
+        const start = (page - 1) * pageSize;
+
+        return {
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          kpis: {
+            reportingSensors: reporting.length,
+            silentSensors: total - reporting.length,
+            expectedSensors: total,
+            acquisitionCount: items.reduce((sum, item) => sum + item.acquisitionCount, 0),
+            sampleCount: items.reduce((sum, item) => sum + item.sampleCount, 0),
+            maxValue: strongest?.max ?? null,
+            maxValueSensor: strongest?.sensorSerialNumber ?? null,
+          },
+          items: items.slice(start, start + pageSize),
+          total,
+          page,
+          pageSize,
+          totalPages: Math.ceil(total / pageSize),
+        };
+      },
+      (result) => result.items.length,
+    );
+  }
+
+  /** Aquisições de um sensor, paginadas no servidor. `total` só quando pedido. */
+  async sensorAcquisitions(
+    serialNumber: string,
+    range: TimeRange,
+    page: number,
+    pageSize: number,
+    includeTotal: boolean,
+  ): Promise<AcquisitionPageDto> {
+    return this.measured(
+      'analytics/sensor-acquisitions',
+      async () => {
+        // Uma linha a mais revela se existe próxima página sem pagar por um count(*).
+        const rows = await this.prisma.$queryRaw<AcquisitionRow[]>(
+          sensorAcquisitionsSql(serialNumber, range.from, range.to, pageSize + 1, (page - 1) * pageSize),
+        );
+        const hasNextPage = rows.length > pageSize;
+        const pageRows = hasNextPage ? rows.slice(0, pageSize) : rows;
+
+        let total: number | null = null;
+        if (includeTotal) {
+          const counted = await this.prisma.$queryRaw<Array<{ count: bigint }>>(
+            sensorAcquisitionsCountSql(serialNumber, range.from, range.to),
+          );
+          total = Number(counted[0]?.count ?? 0);
+        }
+
+        return {
+          serialNumber,
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          items: pageRows.map((row) => {
+            const configuration = (row.configuration ?? {}) as Record<string, unknown>;
+            const history = ((row.metadata ?? {}) as Record<string, unknown>).history as
+              | Record<string, unknown>
+              | undefined;
+            const groundTruth = history?.groundTruth as Record<string, unknown> | undefined;
+            const started = row.started_at?.getTime() ?? null;
+            const ended = row.ended_at?.getTime() ?? null;
+
+            return {
+              cycleId: row.cycle_id,
+              externalCycleId: row.external_cycle_id,
+              startedAt: row.started_at?.toISOString() ?? null,
+              endedAt: row.ended_at?.toISOString() ?? null,
+              // +1 s: a última janela RMS cobre o segundo que ela inicia.
+              durationSeconds: started !== null && ended !== null ? (ended - started) / 1000 + 1 : null,
+              rpm: typeof configuration.rpm === 'number' ? configuration.rpm : null,
+              loadPercent:
+                typeof configuration.loadPercent === 'number' ? configuration.loadPercent : null,
+              scenario: typeof configuration.scenario === 'string' ? configuration.scenario : null,
+              sampleCount: row.sample_count,
+              anchorSampleCount: Number(row.samples ?? 0),
+              min: row.min,
+              max: row.max,
+              avg: row.avg,
+              event: typeof groundTruth?.physicalEvent === 'string' ? groundTruth.physicalEvent : null,
+              expectedState:
+                typeof groundTruth?.expectedState === 'string' ? groundTruth.expectedState : null,
+              unit: 'g',
+            };
+          }),
+          page,
+          pageSize,
+          total,
+          totalPages: total === null ? null : Math.ceil(total / pageSize),
+          hasNextPage,
+        };
+      },
+      (result) => result.items.length,
+    );
+  }
+
+  /** Detalhe de uma aquisição: cabeçalho + resumo por série. Universo pequeno por natureza. */
+  async acquisition(cycleId: string): Promise<AcquisitionDetailDto | null> {
+    return this.measured(
+      'analytics/acquisition',
+      async () => {
+        const cycle = await this.prisma.ingestionCycle.findUnique({ where: { id: cycleId } });
+        if (!cycle) return null;
+
+        const [seriesRows, sensor] = await Promise.all([
+          this.prisma.$queryRaw<AcquisitionSeriesRow[]>(acquisitionSeriesSql(cycleId)),
+          this.prisma.sensor.findUnique({
+            where: { serialNumber: cycle.measuringSystemUid },
+            include: { monitoringPoint: { include: { machine: true } } },
+          }),
+        ]);
+
+        const configuration = (cycle.configuration ?? {}) as Record<string, unknown>;
+        const history = ((cycle.metadata ?? {}) as Record<string, unknown>).history as
+          | Record<string, unknown>
+          | undefined;
+        const starts = seriesRows.map((row) => row.started_at?.getTime()).filter((v): v is number => !!v);
+        const ends = seriesRows.map((row) => row.ended_at?.getTime()).filter((v): v is number => !!v);
+        const startedAt = starts.length ? new Date(Math.min(...starts)) : null;
+        const endedAt = ends.length ? new Date(Math.max(...ends)) : null;
+
+        return {
+          cycleId: cycle.id,
+          externalCycleId: cycle.cycleId,
+          sensorSerialNumber: cycle.measuringSystemUid,
+          sensorModel: sensor ? toDomainSensorModel(sensor.model) : null,
+          machineName: sensor?.monitoringPoint?.machine.name ?? null,
+          monitoringPointName: sensor?.monitoringPoint?.name ?? null,
+          startedAt: startedAt?.toISOString() ?? null,
+          endedAt: endedAt?.toISOString() ?? null,
+          durationSeconds:
+            startedAt && endedAt ? (endedAt.getTime() - startedAt.getTime()) / 1000 + 1 : null,
+          rpm: typeof configuration.rpm === 'number' ? configuration.rpm : null,
+          loadPercent: typeof configuration.loadPercent === 'number' ? configuration.loadPercent : null,
+          scenario: typeof configuration.scenario === 'string' ? configuration.scenario : null,
+          origin: cycle.origin,
+          tags: cycle.tags,
+          ingestedAt: cycle.createdAt.toISOString(),
+          sampleCount: cycle.sampleCount,
+          measurementCount: cycle.measurementCount,
+          groundTruth: (history?.groundTruth as Record<string, unknown> | undefined) ?? null,
+          series: seriesRows.map((row) => ({
+            seriesId: row.series_id,
+            physicalQuantity: toDomainPhysicalQuantity(row.physical_quantity),
+            axis: toDomainAxis(row.axis),
+            unit: row.unit,
+            sampleCount: Number(row.samples),
+            min: row.min,
+            max: row.max,
+            avg: row.avg,
+            rms: row.rms,
+            startedAt: row.started_at?.toISOString() ?? null,
+            endedAt: row.ended_at?.toISOString() ?? null,
+          })),
+        };
+      },
+      (result) => result?.series.length ?? 0,
+    );
+  }
+
+  /**
+   * Amostras brutas de UMA aquisição, por keyset. É o nível folha da investigação: o
+   * único ponto do sistema que devolve telemetria crua, e ainda assim recortada.
+   */
+  async acquisitionSamples(
+    cycleId: string,
+    limit: number,
+    cursor: string | null,
+    filters: { quantity: string | null; axis: string | null },
+  ): Promise<RawSamplePageDto> {
+    return this.measured(
+      'analytics/acquisition-samples',
+      async () => {
+        const decoded = decodeCursor(cursor);
+        const rows = await this.prisma.$queryRaw<RawSampleRow[]>(
+          acquisitionSamplesSql(cycleId, limit + 1, decoded, filters),
+        );
+        const hasNext = rows.length > limit;
+        const pageRows = hasNext ? rows.slice(0, limit) : rows;
+        const last = pageRows.at(-1);
+
+        return {
+          cycleId,
+          items: pageRows.map((row) => ({
+            id: row.id,
+            timestamp: row.timestamp.toISOString(),
+            value: row.value,
+            physicalQuantity: toDomainPhysicalQuantity(row.physical_quantity),
+            axis: toDomainAxis(row.axis),
+            unit: row.unit,
+          })),
+          limit,
+          nextCursor: hasNext && last ? encodeCursor(last.timestamp, last.id) : null,
+          quantity: filters.quantity,
+          axis: filters.axis,
+        };
+      },
+      (result) => result.items.length,
+    );
+  }
+}

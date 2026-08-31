@@ -28,6 +28,7 @@ export function buildOpenApiDocument(app: INestApplication): OpenAPIObject {
     .addTag('monitoring-points', 'Pontos de monitoramento e sensores')
     .addTag('telemetry', 'Ingestão idempotente de ciclos (contrato SCP-04)')
     .addTag('time-series', 'Leitura paginada, métricas e exclusão de séries')
+    .addTag('analytics', 'Consultas agregadas por janela temporal para investigação')
     .build();
 
   return SwaggerModule.createDocument(app, config);

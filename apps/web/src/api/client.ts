@@ -1,8 +1,15 @@
 import type {
+  AcquisitionDetailDto,
+  AcquisitionPageDto,
+  FleetConditionResponseDto,
+  HeatmapResponseDto,
   MachineType,
+  RawSamplePageDto,
   SensorModel,
   SeriesMetrics,
+  SeriesPointsResponseDto,
   TimeSeriesSamplePage,
+  TimeWindowResponseDto,
   TimeSeriesSummary,
   UserRole,
 } from '@dynamox/domain';
@@ -134,6 +141,22 @@ export function registerUnauthorizedHandler(handler: (() => void) | null): void 
 
 export class UnauthorizedError extends Error {}
 
+/**
+ * Erro de API com o status preservado. As páginas de investigação precisam distinguir
+ * "janela inválida" (400) de "recurso inexistente" (404) — com uma Error genérica o
+ * status se perdia e toda falha virava a mesma mensagem.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string | null = null,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -175,7 +198,15 @@ async function request(path: string, options: RequestOptions = {}): Promise<Resp
 
   if (!response.ok) {
     const payload: unknown = await response.json().catch(() => null);
-    throw new Error(apiErrorMessage(payload) ?? `Falha ao consultar ${path}: HTTP ${response.status}`);
+    const code =
+      typeof payload === 'object' && payload !== null && 'code' in payload && typeof payload.code === 'string'
+        ? payload.code
+        : null;
+    throw new ApiError(
+      apiErrorMessage(payload) ?? `Falha ao consultar ${path}: HTTP ${response.status}`,
+      response.status,
+      code,
+    );
   }
 
   return response;
@@ -233,6 +264,17 @@ async function getAllSamples(id: string): Promise<TimeSeriesSamplePage['items']>
     items.push(...(await readPage(offset)).items);
   }
   return items;
+}
+
+/** Janela temporal de uma consulta analítica; `to` é exclusivo. */
+export interface AnalyticsRange {
+  from: string;
+  to: string;
+}
+
+function rangeQuery(range: AnalyticsRange, extra: Record<string, string> = {}): string {
+  const query = new URLSearchParams({ from: range.from, to: range.to, ...extra });
+  return query.toString();
 }
 
 export const api = {
@@ -295,5 +337,59 @@ export const api = {
   allSamples: getAllSamples,
   deleteTimeSeries: (id: string) =>
     requestVoid(`/time-series/${id}`, { method: 'DELETE' }),
+  /**
+   * Condição da frota calculada no BANCO. Substitui o download das séries radiais inteiras:
+   * eram ~840 requisições e centenas de MB para chegar à mesma classificação.
+   */
+  fleetCondition: (range: AnalyticsRange) =>
+    requestJson<FleetConditionResponseDto>(`/analytics/fleet-condition?${rangeQuery(range)}`),
+
+  /** Mapa de atividade por data × hora, agregado no banco. */
+  heatmap: (range: AnalyticsRange, bucket: 'hour' | 'day' = 'hour') =>
+    requestJson<HeatmapResponseDto>(`/analytics/heatmap?${rangeQuery(range, { bucket })}`),
+
+  /** Série já agregada por bucket — o gráfico recebe pontos, não amostras. */
+  seriesPoints: (seriesId: string, range: AnalyticsRange, bucket: string) =>
+    requestJson<SeriesPointsResponseDto>(
+      `/analytics/series/${seriesId}/points?${rangeQuery(range, { bucket })}`,
+    ),
+
+  /** Resumo por sensor de uma janela temporal (nível "hora" da investigação). */
+  timeWindow: (range: AnalyticsRange, page: number, pageSize: number) =>
+    requestJson<TimeWindowResponseDto>(
+      `/analytics/time-windows?${rangeQuery(range, { page: String(page), pageSize: String(pageSize) })}`,
+    ),
+
+  /** Aquisições do sensor, paginadas no servidor. `includeTotal` custa uma contagem. */
+  sensorAcquisitions: (
+    serialNumber: string,
+    range: AnalyticsRange,
+    options: { page: number; pageSize: number; includeTotal?: boolean },
+  ) =>
+    requestJson<AcquisitionPageDto>(
+      `/analytics/sensors/${encodeURIComponent(serialNumber)}/acquisitions?${rangeQuery(range, {
+        page: String(options.page),
+        pageSize: String(options.pageSize),
+        ...(options.includeTotal ? { includeTotal: 'true' } : {}),
+      })}`,
+    ),
+
+  acquisition: (cycleId: string) =>
+    requestJson<AcquisitionDetailDto>(`/analytics/acquisitions/${cycleId}`),
+
+  /** Nível folha: amostras brutas de UMA aquisição, por cursor keyset. */
+  acquisitionSamples: (
+    cycleId: string,
+    options: { limit: number; cursor?: string | null; quantity?: string | null; axis?: string | null },
+  ) => {
+    const query = new URLSearchParams({ limit: String(options.limit) });
+    if (options.cursor) query.set('cursor', options.cursor);
+    if (options.quantity) query.set('quantity', options.quantity);
+    if (options.axis) query.set('axis', options.axis);
+    return requestJson<RawSamplePageDto>(
+      `/analytics/acquisitions/${cycleId}/samples?${query.toString()}`,
+    );
+  },
+
   metrics: (id: string) => requestJson<SeriesMetrics>(`/time-series/${id}/metrics`),
 };

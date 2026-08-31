@@ -5,6 +5,7 @@ import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import { useTheme } from '@mui/material/styles';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import {
   createSelectDashboardView,
@@ -15,7 +16,8 @@ import {
 import {
   dashboardSeriesAutoSelected,
   dashboardSeriesSelected,
-  fetchConditionEvidence,
+  fetchActivityHeatmap,
+  fetchFleetCondition,
   fetchDashboardSeriesDetail,
   fetchOperationalDashboard,
   periodChanged,
@@ -25,7 +27,7 @@ import { AcquisitionActivity } from './AcquisitionActivity';
 import { AssetConditionColumns } from './AssetConditionColumns';
 import { DashboardHeader } from './DashboardHeader';
 import { DataQualityPanel } from './DataQualityPanel';
-import { DayProfilePanel } from './DayProfilePanel';
+import { HourProfilePanel } from './HourProfilePanel';
 import { FleetConditionMatrix } from './FleetConditionMatrix';
 import { InspectionPriorityTable } from './InspectionPriorityTable';
 import { KpiRow } from './KpiRow';
@@ -33,7 +35,7 @@ import { RecentOccurrences } from './RecentOccurrences';
 import { SensorHealthDonut } from './SensorHealthDonut';
 import { SeriesExplorer } from './SeriesExplorer';
 import { TrendPanel } from './TrendPanel';
-import { WeeklyHeatmap } from './WeeklyHeatmap';
+import { ActivityHeatmap } from './ActivityHeatmap';
 
 /**
  * Central operacional de condition monitoring num único grid de 12 colunas, em faixas
@@ -60,7 +62,8 @@ export function OperationalDashboard(): JSX.Element {
   const partialErrors = useAppSelector(selectDashboardPartialErrors);
   const investigationRef = useRef<HTMLHeadingElement>(null);
   const gridGap = useTheme().dashboard.gridGap;
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     void dispatch(fetchOperationalDashboard());
@@ -70,7 +73,8 @@ export function OperationalDashboard(): JSX.Element {
   // utilizável enquanto a avaliação de condição chega.
   useEffect(() => {
     if (dashboard.series.status === 'succeeded' && dashboard.conditionStatus === 'idle') {
-      void dispatch(fetchConditionEvidence());
+      void dispatch(fetchFleetCondition());
+      void dispatch(fetchActivityHeatmap());
     }
   }, [dispatch, dashboard.series.status, dashboard.conditionStatus]);
 
@@ -111,6 +115,22 @@ export function OperationalDashboard(): JSX.Element {
     [selectSeries],
   );
 
+  /**
+   * Drill-down temporal: a célula do mapa vira uma rota com a janela na URL. Nenhum dado
+   * novo é carregado aqui — quem consulta é a página de destino, já recortada.
+   */
+  const investigateWindow = useCallback(
+    (bucketStart: string) => {
+      const start = new Date(bucketStart);
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      const date = start.toISOString().slice(0, 10);
+      const hour = String(start.getUTCHours()).padStart(2, '0');
+      const query = new URLSearchParams({ from: start.toISOString(), to: end.toISOString() });
+      navigate(`/monitoring/windows/${date}/${hour}?${query.toString()}`);
+    },
+    [navigate],
+  );
+
   const retryDetail = () => {
     if (dashboard.selectedSeriesId) {
       void dispatch(fetchDashboardSeriesDetail(dashboard.selectedSeriesId));
@@ -119,17 +139,6 @@ export function OperationalDashboard(): JSX.Element {
 
   const evaluating =
     dashboard.conditionStatus === 'loading' || dashboard.conditionStatus === 'idle';
-
-  // Master/detail do padrão temporal: sem escolha explícita, o dia mais ativo.
-  const activeDay =
-    selectedDay ??
-    view.weekMap.days.reduce(
-      (best, day) => {
-        const total = day.hours.reduce((sum, hour) => sum + hour.samples, 0);
-        return total > best.total ? { day: day.day, total } : best;
-      },
-      { day: new Date(nowMs).getDay(), total: 0 },
-    ).day;
 
   /** Item do grid principal: colunas por breakpoint e posição no empilhamento. */
   const slot = (opts: { md?: number; lg?: number; xs: number; md_order?: number }) => ({
@@ -239,24 +248,29 @@ export function OperationalDashboard(): JSX.Element {
 
         {/* PADRÃO TEMPORAL — quando o dado chega: semana, dia escolhido e últimas 24 h */}
         <Box sx={slot({ lg: 8, xs: 10 })}>
-          <WeeklyHeatmap
-            weekMap={view.weekMap}
-            loading={inventoryLoading || evaluating}
-            selectedDay={activeDay}
-            onSelectDay={setSelectedDay}
+          <ActivityHeatmap
+            data={dashboard.heatmap}
+            loading={dashboard.heatmapStatus === 'loading' || dashboard.heatmapStatus === 'idle'}
+            error={dashboard.heatmapError}
+            onRetry={() => void dispatch(fetchActivityHeatmap())}
+            onSelectWindow={investigateWindow}
           />
         </Box>
         <Box sx={stack('1fr 1fr')}>
           <Box sx={slot({ md: 6, xs: 11 })}>
-            <DayProfilePanel
-              weekMap={view.weekMap}
-              loading={inventoryLoading || evaluating}
-              selectedDay={activeDay}
+            <HourProfilePanel
+              data={dashboard.heatmap}
+              loading={dashboard.heatmapStatus === 'loading' || dashboard.heatmapStatus === 'idle'}
+              selectedDay={selectedDay}
               onSelectDay={setSelectedDay}
+              onSelectWindow={investigateWindow}
             />
           </Box>
           <Box sx={slot({ md: 6, xs: 12 })}>
-            <AcquisitionActivity view={view} loading={inventoryLoading || evaluating} />
+            <AcquisitionActivity
+              heatmap={dashboard.heatmap}
+              loading={dashboard.heatmapStatus === 'loading' || dashboard.heatmapStatus === 'idle'}
+            />
           </Box>
         </Box>
 

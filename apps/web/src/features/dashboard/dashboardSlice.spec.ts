@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
+import type { FleetConditionResponseDto, SeriesPointsResponseDto } from '@dynamox/domain';
 import type { TimeSeriesSummary } from '@dynamox/domain';
 
 import {
+  bucketForPeriod,
   dashboardReducer,
   dashboardSeriesSelected,
-  fetchConditionEvidence,
   fetchDashboardSeriesDetail,
+  fetchFleetCondition,
   fetchOperationalDashboard,
   initialDashboardState,
   periodChanged,
-  radialSeriesForCondition,
+  rangeForPeriod,
   type OperationalDashboardPayload,
 } from './dashboardSlice';
 
@@ -31,6 +33,59 @@ const xSeries: TimeSeriesSummary = {
 };
 
 const ySeries: TimeSeriesSummary = { ...xSeries, id: 'series-y', axis: 'y' };
+
+function conditionPayload(
+  overrides: Partial<FleetConditionResponseDto['points'][number]> = {},
+): FleetConditionResponseDto {
+  return {
+    from: '2026-08-22T12:00:00.000Z',
+    to: '2026-08-29T12:00:00.000Z',
+    generatedAt: '2026-08-29T12:00:00.000Z',
+    points: [
+      {
+        machineName: 'P-101',
+        machineType: 'Pump',
+        monitoringPointId: 'point-1',
+        monitoringPointName: 'Mancal lado oposto ao acoplamento',
+        sensorSerialNumber: 'SIM-HF-002',
+        sensorModel: 'HF+',
+        condition: 'attention',
+        freshness: 'current',
+        currentValue: 0.0572,
+        baselineValue: 0.0164,
+        deviationRatio: 3.49,
+        currentAt: '2026-08-29T11:00:59.000Z',
+        baselineAt: '2026-08-29T10:00:00.000Z',
+        currentSampleCount: 60,
+        currentCycleId: 'cycle-current',
+        baselineCycleId: 'cycle-baseline',
+        unit: 'g',
+        ...overrides,
+      },
+    ],
+  };
+}
+
+function pointsPayload(): SeriesPointsResponseDto {
+  return {
+    seriesId: 'series-y',
+    from: '2026-08-22T12:00:00.000Z',
+    to: '2026-08-29T12:00:00.000Z',
+    bucket: '1h',
+    stats: {
+      sampleCount: 180,
+      acquisitionCount: 3,
+      min: 0.01,
+      max: 0.06,
+      avg: 0.03,
+      firstAt: '2026-08-29T09:00:00.000Z',
+      lastAt: '2026-08-29T11:00:59.000Z',
+    },
+    points: [
+      { bucketStart: '2026-08-29T10:00:00.000Z', sampleCount: 60, acquisitionCount: 1, avg: 2, min: 1, max: 3, lastAt: '2026-08-29T10:00:59.000Z' },
+    ],
+  };
+}
 
 function payload(overrides: Partial<OperationalDashboardPayload> = {}): OperationalDashboardPayload {
   return {
@@ -92,70 +147,60 @@ describe('dashboardSlice', () => {
     expect(state.series.data).toHaveLength(2);
   });
 
-  it('preserva erros granulares da avaliação de condição', () => {
-    const state = dashboardReducer(
+  it('guarda a condição avaliada pelo servidor e reporta falha da avaliação', () => {
+    const avaliado = dashboardReducer(
       initialDashboardState,
-      fetchConditionEvidence.fulfilled(
-        { radialSamplesBySeries: {}, radialSampleErrors: { 'series-y': 'sem amostras' } },
-        'cond-1',
-        undefined,
-      ),
+      fetchFleetCondition.fulfilled(conditionPayload(), 'cond-1', undefined),
     );
-    expect(state.conditionStatus).toBe('succeeded');
-    expect(state.radialSampleErrors).toEqual({ 'series-y': 'sem amostras' });
+    expect(avaliado.conditionStatus).toBe('succeeded');
+    expect(avaliado.fleetCondition?.points[0]).toMatchObject({
+      sensorSerialNumber: 'SIM-HF-002',
+      condition: 'attention',
+      deviationRatio: 3.49,
+    });
+
+    const falhou = dashboardReducer(
+      initialDashboardState,
+      fetchFleetCondition.rejected(new Error('Avaliação indisponível'), 'cond-2', undefined),
+    );
+    expect(falhou.conditionStatus).toBe('failed');
+    expect(falhou.conditionError).toBe('Avaliação indisponível');
   });
 
-  it('a carga inicial não traz amostras: elas são da segunda etapa', () => {
+  it('a carga inicial não traz amostras: a condição é a segunda etapa, e vem agregada', () => {
     const state = dashboardReducer(
       initialDashboardState,
       fetchOperationalDashboard.fulfilled(payload(), 'load-5b'),
     );
     expect(state.radialSamplesBySeries).toEqual({});
+    expect(state.fleetCondition).toBeNull();
     expect(state.conditionStatus).toBe('idle');
 
     const avaliado = dashboardReducer(
       state,
-      fetchConditionEvidence.fulfilled(
-        {
-          radialSamplesBySeries: { 'series-y': [{ timestamp: '2026-08-29T12:00:00.000Z', value: 1 }] },
-          radialSampleErrors: {},
-        },
-        'cond-2',
-        undefined,
-      ),
+      fetchFleetCondition.fulfilled(conditionPayload(), 'cond-2', undefined),
     );
     expect(avaliado.conditionStatus).toBe('succeeded');
-    expect(avaliado.radialSamplesBySeries['series-y']).toHaveLength(1);
+    // O painel nunca mais acumula amostra bruta para classificar.
+    expect(avaliado.radialSamplesBySeries).toEqual({});
   });
 
-  it('a segunda etapa só busca o par radial avaliável, não a planta inteira', () => {
-    const radialY = { ...ySeries, sampleCount: 180 };
-    const radialZ = { ...ySeries, id: 'series-z', axis: 'z' as const, sampleCount: 180 };
-    // Eixo X não entra: o índice demonstrativo é radial (Y/Z).
-    const axialX = { ...ySeries, id: 'series-x-axial', axis: 'x' as const, sampleCount: 180 };
-    const temperatura = {
-      ...ySeries,
-      id: 'series-temp',
-      axis: null,
-      physicalQuantity: 'temperature' as const,
-      sampleCount: 180,
-    };
-    // Uma única aquisição não permite comparar com baseline: fica de fora.
-    const curta = { ...ySeries, id: 'series-curta', sampleCount: 3 };
-    const externa = { ...radialY, id: 'series-externa', sensorSerialNumber: 'DYNA-9000' };
+  it('a janela e o bucket da consulta vêm do período — nunca "tudo o que existe"', () => {
+    const nowMs = Date.parse('2026-08-29T12:00:00.000Z');
+    expect(rangeForPeriod('24h', nowMs)).toEqual({
+      from: '2026-08-28T12:00:00.000Z',
+      to: '2026-08-29T12:00:00.000Z',
+    });
+    expect(rangeForPeriod('7d', nowMs).from).toBe('2026-08-22T12:00:00.000Z');
+    expect(rangeForPeriod('30d', nowMs).from).toBe('2026-07-30T12:00:00.000Z');
+    // "Tudo" também é recortado: o servidor recusa consulta analítica sem janela.
+    expect(rangeForPeriod('all', nowMs).from).toBe('2026-05-31T12:00:00.000Z');
 
-    const escolhidas = radialSeriesForCondition([
-      xSeries,
-      axialX,
-      radialY,
-      radialZ,
-      temperatura,
-      curta,
-      externa,
-    ]);
-
-    // Só Y/Z de sensores demonstrativos com histórico suficiente para duas aquisições.
-    expect(escolhidas.map((item) => item.id).sort()).toEqual(['series-y', 'series-z']);
+    // Quanto maior a janela, mais grossa a agregação — o gráfico recebe pontos, não amostras.
+    expect(bucketForPeriod('24h')).toBe('15m');
+    expect(bucketForPeriod('7d')).toBe('1h');
+    expect(bucketForPeriod('30d')).toBe('4h');
+    expect(bucketForPeriod('all')).toBe('4h');
   });
 
   it('descarta resposta atrasada da série anterior', () => {
@@ -166,7 +211,7 @@ describe('dashboardSlice', () => {
     state = dashboardReducer(
       state,
       fetchDashboardSeriesDetail.fulfilled(
-        { seriesId: 'series-y', samples: [{ timestamp: '2026-08-29T12:00:00.000Z', value: 2 }] },
+        { seriesId: 'series-y', points: pointsPayload() },
         'detail-y',
         'series-y',
       ),
@@ -174,13 +219,18 @@ describe('dashboardSlice', () => {
     state = dashboardReducer(
       state,
       fetchDashboardSeriesDetail.fulfilled(
-        { seriesId: 'series-x', samples: [{ timestamp: '2026-08-29T12:00:00.000Z', value: 9 }] },
+        {
+          seriesId: 'series-x',
+          points: { ...pointsPayload(), seriesId: 'series-x', points: [{ bucketStart: '2026-08-29T10:00:00.000Z', sampleCount: 60, acquisitionCount: 1, avg: 9, min: 9, max: 9, lastAt: null }] },
+        },
         'detail-x',
         'series-x',
       ),
     );
     expect(state.selectedSeriesId).toBe('series-y');
+    // Um ponto por bucket, com a média medida — nenhuma amostra bruta no estado.
     expect(state.detailSamples[0].value).toBe(2);
+    expect(state.detailPoints?.stats.sampleCount).toBe(180);
   });
 
   it('mostra erro do detalhe somente para a requisição ainda ativa', () => {

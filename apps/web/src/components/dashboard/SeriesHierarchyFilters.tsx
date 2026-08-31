@@ -15,7 +15,7 @@ function unique(values: Array<string | null>): string[] {
 function firstSeries(series: TimeSeriesSummary[]): TimeSeriesSummary | null {
   return (
     series.find((item) => item.physicalQuantity === 'acceleration' && item.axis === 'y') ??
-    series.find((item) => item.sampleCount > 0) ??
+    series.find((item) => item.lastTimestamp !== null) ??
     series[0] ??
     null
   );

@@ -1,4 +1,5 @@
 import type {
+  FleetConditionResponseDto,
   SensorModel,
   SeriesMetrics,
   TimeSeriesSampleDto,
@@ -362,6 +363,40 @@ export function computeFleetSyntheticAssessments(
   return assessments;
 }
 
+/**
+ * Avaliações vindas do endpoint analítico — a MESMA semântica que `computeFleetSynthetic
+ * Assessments` derivava das amostras (duas últimas janelas de aquisição sincronizadas da
+ * frota), agora calculada no banco. Preferir o servidor evita baixar as séries radiais
+ * inteiras só para reclassificar o que ele já sabe.
+ */
+export function assessmentsFromFleetCondition(
+  response: FleetConditionResponseDto,
+): Map<string, SyntheticAssessment> {
+  const assessments = new Map<string, SyntheticAssessment>();
+  for (const point of response.points) {
+    if (
+      !point.sensorSerialNumber ||
+      point.deviationRatio === null ||
+      point.currentValue === null ||
+      point.baselineValue === null ||
+      point.currentAt === null ||
+      point.baselineAt === null
+    ) {
+      continue;
+    }
+    assessments.set(point.sensorSerialNumber, {
+      serialNumber: point.sensorSerialNumber,
+      baseline: point.baselineValue,
+      condition: point.currentValue,
+      deviationRatio: point.deviationRatio,
+      baselineStart: point.baselineAt,
+      conditionStart: point.currentAt,
+      sampleCount: point.currentSampleCount ?? 0,
+    });
+  }
+  return assessments;
+}
+
 export function computeDemonstrativeSeriesBaseline(
   serialNumber: string,
   samples: TimeSeriesSampleDto[],
@@ -508,9 +543,11 @@ function buildEvidence(
     return {
       seriesId: y.id,
       label: 'Aceleração radial (Y/Z)',
-      value: reading?.value ?? null,
+      // Sem amostras carregadas (avaliação vinda do servidor), o valor da condição É a
+      // medição que classificou — o mesmo RMS radial, calculado no banco.
+      value: reading?.value ?? assessment.condition,
       unit: y.unit,
-      timestamp: reading?.timestamp ?? y.lastTimestamp,
+      timestamp: reading?.timestamp ?? assessment.conditionStart ?? y.lastTimestamp,
       deviationRatio: assessment.deviationRatio,
       baseline: assessment.baseline,
     };
@@ -541,7 +578,9 @@ function buildCell(
     : [];
   const assessment = point.sensor ? assessments.get(point.sensor.serialNumber) ?? null : null;
   const evidence = buildEvidence(sensorSeries, assessment, radialSamplesBySeries);
-  const hasSamples = sensorSeries.some((item) => item.sampleCount > 0);
+  // Ter dado é ter leitura: `sampleCount` é opcional na listagem (count(*) por série é
+  // caro), e `lastTimestamp` responde a mesma pergunta de graça.
+  const hasSamples = sensorSeries.some((item) => item.lastTimestamp !== null);
   const condition = conditionFrom(Boolean(point.sensor), hasSamples, assessment);
   // A recência é do sensor, não da série da evidência: a leitura mais nova de qualquer
   // grandeza prova que o sensor reportou.
@@ -882,10 +921,11 @@ export function buildDashboardView(
   state: DashboardState,
   nowMs = Date.now(),
 ): DashboardView {
-  const fleetAssessments = computeFleetSyntheticAssessments(
-    state.series.data,
-    state.radialSamplesBySeries,
-  );
+  // O servidor é a fonte da condição quando respondeu; o cálculo local continua valendo
+  // para cenários sem o endpoint (testes das agregações e falha parcial da avaliação).
+  const fleetAssessments = state.fleetCondition
+    ? assessmentsFromFleetCondition(state.fleetCondition)
+    : computeFleetSyntheticAssessments(state.series.data, state.radialSamplesBySeries);
   const cells = state.points.data.map((point) =>
     buildCell(point, state.series.data, fleetAssessments, state.radialSamplesBySeries, nowMs),
   );

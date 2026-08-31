@@ -1,11 +1,16 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
-import type { TimeSeriesSampleDto, TimeSeriesSummary } from '@dynamox/domain';
-
-import { MIN_BASELINE_SAMPLES } from './dashboardAggregations';
+import type {
+  FleetConditionResponseDto,
+  HeatmapResponseDto,
+  SeriesPointsResponseDto,
+  TimeSeriesSampleDto,
+  TimeSeriesSummary,
+} from '@dynamox/domain';
 
 import {
   api,
+  type AnalyticsRange,
   type MachineDto,
   type MonitoringPointDto,
 } from '../../api/client';
@@ -30,6 +35,20 @@ export interface DashboardState {
   series: ResourceState<TimeSeriesSummary[]>;
   /** Avaliação de condição (segunda etapa, fora do caminho crítico do primeiro render). */
   conditionStatus: RequestStatus;
+  /**
+   * Condição calculada pelo servidor. Substituiu o download das séries radiais inteiras:
+   * a mesma classificação chega em uma requisição de poucos KB.
+   */
+  fleetCondition: FleetConditionResponseDto | null;
+  conditionError: string | null;
+  /** Mapa de atividade da janela, agregado no servidor. */
+  heatmap: HeatmapResponseDto | null;
+  heatmapStatus: RequestStatus;
+  heatmapError: string | null;
+  /**
+   * Amostras radiais cruas. Continua existindo para o caminho de cálculo local (testes e
+   * cenários sem o endpoint analítico); em produção o painel não as baixa mais.
+   */
   radialSamplesBySeries: Record<string, TimeSeriesSampleDto[]>;
   radialSampleErrors: Record<string, string>;
   period: DashboardPeriod;
@@ -40,6 +59,8 @@ export interface DashboardState {
    */
   selectionSource: 'auto' | 'user';
   detailStatus: RequestStatus;
+  /** Série da tendência já agregada por bucket — nunca as amostras da janela inteira. */
+  detailPoints: SeriesPointsResponseDto | null;
   detailSamples: TimeSeriesSampleDto[];
   detailError: string | null;
   activeDetailRequestId: string | null;
@@ -57,12 +78,18 @@ export const initialDashboardState: DashboardState = {
   points: emptyResource([]),
   series: emptyResource([]),
   conditionStatus: 'idle',
+  fleetCondition: null,
+  conditionError: null,
+  heatmap: null,
+  heatmapStatus: 'idle',
+  heatmapError: null,
   radialSamplesBySeries: {},
   radialSampleErrors: {},
   period: '7d',
   selectedSeriesId: null,
   selectionSource: 'auto',
   detailStatus: 'idle',
+  detailPoints: null,
   detailSamples: [],
   detailError: null,
   activeDetailRequestId: null,
@@ -91,31 +118,24 @@ export interface OperationalDashboardPayload {
   loadedAt: string;
 }
 
-export interface ConditionEvidencePayload {
-  radialSamplesBySeries: Record<string, TimeSeriesSampleDto[]>;
-  radialSampleErrors: Record<string, string>;
+/** Janela consultada pelo painel, derivada do período selecionado. */
+export function rangeForPeriod(period: DashboardPeriod, nowMs: number): AnalyticsRange {
+  const spans: Record<DashboardPeriod, number> = {
+    '24h': 24 * 60 * 60 * 1000,
+    '7d': 7 * 24 * 60 * 60 * 1000,
+    '30d': 30 * 24 * 60 * 60 * 1000,
+    // "Tudo" ainda é uma janela: o servidor recusa consulta sem recorte, e 90 dias é o teto.
+    all: 90 * 24 * 60 * 60 * 1000,
+  };
+  const to = new Date(nowMs);
+  return { from: new Date(nowMs - spans[period]).toISOString(), to: to.toISOString() };
 }
 
-/**
- * Comparar condição com baseline exige DUAS janelas de aquisição; cada janela precisa do
- * mínimo de amostras que a agregação já define. A regra é derivada dali para que o filtro
- * de rede e o cálculo não possam divergir.
- */
-const MIN_SAMPLES_FOR_BASELINE = 2 * MIN_BASELINE_SAMPLES;
-
-/**
- * Séries que sustentam o índice demonstrativo: par radial Y/Z de sensores sintéticos com
- * histórico suficiente. Filtrar aqui é o que mantém a segunda etapa proporcional ao que
- * é realmente avaliável, em vez de varrer a planta inteira.
- */
-export function radialSeriesForCondition(series: TimeSeriesSummary[]): TimeSeriesSummary[] {
-  return series.filter(
-    (item) =>
-      item.sensorSerialNumber.startsWith('SIM-') &&
-      item.physicalQuantity === 'acceleration' &&
-      (item.axis === 'y' || item.axis === 'z') &&
-      item.sampleCount >= MIN_SAMPLES_FOR_BASELINE,
-  );
+/** Bucket proporcional ao período: quanto maior a janela, mais grossa a agregação. */
+export function bucketForPeriod(period: DashboardPeriod): string {
+  if (period === '24h') return '15m';
+  if (period === '7d') return '1h';
+  return '4h';
 }
 
 /**
@@ -145,50 +165,58 @@ export const fetchOperationalDashboard = createAsyncThunk(
 );
 
 /**
- * SEGUNDA ETAPA — condição. O índice demonstrativo compara duas aquisições radiais, o que
- * exige as amostras: é a única parte que não cabe no resumo. Roda depois do primeiro
- * render e só para as séries avaliáveis; a tela já está utilizável enquanto ela chega.
+ * SEGUNDA ETAPA — condição, calculada no servidor.
+ *
+ * Antes: baixar as séries radiais inteiras (5.000 amostras por página, sequencial) e
+ * classificar no browser — com histórico de 30 dias isso passava de 800 requisições e
+ * centenas de MB. Agora uma consulta agregada devolve a mesma classificação em poucos KB.
  */
-export const fetchConditionEvidence = createAsyncThunk<
-  ConditionEvidencePayload,
+export const fetchFleetCondition = createAsyncThunk<
+  FleetConditionResponseDto,
   void,
   { state: { dashboard: DashboardState } }
->('dashboard/fetchConditionEvidence', async (_, { getState }) => {
-  const radialSeries = radialSeriesForCondition(getState().dashboard.series.data);
-  const radialSamplesBySeries: Record<string, TimeSeriesSampleDto[]> = {};
-  const radialSampleErrors: Record<string, string> = {};
-
-  const settled = await Promise.allSettled(radialSeries.map((item) => api.allSamples(item.id)));
-  settled.forEach((result, index) => {
-    const id = radialSeries[index].id;
-    if (result.status === 'fulfilled') radialSamplesBySeries[id] = result.value;
-    else radialSampleErrors[id] = messageOf(result.reason);
-  });
-
-  return { radialSamplesBySeries, radialSampleErrors };
+>('dashboard/fetchFleetCondition', async (_, { getState }) => {
+  const { period } = getState().dashboard;
+  return api.fleetCondition(rangeForPeriod(period, Date.now()));
 });
 
+/** Mapa de atividade da janela — uma consulta agregada, nunca as amostras do período. */
+export const fetchActivityHeatmap = createAsyncThunk<
+  HeatmapResponseDto,
+  void,
+  { state: { dashboard: DashboardState } }
+>('dashboard/fetchActivityHeatmap', async (_, { getState }) => {
+  const { period } = getState().dashboard;
+  return api.heatmap(rangeForPeriod(period, Date.now()), 'hour');
+});
+
+/**
+ * Detalhe da série selecionada, JÁ AGREGADO por bucket. O gráfico precisa de um formato
+ * temporal, não de todas as amostras: 30 dias de uma série são ~170 mil amostras e ~175
+ * pontos depois da agregação no banco.
+ */
 export const fetchDashboardSeriesDetail = createAsyncThunk<
-  { seriesId: string; samples: TimeSeriesSampleDto[] },
+  { seriesId: string; points: SeriesPointsResponseDto },
   string,
   { state: { dashboard: DashboardState } }
->(
-  'dashboard/fetchSeriesDetail',
-  async (seriesId: string, { getState }) => {
-    const state = getState();
-    const cached = state.dashboard.radialSamplesBySeries[seriesId];
-    const samples = cached ?? (await api.allSamples(seriesId));
-    return { seriesId, samples };
-  },
-);
+>('dashboard/fetchSeriesDetail', async (seriesId: string, { getState }) => {
+  const { period } = getState().dashboard;
+  const points = await api.seriesPoints(
+    seriesId,
+    rangeForPeriod(period, Date.now()),
+    bucketForPeriod(period),
+  );
+  return { seriesId, points };
+});
 
+/** Ter leitura vale mais que ter contagem: `lastTimestamp` responde sem custo de count(*). */
 function preferredSeries(series: TimeSeriesSummary[]): string | null {
+  const hasData = (item: TimeSeriesSummary) => item.lastTimestamp !== null;
   return (
     series.find(
-      (item) =>
-        item.sampleCount > 0 && item.physicalQuantity === 'acceleration' && item.axis === 'y',
+      (item) => hasData(item) && item.physicalQuantity === 'acceleration' && item.axis === 'y',
     ) ??
-    series.find((item) => item.sampleCount > 0) ??
+    series.find(hasData) ??
     series[0] ??
     null
   )?.id ?? null;
@@ -207,6 +235,7 @@ const dashboardSlice = createSlice({
       state.selectedSeriesId = action.payload;
       state.activeDetailRequestId = null;
       state.detailSamples = [];
+      state.detailPoints = null;
       state.detailError = null;
       state.detailStatus = 'loading';
     },
@@ -216,6 +245,7 @@ const dashboardSlice = createSlice({
       state.selectedSeriesId = action.payload;
       state.activeDetailRequestId = null;
       state.detailSamples = [];
+      state.detailPoints = null;
       state.detailError = null;
       state.detailStatus = action.payload ? 'loading' : 'idle';
     },
@@ -245,6 +275,8 @@ const dashboardSlice = createSlice({
         if (!selectionStillExists) {
           state.selectedSeriesId = preferredSeries(action.payload.series.data);
           state.detailSamples = [];
+          state.detailPoints = null;
+      state.detailPoints = null;
           state.detailError = null;
           state.detailStatus = state.selectedSeriesId ? 'loading' : 'idle';
           state.activeDetailRequestId = null;
@@ -258,16 +290,29 @@ const dashboardSlice = createSlice({
         }
         state.conditionStatus = 'failed';
       })
-      .addCase(fetchConditionEvidence.pending, (state) => {
+      .addCase(fetchFleetCondition.pending, (state) => {
         state.conditionStatus = 'loading';
+        state.conditionError = null;
       })
-      .addCase(fetchConditionEvidence.fulfilled, (state, action) => {
+      .addCase(fetchFleetCondition.fulfilled, (state, action) => {
         state.conditionStatus = 'succeeded';
-        state.radialSamplesBySeries = action.payload.radialSamplesBySeries;
-        state.radialSampleErrors = action.payload.radialSampleErrors;
+        state.fleetCondition = action.payload;
       })
-      .addCase(fetchConditionEvidence.rejected, (state) => {
+      .addCase(fetchFleetCondition.rejected, (state, action) => {
         state.conditionStatus = 'failed';
+        state.conditionError = action.error.message ?? 'Não foi possível avaliar a condição.';
+      })
+      .addCase(fetchActivityHeatmap.pending, (state) => {
+        state.heatmapStatus = 'loading';
+        state.heatmapError = null;
+      })
+      .addCase(fetchActivityHeatmap.fulfilled, (state, action) => {
+        state.heatmapStatus = 'succeeded';
+        state.heatmap = action.payload;
+      })
+      .addCase(fetchActivityHeatmap.rejected, (state, action) => {
+        state.heatmapStatus = 'failed';
+        state.heatmapError = action.error.message ?? 'Não foi possível carregar o mapa.';
       })
       .addCase(fetchDashboardSeriesDetail.pending, (state, action) => {
         state.activeDetailRequestId = action.meta.requestId;
@@ -282,7 +327,12 @@ const dashboardSlice = createSlice({
           return;
         }
         state.detailStatus = 'succeeded';
-        state.detailSamples = action.payload.samples;
+        state.detailPoints = action.payload.points;
+        // A tendência lê pontos agregados; o formato de amostra é mantido para os
+        // componentes de gráfico, com um ponto por bucket (a média medida do bucket).
+        state.detailSamples = action.payload.points.points.flatMap((point) =>
+          point.avg === null ? [] : [{ timestamp: point.bucketStart, value: point.avg }],
+        );
       })
       .addCase(fetchDashboardSeriesDetail.rejected, (state, action) => {
         if (
@@ -292,7 +342,9 @@ const dashboardSlice = createSlice({
           return;
         }
         state.detailStatus = 'failed';
+        state.detailPoints = null;
         state.detailSamples = [];
+      state.detailPoints = null;
         state.detailError = action.error.message ?? 'Não foi possível carregar as amostras.';
       });
   },

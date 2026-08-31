@@ -13,7 +13,7 @@ import {
 
 import { EmptyState } from '@dynamox/ui';
 
-import type { DashboardView } from '../../features/dashboard/dashboardAggregations';
+import type { HeatmapResponseDto } from '@dynamox/domain';
 import { formatNumber } from '../../features/dashboard/dashboardFormatters';
 import { DashboardCard } from './DashboardCard';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from './chartTheme';
@@ -24,72 +24,71 @@ import { axisTickStyle, chartGridStroke, chartTooltipStyles } from './chartTheme
  * não possui.
  */
 export function AcquisitionActivity({
-  view,
+  heatmap,
   loading,
 }: {
-  view: DashboardView;
+  heatmap: HeatmapResponseDto | null;
   loading: boolean;
 }): JSX.Element {
   const muiTheme = useTheme();
   const tooltip = chartTooltipStyles(muiTheme);
-  const data = view.activity24h;
-  const hasSamples = data.some((bucket) => bucket.samples > 0);
+
+  // Últimas 24 células horárias do mapa — os mesmos buckets, sem consulta adicional.
+  const buckets = [...(heatmap?.buckets ?? [])]
+    .sort((a, b) => Date.parse(a.bucketStart) - Date.parse(b.bucketStart))
+    .slice(-24);
+  const data = buckets.map((bucket) => ({
+    label: `${String(bucket.hour).padStart(2, '0')}h`,
+    samples: bucket.sampleCount,
+    sensors: bucket.reportingSensors,
+    acquisitions: bucket.acquisitionCount,
+  }));
+  const hasData = data.some((entry) => entry.samples > 0);
 
   return (
     <DashboardCard
       title="Atividade de aquisição (24 h)"
       titleId="acquisition-activity-title"
       size="chart"
-      subtitle="Amostras radiais persistidas por hora, nas últimas 24 horas."
-      info="Contagem das amostras já carregadas para a avaliação de condição (séries radiais dos sensores demonstrativos)."
+      subtitle="Amostras persistidas por hora, nas últimas 24 horas registradas."
+      info="Derivado do mesmo mapa agregado no banco."
     >
-      {loading ? <Skeleton variant="rounded" height={200} /> : null}
-      {!loading && !hasSamples ? (
+      {loading ? <Skeleton variant="rounded" height={132} /> : null}
+      {!loading && !hasData ? (
         <EmptyState
-          title="Sem aquisições nas últimas 24 h"
-          description="As barras aparecem quando houver leituras persistidas na janela."
+          title="Sem aquisições recentes"
+          description="As barras aparecem conforme as leituras chegam."
         />
       ) : null}
-      {!loading && hasSamples ? (
+      {!loading && hasData ? (
         <Box sx={{ width: '100%', flexGrow: 1, minHeight: 132 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -8 }}>
+            <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -12 }}>
               <CartesianGrid vertical={false} stroke={chartGridStroke(muiTheme)} />
               <XAxis
                 dataKey="label"
                 tick={axisTickStyle(muiTheme)}
                 tickLine={false}
                 axisLine={false}
-                interval={1}
+                interval={2}
               />
-              <YAxis
-                tick={axisTickStyle(muiTheme)}
-                tickLine={false}
-                axisLine={false}
-                width={44}
-                tickFormatter={(value: number) => formatNumber(value, 0)}
-              />
+              <YAxis tick={axisTickStyle(muiTheme)} tickLine={false} axisLine={false} width={46} />
               <Tooltip
                 {...tooltip}
                 cursor={{ fill: chartGridStroke(muiTheme) }}
-                labelFormatter={(label) => `Janela ${String(label)}`}
                 formatter={(value: number, _name, entry) => {
-                  const reporting =
-                    (entry?.payload as { sensorsReporting?: number } | undefined)
-                      ?.sensorsReporting ?? 0;
+                  const payload = entry?.payload as { sensors: number; acquisitions: number };
                   return [
-                    `${formatNumber(value, 0)} amostra(s) · ${reporting} sensor(es) reportando`,
-                    'Aquisição',
+                    `${formatNumber(value, 0)} amostras · ${payload.acquisitions} aquisição(ões) · ${payload.sensors} sensor(es)`,
+                    'Hora',
                   ];
                 }}
               />
               <Bar
                 dataKey="samples"
-                name="Amostras"
                 fill={muiTheme.palette.primary.main}
-                radius={[3, 3, 0, 0]}
-                maxBarSize={30}
                 isAnimationActive={false}
+                maxBarSize={18}
               />
             </BarChart>
           </ResponsiveContainer>

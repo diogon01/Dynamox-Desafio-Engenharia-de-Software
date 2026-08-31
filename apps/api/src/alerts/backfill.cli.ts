@@ -9,6 +9,9 @@
  *   npm run alerts:backfill -- --sensors SIM-HF-002,SIM-HF-007
  *   npm run alerts:backfill -- --reset --yes                 # zera as tabelas DO MOTOR e refaz
  *
+ * Recusa-se a rodar com a API no ar (o motor online avalia pelo relogio de parede e
+ * contaminaria o replay); `--allow-api-online` ignora a checagem, por sua conta e risco.
+ *
  * O que ele nunca toca: amostras, séries, ciclos, cadastro. `--reset` apaga só evidência,
  * avaliações, estados, ocorrências e eventos de alerta.
  *
@@ -26,6 +29,9 @@ import { AlertEngine, EMPTY_SUMMARY, type EvaluationSummary, mergeSummaries } fr
 import { ensureAlertRules } from './alert-rules';
 import { type CycleEvidence, listCyclesStartedBetween, loadCycleEvidence } from './alerts.sql';
 
+/** Erro de operação (o comando foi usado de um jeito que não pode dar certo): mensagem, sem stack. */
+class OperatorError extends Error {}
+
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -42,6 +48,7 @@ interface Options {
   report: string | null;
   bucketMinutes: number;
   presence: boolean;
+  allowApiOnline: boolean;
 }
 
 function parseArgs(argv: string[]): Options {
@@ -55,6 +62,7 @@ function parseArgs(argv: string[]): Options {
     report: null,
     bucketMinutes: 60,
     presence: true,
+    allowApiOnline: false,
   };
   const date = (flag: string, raw: string | undefined): Date => {
     const parsed = raw ? new Date(raw) : new Date(Number.NaN);
@@ -72,12 +80,49 @@ function parseArgs(argv: string[]): Options {
     else if (flag === '--reset') options.reset = true;
     else if (flag === '--yes') options.yes = true;
     else if (flag === '--no-presence') options.presence = false;
-    else throw new Error(`Argumento desconhecido: ${flag}`);
+    else if (flag === '--allow-api-online') options.allowApiOnline = true;
+    else throw new OperatorError(`Argumento desconhecido: ${flag}`);
   }
   if (options.reset && options.sensors.length > 0) {
-    throw new Error('--reset é global (zera o estado de todos os pontos); não combine com --sensors.');
+    throw new OperatorError('--reset é global (zera o estado de todos os pontos); não combine com --sensors.');
   }
   return options;
+}
+
+/**
+ * Guardrail contra o erro humano que ja aconteceu: rodar o replay historico com a API no ar.
+ * O motor online avalia pelo relogio de parede e a varredura de presenca abriria episodios
+ * datados de hoje no meio de um replay de trinta dias. Nao e lock distribuido: e uma
+ * checagem barata que falha cedo e explica o que fazer.
+ */
+async function assertApiOffline(allowOnline: boolean): Promise<void> {
+  const port = process.env.API_PORT ?? '3000';
+  const url = `http://localhost:${port}/api/health`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1500);
+  let online = false;
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    online = response.ok;
+  } catch {
+    online = false;
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!online) return;
+  if (allowOnline) {
+    console.warn(
+      `AVISO: a API responde em ${url} e --allow-api-online foi passado. A varredura de presenca ao vivo pode ` +
+        'abrir episodios com o relogio de parede durante o replay.',
+    );
+    return;
+  }
+  throw new OperatorError(
+    `A API está no ar em ${url}. O backfill replaya o histórico com relógio próprio e não pode competir com o ` +
+      'motor online — a varredura de presença ao vivo abriria episódios datados de hoje no meio do replay.\n' +
+      '  Pare a API (Ctrl+C no "npm run dev:api") e rode de novo.\n' +
+      '  Ou use "npm run demo:prepare", que cuida da ordem inteira.',
+  );
 }
 
 function assertLocalDatabase(): void {
@@ -90,7 +135,7 @@ function assertLocalDatabase(): void {
     }
   })();
   if (!['localhost', '127.0.0.1', 'db'].includes(host)) {
-    throw new Error(`O backfill só roda contra banco local (DATABASE_URL aponta para "${host || 'inválido'}").`);
+    throw new OperatorError(`O backfill só roda contra banco local (DATABASE_URL aponta para "${host || 'inválido'}").`);
   }
 }
 
@@ -145,6 +190,7 @@ interface DayLine {
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   assertLocalDatabase();
+  if (!options.dryRun) await assertApiOffline(options.allowApiOnline);
   const prisma = new PrismaClient();
   const startedAt = Date.now();
 
@@ -277,7 +323,8 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  console.error('Falha no backfill:', error);
+main().catch((error: unknown) => {
+  if (error instanceof OperatorError) console.error(`\n${error.message}\n`);
+  else console.error('Falha no backfill:', error);
   process.exitCode = 1;
 });

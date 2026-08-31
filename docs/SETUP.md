@@ -168,10 +168,11 @@ máximo de 90 dias). É o que garante que nenhuma consulta volte a varrer o hist
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `GET` | `/api/analytics/fleet-condition` | Condição de cada ponto na janela, com a aquisição atual e a de referência. `?includeTrend=true` acrescenta até 12 buckets das últimas 24 h |
+| `GET` | `/api/analytics/fleet-condition` | Condição de cada ponto na janela, com a aquisição atual e a de referência. `?includeTrend=true` acrescenta até 12 buckets das últimas 24 h; `?condition=` recorta o resultado |
 | `GET` | `/api/analytics/heatmap` | Cobertura da frota por bucket (`?bucket=hour\|day`) |
 | `GET` | `/api/analytics/time-windows` | Resumo por sensor de uma janela, paginado no servidor |
-| `GET` | `/api/analytics/machines/:machineKey` | Resumo da máquina e dos seus pontos. O identificador é o nome ou a etiqueta (`P-101`), nunca o UUID |
+| `GET` | `/api/analytics/machines` | Listagem operacional: condição (a pior entre os pontos), inventário e maior desvio, com `?condition=`, `?search=`, ordenação e paginação resolvidos no servidor |
+| `GET` | `/api/analytics/machines/:machineKey` | Resumo da máquina e dos seus pontos. O identificador é o nome ou a etiqueta (`P-101`), nunca o UUID; `?condition=` recorta a lista de pontos |
 | `GET` | `/api/analytics/machines/:machineKey/points/:pointKey` | Resumo do ponto: condição, janela e séries disponíveis |
 | `GET` | `/api/analytics/series/:seriesId/points` | Série agregada por bucket (`15m`, `1h`, `4h`, `1d`) |
 | `GET` | `/api/analytics/sensors/:serialNumber/acquisitions` | Aquisições do sensor, paginadas; `?includeTotal=true` custa uma contagem |

@@ -41,7 +41,12 @@ import { api } from '../../api/client';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
 import { ConditionFilter } from '../../components/condition/ConditionFilter';
 import { ConditionTag, conditionColor } from '../../components/condition/ConditionTag';
-import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
+import {
+  axisTickStyle,
+  chartGridStroke,
+  chartTooltipStyles,
+  paddedDomain,
+} from '../../components/dashboard/chartTheme';
 import { DeviationBar } from '../../components/investigation/DeviationBar';
 import { PageHeader } from '../../components/PageHeader';
 import { PageSkeleton } from '../../components/PageSkeleton';
@@ -133,6 +138,10 @@ export function MachinePage(): JSX.Element {
       .sort((a, b) => a[0] - b[0])
       .map(([t, values]) => ({ t, ...values }));
   })();
+
+  const yDomain = paddedDomain(
+    trendSeries.flatMap((point) => point.trend.map((entry) => entry.value)),
+  );
 
   /**
    * Distribuição vem das CONTAGENS do servidor — que descrevem a máquina inteira —, não da
@@ -322,7 +331,7 @@ export function MachinePage(): JSX.Element {
                         tickLine={false}
                         axisLine={false}
                         width={58}
-                        domain={['dataMin', 'dataMax']}
+                        domain={yDomain ?? ['dataMin', 'dataMax']}
                         tickFormatter={formatAxisValue}
                       />
                       <Tooltip

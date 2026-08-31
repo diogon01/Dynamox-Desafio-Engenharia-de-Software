@@ -64,3 +64,33 @@ export const CONDITION_STACK_LABELS: Record<(typeof CONDITION_STACK_ORDER)[numbe
   unclassified: 'Sem classificação',
   noData: 'Sem dados',
 };
+
+/**
+ * Domínio vertical de uma série de valores pequenos e positivos.
+ *
+ * Dois erros opostos escondem a verdade num gráfico de vibração:
+ *
+ *  - **Ancorar em zero** achata tudo: a variação operacional vive em milésimos de g, e uma
+ *    escala 0→máximo transforma uma degradação real numa linha reta.
+ *  - **Colar em dataMin/dataMax** faz o contrário: ruído de meio por cento passa a ocupar a
+ *    altura inteira do card, e um ativo perfeitamente normal parece estar oscilando.
+ *
+ * A regra aqui é uma faixa MÍNIMA proporcional ao próprio nível do sinal: quando a variação
+ * real é menor que `minimumSpanRatio` do valor médio, o eixo abre até essa faixa e a curva
+ * volta a parecer o que é — plana. Acima disso, quem manda são os dados.
+ */
+export function paddedDomain(
+  values: readonly number[],
+  { minimumSpanRatio = 0.1, padRatio = 0.12 }: { minimumSpanRatio?: number; padRatio?: number } = {},
+): [number, number] | undefined {
+  const finite = values.filter((value) => Number.isFinite(value));
+  if (finite.length === 0) return undefined;
+
+  const low = Math.min(...finite);
+  const high = Math.max(...finite);
+  const center = (low + high) / 2;
+  const half = Math.max((high - low) / 2, Math.abs(center) * (minimumSpanRatio / 2));
+  const pad = half * padRatio;
+  // Grandezas de vibração não são negativas: o piso nunca desce abaixo de zero.
+  return [Math.max(0, center - half - pad), center + half + pad];
+}

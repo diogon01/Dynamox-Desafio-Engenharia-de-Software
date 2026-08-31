@@ -46,7 +46,8 @@ Comandos citados na coluna *Evidência* estão documentados em
 | Regra `Pump` recusa `TcAg`/`TcAs` | `libs/domain`, `monitoring-points.service.ts`, `machines.service.ts` | e2e nos dois fluxos | associar `TcAg` em `Pump` → `409` | vale na associação **e** na troca de tipo |
 | Paginação de 5 na tabela | `monitoring-points.dto.ts` (`DEFAULT_PAGE_SIZE`), painel | `rbac-and-query.e2e-spec.ts`, `MonitoringPointsPanel.spec.tsx` | tabela de pontos | paginação é global, não por máquina |
 | Ordenação pelas colunas da tabela | `monitoring-points.service.ts` (`SORT_EXPRESSIONS`) | e2e nas quatro colunas, nos dois sentidos | `?sortBy=sensorModel&sortDir=desc` | ordena pelo rótulo público, não pelo enum interno |
-| Busca e filtros server-side | `monitoring-points.dto.ts`, `buildListFilter` | e2e de busca, filtros e composição | `?search=&machineType=&hasSensor=` | não há filtro por condição — ela é derivada no cliente |
+| Busca e filtros server-side | `monitoring-points.dto.ts`, `buildListFilter` | e2e de busca, filtros e composição | `?search=&machineType=&hasSensor=` | o recorte por condição vive na camada analítica, não aqui |
+| Recorte por condição (derivada) | `analytics.service.ts` (`machineList`, `fleetCondition`, `machineSummary`), `components/condition/ConditionFilter.tsx` | `analytics.e2e-spec.ts`, `machines-crud.spec.tsx` | `/machines?condition=attention` | condição não é coluna: o filtro é aplicado sobre a classificação, no servidor, e o vocabulário é o do domínio — não existe "crítico" |
 
 ## Frontend
 

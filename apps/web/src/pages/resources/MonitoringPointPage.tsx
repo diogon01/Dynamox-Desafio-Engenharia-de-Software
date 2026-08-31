@@ -31,7 +31,12 @@ import { EmptyState, ErrorState } from '@dynamox/ui';
 import { api } from '../../api/client';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
 import { ConditionTag, conditionColor } from '../../components/condition/ConditionTag';
-import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
+import {
+  axisTickStyle,
+  chartGridStroke,
+  chartTooltipStyles,
+  paddedDomain,
+} from '../../components/dashboard/chartTheme';
 import { DeviationBar } from '../../components/investigation/DeviationBar';
 import { PageHeader } from '../../components/PageHeader';
 import { PageSkeleton } from '../../components/PageSkeleton';
@@ -89,6 +94,7 @@ export function MonitoringPointPage(): JSX.Element {
     t: Date.parse(entry.timestamp),
     value: entry.value,
   }));
+  const yDomain = paddedDomain(chartData.map((entry) => entry.value));
 
   const notFound =
     query.status === 'failed' && query.httpStatus === 404;
@@ -251,7 +257,7 @@ export function MonitoringPointPage(): JSX.Element {
                         tickLine={false}
                         axisLine={false}
                         width={58}
-                        domain={['dataMin', 'dataMax']}
+                        domain={yDomain ?? ['dataMin', 'dataMax']}
                         tickFormatter={formatAxisValue}
                       />
                       <Tooltip

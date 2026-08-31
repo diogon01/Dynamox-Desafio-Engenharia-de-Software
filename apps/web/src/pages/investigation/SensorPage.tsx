@@ -36,7 +36,12 @@ import { PageHeader } from '../../components/PageHeader';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
 import { ConditionTag } from '../../components/condition/ConditionTag';
-import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
+import {
+  axisTickStyle,
+  chartGridStroke,
+  chartTooltipStyles,
+  paddedDomain,
+} from '../../components/dashboard/chartTheme';
 import {
   formatAxisValue,
   formatMeasurement,
@@ -126,22 +131,13 @@ export function SensorPage(): JSX.Element {
     band: item.min !== null && item.max !== null ? [item.min, item.max] : undefined,
   }));
 
-  /**
-   * Domínio do eixo Y a partir dos próprios dados, com 8% de folga.
-   *
-   * Ancorar em zero achataria a leitura: a variação operacional aqui é de milésimos de g,
-   * e uma escala 0→máximo transformaria uma degradação real numa linha reta. A faixa
-   * min/max continua desenhada, então a amplitude não é escondida — só é enquadrada.
-   */
-  const values = chartData.flatMap((item) => [item.avg, ...(item.band ?? [])]).filter((v): v is number => v !== null && v !== undefined);
-  const yDomain: [number, number] | undefined = values.length
-    ? (() => {
-        const low = Math.min(...values);
-        const high = Math.max(...values);
-        const pad = Math.max((high - low) * 0.08, high * 0.02);
-        return [Math.max(0, low - pad), high + pad];
-      })()
-    : undefined;
+  // Domínio com faixa mínima proporcional: nem zero achatando a curva, nem ruído de meio
+  // por cento ocupando o card inteiro. Ver `paddedDomain`.
+  const yDomain = paddedDomain(
+    chartData
+      .flatMap((item) => [item.avg, ...(item.band ?? [])])
+      .filter((value): value is number => value !== null && value !== undefined),
+  );
 
   const applyPreset = (preset: (typeof RANGE_PRESETS)[number]) => {
     const to = new Date().toISOString();

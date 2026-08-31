@@ -36,7 +36,6 @@ import { InspectionPriorityTable } from './InspectionPriorityTable';
 import { KpiRow } from './KpiRow';
 import { RecentOccurrences } from './RecentOccurrences';
 import { SensorHealthDonut } from './SensorHealthDonut';
-import { SeriesExplorer } from './SeriesExplorer';
 import { TrendPanel } from './TrendPanel';
 import { ActivityHeatmap } from './ActivityHeatmap';
 
@@ -97,11 +96,16 @@ export function OperationalDashboard(): JSX.Element {
     }
   }, [dispatch, dashboard.conditionStatus, view.ranking, view.priority]);
 
+  /*
+   * O período agora é recortado pelo SERVIDOR (antes o cliente filtrava as amostras que já
+   * tinha): trocar a janela precisa refazer a consulta, senão o painel mostraria a janela
+   * antiga com o rótulo novo.
+   */
   useEffect(() => {
     if (dashboard.selectedSeriesId) {
       void dispatch(fetchDashboardSeriesDetail(dashboard.selectedSeriesId));
     }
-  }, [dispatch, dashboard.selectedSeriesId]);
+  }, [dispatch, dashboard.selectedSeriesId, dashboard.period]);
 
   const selectSeries = useCallback(
     (seriesId: string) => {
@@ -231,38 +235,8 @@ export function OperationalDashboard(): JSX.Element {
           <SensorHealthDonut view={view} loading={inventoryLoading} />
         </Box>
 
-        {/* EVIDÊNCIA — a série que classificou, as últimas leituras e a confiança no dado */}
-        <Box sx={slot({ lg: 8, xs: 6 })}>
-          <TrendPanel
-            period={dashboard.period}
-            series={dashboard.series.data}
-            selectedSeriesId={dashboard.selectedSeriesId}
-            samples={dashboard.detailSamples}
-            status={dashboard.detailStatus}
-            error={dashboard.detailError}
-            nowMs={nowMs}
-            onRetry={retryDetail}
-            onSelectSeries={selectSeries}
-            onPeriodChange={(period) => dispatch(periodChanged(period))}
-            headingRef={investigationRef}
-          />
-        </Box>
-        <Box sx={stack('minmax(0, 1fr) auto')}>
-          <Box sx={slot({ md: 6, xs: 7 })}>
-            <RecentOccurrences
-              alerts={dashboard.alerts}
-              status={dashboard.alertsStatus}
-              error={dashboard.alertsError}
-              onRetry={() => void dispatch(fetchAlertsSummary())}
-            />
-          </Box>
-          <Box sx={slot({ md: 6, xs: 9 })}>
-            <DataQualityPanel view={view} loading={inventoryLoading} />
-          </Box>
-        </Box>
-
-        {/* PADRÃO TEMPORAL — quando o dado chega: semana, dia escolhido e últimas 24 h */}
-        <Box sx={slot({ lg: 8, xs: 10 })}>
+        {/* PADRÃO TEMPORAL — a severidade da semana logo abaixo da prioridade: onde piorou */}
+        <Box sx={slot({ lg: 8, xs: 7 })}>
           <ActivityHeatmap
             data={dashboard.heatmap}
             loading={dashboard.heatmapStatus === 'loading' || dashboard.heatmapStatus === 'idle'}
@@ -272,7 +246,7 @@ export function OperationalDashboard(): JSX.Element {
           />
         </Box>
         <Box sx={stack('1fr 1fr')}>
-          <Box sx={slot({ md: 6, xs: 11 })}>
+          <Box sx={slot({ md: 6, xs: 8 })}>
             <HourProfilePanel
               data={dashboard.heatmap}
               loading={dashboard.heatmapStatus === 'loading' || dashboard.heatmapStatus === 'idle'}
@@ -281,7 +255,7 @@ export function OperationalDashboard(): JSX.Element {
               onSelectWindow={investigateWindow}
             />
           </Box>
-          <Box sx={slot({ md: 6, xs: 12 })}>
+          <Box sx={slot({ md: 6, xs: 9 })}>
             <AcquisitionActivity
               heatmap={dashboard.heatmap}
               loading={dashboard.heatmapStatus === 'loading' || dashboard.heatmapStatus === 'idle'}
@@ -289,31 +263,47 @@ export function OperationalDashboard(): JSX.Element {
           </Box>
         </Box>
 
-        {/* FROTA E EXPLORAÇÃO — as mesmas máquinas em duas leituras, ao lado da série completa */}
-        <Box sx={slot({ lg: 8, xs: 15 })}>
-          <SeriesExplorer
+        {/* EVIDÊNCIA — a série do item investigado (o único painel de série da home) */}
+        <Box sx={slot({ lg: 8, xs: 10 })}>
+          <TrendPanel
+            period={dashboard.period}
             series={dashboard.series.data}
             selectedSeriesId={dashboard.selectedSeriesId}
-            samples={dashboard.detailSamples}
+            detail={dashboard.detailPoints}
             status={dashboard.detailStatus}
             error={dashboard.detailError}
-            onSelectSeries={selectSeries}
             onRetry={retryDetail}
+            onSelectSeries={selectSeries}
+            onPeriodChange={(period) => dispatch(periodChanged(period))}
+            headingRef={investigationRef}
           />
         </Box>
         <Box sx={stack('minmax(0, 1fr) auto')}>
-          <Box sx={slot({ md: 6, xs: 13 })}>
-            <AssetConditionColumns view={view} loading={inventoryLoading} />
-          </Box>
-          <Box sx={slot({ md: 6, xs: 14 })}>
-            <FleetConditionMatrix
-              view={view}
-              loading={inventoryLoading}
-              nowMs={nowMs}
-              selectedSeriesId={dashboard.selectedSeriesId}
-              range={range}
+          <Box sx={slot({ md: 6, xs: 11 })}>
+            <RecentOccurrences
+              alerts={dashboard.alerts}
+              status={dashboard.alertsStatus}
+              error={dashboard.alertsError}
+              onRetry={() => void dispatch(fetchAlertsSummary())}
             />
           </Box>
+          <Box sx={slot({ md: 6, xs: 12 })}>
+            <DataQualityPanel view={view} loading={inventoryLoading} />
+          </Box>
+        </Box>
+
+        {/* FROTA — as mesmas máquinas em duas leituras, fechando a página */}
+        <Box sx={slot({ lg: 6, xs: 13 })}>
+          <AssetConditionColumns view={view} loading={inventoryLoading} />
+        </Box>
+        <Box sx={slot({ lg: 6, xs: 14 })}>
+          <FleetConditionMatrix
+            view={view}
+            loading={inventoryLoading}
+            nowMs={nowMs}
+            selectedSeriesId={dashboard.selectedSeriesId}
+            range={range}
+          />
         </Box>
       </Box>
     </>

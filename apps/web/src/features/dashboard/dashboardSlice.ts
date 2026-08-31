@@ -69,7 +69,6 @@ export interface DashboardState {
   detailStatus: RequestStatus;
   /** Série da tendência já agregada por bucket — nunca as amostras da janela inteira. */
   detailPoints: SeriesPointsResponseDto | null;
-  detailSamples: TimeSeriesSampleDto[];
   detailError: string | null;
   activeDetailRequestId: string | null;
   loadedAt: string | null;
@@ -101,7 +100,6 @@ export const initialDashboardState: DashboardState = {
   selectionSource: 'auto',
   detailStatus: 'idle',
   detailPoints: null,
-  detailSamples: [],
   detailError: null,
   activeDetailRequestId: null,
   loadedAt: null,
@@ -257,7 +255,6 @@ const dashboardSlice = createSlice({
       if (state.selectionSource === 'user' || state.selectedSeriesId === action.payload) return;
       state.selectedSeriesId = action.payload;
       state.activeDetailRequestId = null;
-      state.detailSamples = [];
       state.detailPoints = null;
       state.detailError = null;
       state.detailStatus = 'loading';
@@ -267,7 +264,6 @@ const dashboardSlice = createSlice({
       if (state.selectedSeriesId === action.payload) return;
       state.selectedSeriesId = action.payload;
       state.activeDetailRequestId = null;
-      state.detailSamples = [];
       state.detailPoints = null;
       state.detailError = null;
       state.detailStatus = action.payload ? 'loading' : 'idle';
@@ -297,7 +293,6 @@ const dashboardSlice = createSlice({
         );
         if (!selectionStillExists) {
           state.selectedSeriesId = preferredSeries(action.payload.series.data);
-          state.detailSamples = [];
           state.detailPoints = null;
           state.detailError = null;
           state.detailStatus = state.selectedSeriesId ? 'loading' : 'idle';
@@ -361,12 +356,8 @@ const dashboardSlice = createSlice({
           return;
         }
         state.detailStatus = 'succeeded';
+        // O painel consome a resposta do servidor como ela é — sem reconstruir "amostras".
         state.detailPoints = action.payload.points;
-        // A tendência lê pontos agregados; o formato de amostra é mantido para os
-        // componentes de gráfico, com um ponto por bucket (a média medida do bucket).
-        state.detailSamples = action.payload.points.points.flatMap((point) =>
-          point.avg === null ? [] : [{ timestamp: point.bucketStart, value: point.avg }],
-        );
       })
       .addCase(fetchDashboardSeriesDetail.rejected, (state, action) => {
         if (
@@ -377,7 +368,6 @@ const dashboardSlice = createSlice({
         }
         state.detailStatus = 'failed';
         state.detailPoints = null;
-        state.detailSamples = [];
         state.detailError = action.error.message ?? 'Não foi possível carregar as amostras.';
       });
   },

@@ -1,4 +1,5 @@
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Link from '@mui/material/Link';
@@ -55,6 +56,7 @@ import {
   formatDateTime,
   formatRange,
 } from '../../features/time/instant';
+import { bucketToMs, useTimeZoom } from '../../features/dashboard/useTimeZoom';
 import { links } from '../../features/investigation/links';
 import { useAnalyticsQuery, useTimeRange } from '../../features/investigation/useAnalyticsQuery';
 
@@ -132,10 +134,19 @@ export function SensorPage(): JSX.Element {
     band: item.min !== null && item.max !== null ? [item.min, item.max] : undefined,
   }));
 
+  // Zoom com a roda do mouse sobre os buckets carregados; duplo clique volta ao período.
+  const zoomExtent: [number, number] | null =
+    chartData.length > 1 ? [chartData[0].t, chartData[chartData.length - 1].t] : null;
+  const zoom = useTimeZoom(zoomExtent, bucketToMs(bucket) * 3);
+  const visibleData =
+    zoom.zoomed && zoom.domain
+      ? chartData.filter((item) => item.t >= zoom.domain![0] && item.t <= zoom.domain![1])
+      : chartData;
+
   // Domínio com faixa mínima proporcional: nem zero achatando a curva, nem ruído de meio
   // por cento ocupando o card inteiro. Ver `paddedDomain`.
   const yDomain = paddedDomain(
-    chartData
+    visibleData
       .flatMap((item) => [item.avg, ...(item.band ?? [])])
       .filter((value): value is number => value !== null && value !== undefined),
   );
@@ -242,7 +253,14 @@ export function SensorPage(): JSX.Element {
           title="Tendência — aceleração eixo Y (RMS por bucket)"
           titleId="sensor-trend-title"
           size="primaryChart"
-          subtitle={`Um ponto por bucket de ${bucket}; a faixa sombreada é o mínimo e o máximo do bucket. Nenhuma amostra bruta é transportada.`}
+          subtitle={`Um ponto por bucket de ${bucket}; a faixa sombreada é o mínimo e o máximo do bucket. Nenhuma amostra bruta é transportada. Scroll aproxima; duplo clique volta ao período.`}
+          action={
+            zoom.zoomed ? (
+              <Button size="small" variant="text" onClick={zoom.reset}>
+                Ver período todo
+              </Button>
+            ) : undefined
+          }
           info="Esta curva é do EIXO Y. O desvio publicado no indicador usa o RMS radial (Y e Z pareados por instante) — grandezas diferentes, nomes diferentes."
 
         >
@@ -266,15 +284,21 @@ export function SensorPage(): JSX.Element {
           {/* Altura explícita: fora do grid do painel não há linha para o card esticar, e o
               ResponsiveContainer precisa de uma altura resolvível. */}
           {points.status === 'succeeded' && chartData.length > 0 ? (
-            <Box sx={{ width: '100%', height: { xs: 260, md: 320 } }} role="img" aria-label="Série agregada do sensor">
+            <Box
+              ref={zoom.ref}
+              sx={{ width: '100%', height: { xs: 260, md: 320 } }}
+              role="img"
+              aria-label="Série agregada do sensor. Use a roda do mouse para aproximar; duplo clique volta ao período."
+            >
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
+                <ComposedChart data={visibleData} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartGridStroke(muiTheme)} />
                   <XAxis
                     dataKey="t"
                     type="number"
+                    domain={zoom.zoomed && zoom.domain ? zoom.domain : ['dataMin', 'dataMax']}
+                    allowDataOverflow
                     scale="time"
-                    domain={['dataMin', 'dataMax']}
                     tickFormatter={formatChartTick}
                     tick={axisTickStyle(muiTheme)}
                     tickLine={false}

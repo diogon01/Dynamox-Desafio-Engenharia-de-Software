@@ -232,8 +232,8 @@ describe('dashboardSlice', () => {
       ),
     );
     expect(state.selectedSeriesId).toBe('series-y');
-    // Um ponto por bucket, com a média medida — nenhuma amostra bruta no estado.
-    expect(state.detailSamples[0].value).toBe(2);
+    // A resposta do servidor entra como é: um ponto por bucket, nenhuma amostra bruta.
+    expect(state.detailPoints?.points[0].avg).toBe(2);
     expect(state.detailPoints?.stats.sampleCount).toBe(180);
   });
 
@@ -246,7 +246,7 @@ describe('dashboardSlice', () => {
     );
     expect(state.detailStatus).toBe('failed');
     expect(state.detailError).toBe('Série indisponível');
-    expect(state.detailSamples).toEqual([]);
+    expect(state.detailPoints).toBeNull();
   });
 
   it('marca todos os recursos como falhos numa rejeição inesperada do thunk', () => {

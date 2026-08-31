@@ -10,7 +10,6 @@ import type {
   FleetConditionResponseDto,
   FreshnessKind,
   SensorModel,
-  SeriesMetrics,
   TimeSeriesSampleDto,
   TimeSeriesSummary,
   TrendPointDto,
@@ -29,7 +28,6 @@ export const STALE_AFTER_MS = DEFAULT_CONDITION_POLICY.staleAfterMs;
 const ACQUISITION_GAP_MS = 5 * 60 * 1000;
 /** Amostras mínimas para uma janela de aquisição valer como baseline. */
 export const MIN_BASELINE_SAMPLES = DEFAULT_CONDITION_POLICY.minWindowSamples;
-const MIN_SERIES_BASELINE_SAMPLES = 60;
 
 // O vocabulário é o do domínio; re-exportado para quem já importava daqui.
 export type { ConditionKind, FreshnessKind };
@@ -408,17 +406,6 @@ export function assessmentsFromFleetCondition(
     });
   }
   return assessments;
-}
-
-export function computeDemonstrativeSeriesBaseline(
-  serialNumber: string,
-  samples: TimeSeriesSampleDto[],
-): number | null {
-  if (!serialNumber.startsWith('SIM-')) return null;
-  const first = groupAcquisitionWindows(samples).find(
-    (window) => window.length >= MIN_SERIES_BASELINE_SAMPLES,
-  );
-  return first ? mean(first.map((sample) => sample.value)) : null;
 }
 
 const FRESHNESS_LABELS: Record<FreshnessKind, string> = {
@@ -1009,20 +996,6 @@ export interface TrendPoint {
   samples: number;
 }
 
-export interface TrendView {
-  points: TrendPoint[];
-  /**
-   * `acquisition` existe porque o dado real é uma RAJADA: 60 amostras em 60 s, repetidas a
-   * cada hora. Plotadas cruas num eixo de horas, cada aquisição vira um traço vertical e a
-   * tendência — que é justamente a comparação entre aquisições — some.
-   */
-  mode: 'raw' | 'average' | 'acquisition';
-  filteredSamples: TimeSeriesSampleDto[];
-  availableStart: string | null;
-  availableEnd: string | null;
-  coveredStart: string | null;
-  coveredEnd: string | null;
-}
 
 export function filterSamplesByPeriod(
   samples: TimeSeriesSampleDto[],
@@ -1044,208 +1017,3 @@ export function filterSamplesByPeriod(
   });
 }
 
-function sampleRange(samples: TimeSeriesSampleDto[]): [string | null, string | null] {
-  const sorted = samples
-    .filter((sample) => parseTimestamp(sample.timestamp) !== null)
-    .slice()
-    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
-  return [sorted[0]?.timestamp ?? null, sorted.at(-1)?.timestamp ?? null];
-}
-
-function bucketSize(period: DashboardPeriod, spanMs: number): number {
-  if (period === '24h') return 15 * 60 * 1000;
-  if (period === '7d') return 60 * 60 * 1000;
-  if (period === '30d') return 6 * 60 * 60 * 1000;
-  // "Tudo": o intervalo vem dos próprios dados, então o balde é derivado deles.
-  return Math.max(1, Math.ceil(spanMs / 240));
-}
-
-export function buildTrendView(
-  samples: TimeSeriesSampleDto[],
-  period: DashboardPeriod,
-  nowMs = Date.now(),
-  rawLimit = 240,
-): TrendView {
-  const filtered = filterSamplesByPeriod(samples, period, nowMs);
-  const [availableStart, availableEnd] = sampleRange(samples);
-  const [coveredStart, coveredEnd] = sampleRange(filtered);
-
-  // Rajadas separadas por lacunas: uma média por aquisição mostra a tendência que o
-  // traçado cru esconde. Cada ponto continua sendo dado medido, nunca interpolação.
-  const acquisitions = groupAcquisitionWindows(filtered);
-  const denseAcquisitions =
-    acquisitions.length >= 2 &&
-    acquisitions.length <= 48 &&
-    filtered.length >= acquisitions.length * 10;
-
-  if (denseAcquisitions) {
-    return {
-      points: acquisitions.map((window) => ({
-        timestamp: Date.parse(window[0].timestamp),
-        value: mean(window.map((sample) => sample.value)),
-        samples: window.length,
-      })),
-      mode: 'acquisition',
-      filteredSamples: filtered,
-      availableStart,
-      availableEnd,
-      coveredStart,
-      coveredEnd,
-    };
-  }
-
-  if (filtered.length <= rawLimit) {
-    const points: TrendPoint[] = [];
-    const intervals = filtered
-      .slice(1)
-      .map((sample, index) => Date.parse(sample.timestamp) - Date.parse(filtered[index].timestamp))
-      .filter((interval) => interval > 0)
-      .sort((a, b) => a - b);
-    const typicalInterval = intervals[Math.floor(intervals.length / 2)] ?? 0;
-    const breakAfter = Math.max(typicalInterval * 4, ACQUISITION_GAP_MS);
-
-    filtered.forEach((sample, index) => {
-      const timestamp = Date.parse(sample.timestamp);
-      const previous = filtered[index - 1];
-      if (previous && timestamp - Date.parse(previous.timestamp) > breakAfter) {
-        points.push({ timestamp: Date.parse(previous.timestamp) + 1, value: null, samples: 0 });
-      }
-      points.push({ timestamp, value: sample.value, samples: 1 });
-    });
-    return {
-      points,
-      mode: 'raw',
-      filteredSamples: filtered,
-      availableStart,
-      availableEnd,
-      coveredStart,
-      coveredEnd,
-    };
-  }
-
-  const firstAt = Date.parse(filtered[0].timestamp);
-  const lastAt = Date.parse(filtered[filtered.length - 1].timestamp);
-  const spanMs = period === 'all' ? Math.max(1, lastAt - firstAt) : PERIOD_MS[period];
-  const size = bucketSize(period, spanMs);
-  const start = period === 'all' ? firstAt : nowMs - spanMs;
-  const buckets = new Map<number, number[]>();
-  for (const sample of filtered) {
-    const at = Date.parse(sample.timestamp);
-    const bucket = Math.floor((at - start) / size);
-    const values = buckets.get(bucket) ?? [];
-    values.push(sample.value);
-    buckets.set(bucket, values);
-  }
-  const count = Math.ceil(spanMs / size);
-  const points = Array.from({ length: count }, (_, bucket) => {
-    const values = buckets.get(bucket) ?? [];
-    return {
-      timestamp: start + bucket * size,
-      value: values.length > 0 ? mean(values) : null,
-      samples: values.length,
-    };
-  });
-  return {
-    points,
-    mode: 'average',
-    filteredSamples: filtered,
-    availableStart,
-    availableEnd,
-    coveredStart,
-    coveredEnd,
-  };
-}
-
-export function computeSampleStats(samples: TimeSeriesSampleDto[]): SeriesMetrics {
-  if (samples.length === 0) {
-    return {
-      count: 0,
-      min: null,
-      max: null,
-      avg: null,
-      last: null,
-      firstTimestamp: null,
-      lastTimestamp: null,
-    };
-  }
-  const sorted = samples.slice().sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
-  const values = sorted.map((sample) => sample.value);
-  return {
-    count: values.length,
-    min: Math.min(...values),
-    max: Math.max(...values),
-    avg: mean(values),
-    last: sorted.at(-1)?.value ?? null,
-    firstTimestamp: sorted[0]?.timestamp ?? null,
-    lastTimestamp: sorted.at(-1)?.timestamp ?? null,
-  };
-}
-
-/** Agregação temporal do explorador: preserva buckets vazios como null (lacuna). */
-/**
- * Intervalo a partir do qual uma lacuna interrompe a linha: quatro vezes o espaçamento
- * típico da série, com piso na janela de aquisição. Séries de 1 s e séries de 4 h passam
- * pela mesma regra e chegam ao mesmo lugar — uma linha contínua onde há continuidade.
- */
-export function breakThreshold(sorted: TimeSeriesSampleDto[]): number {
-  const intervals = sorted
-    .slice(1)
-    .map((sample, index) => Date.parse(sample.timestamp) - Date.parse(sorted[index].timestamp))
-    .filter((interval) => interval > 0)
-    .sort((a, b) => a - b);
-  const typical = intervals[Math.floor(intervals.length / 2)] ?? 0;
-  return Math.max(typical * 4, ACQUISITION_GAP_MS);
-}
-
-export function aggregateSamplesForDetail(
-  samples: TimeSeriesSampleDto[],
-  maxPoints = 320,
-): { points: TrendPoint[]; aggregated: boolean } {
-  const sorted = samples
-    .filter((sample) => parseTimestamp(sample.timestamp) !== null)
-    .slice()
-    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
-  if (sorted.length <= maxPoints) {
-    // A lacuna que quebra a linha tem de ser proporcional ao espaçamento da PRÓPRIA série.
-    // Com o painel consumindo buckets agregados (15 min, 1 h, 4 h), o limiar fixo de 5 min
-    // separava todo ponto do seguinte: o gráfico virava uma sequência de segmentos de um
-    // ponto só e, sem `dot`, não desenhava nada. Mesma regra que `buildTrendView` já usa.
-    const groups = groupAcquisitionWindows(sorted, breakThreshold(sorted));
-    const points: TrendPoint[] = [];
-    groups.forEach((group, groupIndex) => {
-      if (groupIndex > 0) {
-        points.push({ timestamp: Date.parse(group[0].timestamp) - 1, value: null, samples: 0 });
-      }
-      points.push(
-        ...group.map((sample) => ({
-          timestamp: Date.parse(sample.timestamp),
-          value: sample.value,
-          samples: 1,
-        })),
-      );
-    });
-    return { points, aggregated: false };
-  }
-
-  const start = Date.parse(sorted[0].timestamp);
-  const end = Date.parse(sorted[sorted.length - 1].timestamp);
-  const bucketMs = Math.max(1, Math.ceil((end - start + 1) / maxPoints));
-  const buckets = new Map<number, number[]>();
-  for (const sample of sorted) {
-    const index = Math.min(maxPoints - 1, Math.floor((Date.parse(sample.timestamp) - start) / bucketMs));
-    const values = buckets.get(index) ?? [];
-    values.push(sample.value);
-    buckets.set(index, values);
-  }
-  return {
-    aggregated: true,
-    points: Array.from({ length: maxPoints }, (_, index) => {
-      const values = buckets.get(index) ?? [];
-      return {
-        timestamp: start + index * bucketMs,
-        value: values.length > 0 ? mean(values) : null,
-        samples: values.length,
-      };
-    }),
-  };
-}

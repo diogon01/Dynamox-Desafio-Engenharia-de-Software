@@ -196,8 +196,15 @@ function heatmapFixture(options: { emptyInventory?: boolean } = {}) {
 }
 
 /** Série agregada: um ponto por janela de aquisição, como o endpoint devolve. */
-function seriesPointsFixture(seriesId: string) {
-  const data = samplesBySeries[seriesId] ?? [];
+function seriesPointsFixture(seriesId: string, window: { from?: string | null; to?: string | null } = {}) {
+  // O servidor recorta pela janela pedida; o fixture faz o mesmo — sem isso, trocar o
+  // período no painel nunca produziria um resultado vazio como na aplicação real.
+  const fromMs = window.from ? Date.parse(window.from) : Number.NEGATIVE_INFINITY;
+  const toMs = window.to ? Date.parse(window.to) : Number.POSITIVE_INFINITY;
+  const data = (samplesBySeries[seriesId] ?? []).filter((sample) => {
+    const t = Date.parse(sample.timestamp);
+    return t >= fromMs && t < toMs;
+  });
   const byWindow = new Map<string, TimeSeriesSampleDto[]>();
   for (const sample of data) {
     const bucket = new Date(Math.floor(Date.parse(sample.timestamp) / 900_000) * 900_000).toISOString();
@@ -287,7 +294,10 @@ function fixtureFetch(
       return okJson(heatmapFixture({ emptyInventory: options.emptyInventory }));
     }
     const points = url.match(/analytics\/series\/(s\d[xyz])\/points/);
-    if (points) return okJson(seriesPointsFixture(points[1]));
+    if (points) {
+      const query = new URL(url).searchParams;
+      return okJson(seriesPointsFixture(points[1], { from: query.get('from'), to: query.get('to') }));
+    }
     const sample = url.match(/time-series\/(s\d[xyz])\/samples/);
     if (sample) {
       const data = samplesBySeries[sample[1]];
@@ -529,8 +539,8 @@ describe('OperationalDashboard', () => {
     const investigacao = await screen.findByRole('heading', { name: /Investigação — SIM-HF-002/i });
     // O drill-down entrega o foco: o caminho também existe no teclado.
     await waitFor(() => expect(document.activeElement).toBe(investigacao));
-    // O painel de tendência crítica declara o contexto completo.
-    const trend = screen.getByRole('region', { name: /Tendência crítica/i });
+    // O painel de série temporal declara o contexto completo.
+    const trend = screen.getByRole('region', { name: /Série temporal/i });
     expect(trend.textContent).toContain('SIM-HF-002');
     // Trocar o contexto NÃO é navegar: a home continua sendo a rota.
     expect(screen.getByTestId('rota').textContent).toBe('/');
@@ -666,21 +676,23 @@ describe('OperationalDashboard', () => {
     renderDashboard(fixtureFetch({ seriesEmpty: true }));
     expect(await screen.findByLabelText(/^Cobertura monitorada: 0%/)).toBeDefined();
     expect(screen.getAllByText(/Sem dados/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Nenhuma série persistida/i)).toBeDefined();
+    expect(within(screen.getByRole('region', { name: /Série temporal/i })).getByText(/Nenhuma série persistida/i)).toBeDefined();
   });
 
-  it('abre o explorador com quatro filtros hierárquicos e métricas da série', async () => {
+  it('a série temporal é UM painel: filtros hierárquicos, estatísticas do servidor e a curva', async () => {
     renderDashboard();
     await screen.findByLabelText(/^Ativos em atenção: 1\b/);
-    await userEvent.click(screen.getByRole('button', { name: /Explorar série temporal/i }));
-    const explorer = document.getElementById('series-explorer-content');
-    expect(explorer).not.toBeNull();
-    expect(within(explorer!).getByLabelText('1. Máquina')).toBeDefined();
-    expect(within(explorer!).getByLabelText('2. Ponto')).toBeDefined();
-    expect(within(explorer!).getByLabelText('3. Sensor')).toBeDefined();
-    expect(within(explorer!).getByLabelText('4. Eixo / métrica')).toBeDefined();
-    expect(within(explorer!).getByText('Amostras')).toBeDefined();
-    expect(within(explorer!).getByText('Unidade')).toBeDefined();
+    const trend = await screen.findByRole('region', { name: /Série temporal/i });
+    // Os quatro filtros hierárquicos vivem aqui — não existe um segundo painel da mesma série.
+    for (const label of ['Máquina', 'Ponto', 'Sensor', 'Eixo / métrica']) {
+      expect(within(trend).getByLabelText(label)).toBeDefined();
+    }
+    // As estatísticas são as de `stats` da resposta agregada — inclusive aquisições, que o
+    // cliente não teria como contar sem as amostras.
+    await waitFor(() => expect(within(trend).getByText('Aquisições')).toBeDefined());
+    expect(within(trend).getByText('Amostras')).toBeDefined();
+    expect(within(trend).getByText('Média')).toBeDefined();
+    expect(within(trend).getByText(/agregado no banco/)).toBeDefined();
   });
 
   it('expõe a hierarquia da página na ordem da decisão operacional', async () => {
@@ -688,11 +700,13 @@ describe('OperationalDashboard', () => {
     expect(await screen.findByRole('heading', { level: 1, name: /Visão geral operacional/i })).toBeDefined();
     const titulos = screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent ?? '');
     const iFila = titulos.findIndex((t) => /Prioridade de inspeção/.test(t));
-    const iTendencia = titulos.findIndex((t) => /Tendência crítica/.test(t));
+    const iMapa = titulos.findIndex((t) => /Severidade por hora/.test(t));
+    const iTendencia = titulos.findIndex((t) => /Série temporal/.test(t));
     const iMatriz = titulos.findIndex((t) => /Matriz de condição da frota/.test(t));
-    // Prioridade antes da evidência; a matriz fecha a exploração.
+    // Prioridade → onde no tempo piorou → a evidência da série → a matriz fecha.
     expect(iFila).toBeGreaterThanOrEqual(0);
-    expect(iFila).toBeLessThan(iTendencia);
+    expect(iFila).toBeLessThan(iMapa);
+    expect(iMapa).toBeLessThan(iTendencia);
     expect(iTendencia).toBeLessThan(iMatriz);
     expect(screen.getByRole('button', { name: /7 dias/i }).getAttribute('aria-pressed')).toBe('true');
   });

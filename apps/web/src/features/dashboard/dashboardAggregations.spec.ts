@@ -10,14 +10,11 @@ import type {
 
 import type { MachineDto, MonitoringPointDto } from '../../api/client';
 import {
-  aggregateSamplesForDetail,
   buildAcquisitionActivity,
   buildDashboardView,
   buildPriorityList,
   buildWeeklyAcquisitionMap,
-  buildTrendView,
   classifyFreshness,
-  computeSampleStats,
   computeSyntheticAssessment,
   filterSamplesByPeriod,
   groupAcquisitionWindows,
@@ -278,15 +275,6 @@ describe('agregações puras do dashboard operacional', () => {
     expect(view.signals.some((signal) => signal.reason.includes('mais de 24 horas'))).toBe(true);
   });
 
-  it('"Tudo" mostra o histórico inteiro quando a janela móvel não alcança o dado', () => {
-    const antigo = samples('2026-06-01T08:00:00.000Z', [1, 2, 3]);
-    expect(filterSamplesByPeriod(antigo, '30d', NOW)).toHaveLength(0);
-    expect(filterSamplesByPeriod(antigo, 'all', NOW)).toHaveLength(3);
-    const trend = buildTrendView(antigo, 'all', NOW);
-    expect(trend.filteredSamples).toHaveLength(3);
-    expect(trend.points.some((point) => point.value !== null)).toBe(true);
-  });
-
   it('filtra 24 h, 7 dias e 30 dias pelos timestamps reais', () => {
     const input = [
       ...samples('2026-08-29T11:00:00.000Z', [1]),
@@ -299,86 +287,6 @@ describe('agregações puras do dashboard operacional', () => {
     expect(filterSamplesByPeriod(input, '30d', NOW).map((sample) => sample.value)).toEqual([3, 2, 1]);
   });
 
-  it('preserva lacuna semanal como null em vez de zero', () => {
-    const input = [
-      ...samples('2026-08-25T08:00:00.000Z', [1, 2]),
-      ...samples('2026-08-29T08:00:00.000Z', [3, 4]),
-    ];
-    const trend = buildTrendView(input, '7d', NOW);
-    expect(trend.mode).toBe('raw');
-    expect(trend.points.some((point) => point.value === null)).toBe(true);
-    expect(trend.points.some((point) => point.value === 0)).toBe(false);
-  });
-
-  it('rajadas viram uma média por aquisição em vez de traços verticais ilegíveis', () => {
-    // Três aquisições de 60 amostras separadas por uma hora — a forma real do dado.
-    const rajada = (offsetMs: number, valor: number) =>
-      samples(
-        new Date(NOW - 3 * 60 * 60 * 1000 + offsetMs).toISOString(),
-        Array.from({ length: 60 }, () => valor),
-      );
-    const input = [
-      ...rajada(0, 1),
-      ...rajada(60 * 60 * 1000, 1),
-      ...rajada(2 * 60 * 60 * 1000, 3),
-    ];
-
-    const trend = buildTrendView(input, '7d', NOW);
-    expect(trend.mode).toBe('acquisition');
-    expect(trend.points).toHaveLength(3);
-    expect(trend.points.map((point) => point.value)).toEqual([1, 1, 3]);
-    // Nenhum ponto inventado: cada um resume amostras que existem.
-    expect(trend.points.every((point) => point.samples === 60)).toBe(true);
-    expect(trend.filteredSamples).toHaveLength(180);
-  });
-
-  it('agrega muitas amostras por média e deixa buckets vazios nulos', () => {
-    const input = samples(
-      '2026-08-29T08:00:00.000Z',
-      Array.from({ length: 300 }, (_, index) => index),
-      1000,
-    );
-    const trend = buildTrendView(input, '7d', NOW, 20);
-    expect(trend.mode).toBe('average');
-    expect(trend.points.some((point) => point.value === null)).toBe(true);
-    expect(trend.points.filter((point) => point.value !== null)).toHaveLength(1);
-  });
-
-  it('informa intervalo disponível quando os dados estão fora do período', () => {
-    const trend = buildTrendView(samples('2026-07-01T08:00:00.000Z', [1, 2]), '7d', NOW);
-    expect(trend.filteredSamples).toEqual([]);
-    expect(trend.availableStart).toBe('2026-07-01T08:00:00.000Z');
-    expect(trend.availableEnd).toBe('2026-07-01T08:00:01.000Z');
-  });
-
-  it('calcula amostras, mínimo, máximo, média e último valor', () => {
-    const stats = computeSampleStats(samples('2026-08-29T08:00:00.000Z', [2, 4, 8]));
-    expect(stats).toMatchObject({ count: 3, min: 2, max: 8, avg: 14 / 3, last: 8 });
-  });
-
-  it('retorna métricas vazias sem NaN quando a série está vazia', () => {
-    expect(computeSampleStats([])).toMatchObject({
-      count: 0,
-      min: null,
-      max: null,
-      avg: null,
-      last: null,
-    });
-  });
-
-  it('agrega o detalhe extenso sem ultrapassar o orçamento de pontos', () => {
-    const detail = aggregateSamplesForDetail(
-      samples('2026-08-29T08:00:00.000Z', Array.from({ length: 1000 }, (_, index) => index)),
-      100,
-    );
-    expect(detail.aggregated).toBe(true);
-    expect(detail.points).toHaveLength(100);
-    expect(detail.points[0].value).toBe(4.5);
-  });
-});
-
-
-describe('painéis derivados do dashboard v2', () => {
   it('a manchete separa condição, magnitude, cobertura e recência', () => {
     const view = buildDashboardView(dashboardState(), NOW);
     expect(view.headline.attention.count).toBe(1);
@@ -395,27 +303,6 @@ describe('painéis derivados do dashboard v2', () => {
     expect(priority.map((cell) => cell.sensorSerial)).toEqual(['SIM-HF-002', 'SIM-HF-001']);
     // A miniatura de tendência da exceção vem das aquisições radiais reais.
     expect(view.sparklines[priority[0].key].length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('a linha do explorador não se quebra em série já bucketizada', () => {
-    // REGRESSÃO: com o painel consumindo buckets de 1 h, o limiar fixo de 5 min separava
-    // todo ponto do seguinte — o gráfico virava segmentos de um ponto só e, sem `dot`,
-    // não desenhava nada. A lacuna tem de ser relativa ao espaçamento da própria série.
-    const bucketizada = samples('2026-08-29T00:00:00.000Z', [1, 2, 3, 4, 5], 60 * 60 * 1000);
-    const { points } = aggregateSamplesForDetail(bucketizada);
-
-    expect(points.filter((point) => point.value === null)).toHaveLength(0);
-    expect(points.map((point) => point.value)).toEqual([1, 2, 3, 4, 5]);
-  });
-
-  it('mas ainda quebra a linha numa lacuna de verdade', () => {
-    const comLacuna = [
-      ...samples('2026-08-29T00:00:00.000Z', [1, 2, 3], 60 * 60 * 1000),
-      // Três dias de silêncio: muito além do espaçamento típico da série.
-      ...samples('2026-09-01T00:00:00.000Z', [4, 5], 60 * 60 * 1000),
-    ];
-    const { points } = aggregateSamplesForDetail(comLacuna);
-    expect(points.filter((point) => point.value === null)).toHaveLength(1);
   });
 
   it('a atividade de 24 h conta amostras e sensores por hora, sem inventar buckets', () => {

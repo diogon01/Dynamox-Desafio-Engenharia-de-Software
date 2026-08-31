@@ -16,6 +16,26 @@ const MachinesPanel = lazy(async () => {
   const module = await import('./components/MachinesPanel');
   return { default: module.MachinesPanel };
 });
+const TimeWindowPage = lazy(async () => {
+  const module = await import('./pages/investigation/TimeWindowPage');
+  return { default: module.TimeWindowPage };
+});
+
+const SensorPage = lazy(async () => {
+  const module = await import('./pages/investigation/SensorPage');
+  return { default: module.SensorPage };
+});
+
+const AcquisitionPage = lazy(async () => {
+  const module = await import('./pages/investigation/AcquisitionPage');
+  return { default: module.AcquisitionPage };
+});
+
+const RawSamplesPage = lazy(async () => {
+  const module = await import('./pages/investigation/RawSamplesPage');
+  return { default: module.RawSamplesPage };
+});
+
 const MonitoringPointsPanel = lazy(async () => {
   const module = await import('./components/MonitoringPointsPanel');
   return { default: module.MonitoringPointsPanel };
@@ -44,6 +64,11 @@ export function App(): JSX.Element {
         <Route index element={<OperationalDashboard />} />
         <Route path="/machines" element={<MachinesPanel />} />
         <Route path="/monitoring-points" element={<MonitoringPointsPanel />} />
+        {/* Investigação: cada rota é um nível do drill-down, com o recorte na URL. */}
+        <Route path="/monitoring/windows/:date/:hour" element={<TimeWindowPage />} />
+        <Route path="/sensors/:serialNumber" element={<SensorPage />} />
+        <Route path="/acquisitions/:cycleId" element={<AcquisitionPage />} />
+        <Route path="/acquisitions/:cycleId/samples" element={<RawSamplesPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

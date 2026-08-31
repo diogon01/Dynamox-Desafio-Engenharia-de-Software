@@ -50,6 +50,17 @@ describe('App — autenticação e proteção de rotas', () => {
             JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: '2026-08-29T12:00:00.000Z' }),
             { status: 200 },
           );
+        // O painel consulta a camada analítica; aqui basta responder vazio.
+        if (url.includes('/analytics/fleet-condition'))
+          return new Response(
+            JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', generatedAt: '2026-08-29T12:00:00.000Z', points: [] }),
+            { status: 200 },
+          );
+        if (url.includes('/analytics/heatmap'))
+          return new Response(
+            JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', bucket: 'hour', expectedSensors: 0, buckets: [] }),
+            { status: 200 },
+          );
         if (url.includes('/monitoring-points'))
           return new Response(
             JSON.stringify({
@@ -93,6 +104,17 @@ describe('App — autenticação e proteção de rotas', () => {
         if (url.endsWith('/health'))
           return new Response(
             JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: '2026-08-29T12:00:00.000Z' }),
+            { status: 200 },
+          );
+        // O painel consulta a camada analítica; aqui basta responder vazio.
+        if (url.includes('/analytics/fleet-condition'))
+          return new Response(
+            JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', generatedAt: '2026-08-29T12:00:00.000Z', points: [] }),
+            { status: 200 },
+          );
+        if (url.includes('/analytics/heatmap'))
+          return new Response(
+            JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', bucket: 'hour', expectedSensors: 0, buckets: [] }),
             { status: 200 },
           );
         if (url.includes('/monitoring-points'))
@@ -143,6 +165,17 @@ describe('App — autenticação e proteção de rotas', () => {
         if (url.endsWith('/health'))
           return new Response(
             JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: '2026-08-29T12:00:00.000Z' }),
+            { status: 200 },
+          );
+        // O painel consulta a camada analítica; aqui basta responder vazio.
+        if (url.includes('/analytics/fleet-condition'))
+          return new Response(
+            JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', generatedAt: '2026-08-29T12:00:00.000Z', points: [] }),
+            { status: 200 },
+          );
+        if (url.includes('/analytics/heatmap'))
+          return new Response(
+            JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', bucket: 'hour', expectedSensors: 0, buckets: [] }),
             { status: 200 },
           );
         if (url.includes('/monitoring-points'))
@@ -235,6 +268,17 @@ describe('AppShell — navegação lateral', () => {
         if (url.endsWith('/health'))
           return new Response(
             JSON.stringify({ status: 'ok', database: 'up', version: 'x', timestamp: '2026-08-29T12:00:00.000Z' }),
+            { status: 200 },
+          );
+        // O painel consulta a camada analítica; aqui basta responder vazio.
+        if (url.includes('/analytics/fleet-condition'))
+          return new Response(
+            JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', generatedAt: '2026-08-29T12:00:00.000Z', points: [] }),
+            { status: 200 },
+          );
+        if (url.includes('/analytics/heatmap'))
+          return new Response(
+            JSON.stringify({ from: '2026-08-29T00:00:00.000Z', to: '2026-08-29T12:00:00.000Z', bucket: 'hour', expectedSensors: 0, buckets: [] }),
             { status: 200 },
           );
         if (url.includes('/monitoring-points'))

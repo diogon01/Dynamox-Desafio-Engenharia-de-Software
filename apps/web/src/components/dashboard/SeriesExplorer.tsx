@@ -168,7 +168,14 @@ export function SeriesExplorer({
                 </Box>
                 <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap>
                   <Chip
-                    label={chart.aggregated ? 'Média agregada para visualização' : 'Dados brutos'}
+                    // A série já chega agregada por bucket do servidor; a tela nunca
+                    // recebe amostra crua. Chamar isso de "dados brutos" era uma promessa
+                    // que a arquitetura deixou de cumprir de propósito.
+                    label={
+                      chart.aggregated
+                        ? 'Reamostrado para visualização'
+                        : 'Um ponto por bucket, agregado no banco'
+                    }
                     size="small"
                     variant="outlined"
                   />

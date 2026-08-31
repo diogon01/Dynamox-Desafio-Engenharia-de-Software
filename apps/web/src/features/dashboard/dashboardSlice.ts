@@ -278,7 +278,6 @@ const dashboardSlice = createSlice({
           state.selectedSeriesId = preferredSeries(action.payload.series.data);
           state.detailSamples = [];
           state.detailPoints = null;
-      state.detailPoints = null;
           state.detailError = null;
           state.detailStatus = state.selectedSeriesId ? 'loading' : 'idle';
           state.activeDetailRequestId = null;
@@ -346,7 +345,6 @@ const dashboardSlice = createSlice({
         state.detailStatus = 'failed';
         state.detailPoints = null;
         state.detailSamples = [];
-      state.detailPoints = null;
         state.detailError = action.error.message ?? 'Não foi possível carregar as amostras.';
       });
   },

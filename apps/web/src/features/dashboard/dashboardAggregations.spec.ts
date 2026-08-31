@@ -392,6 +392,27 @@ describe('painéis derivados do dashboard v2', () => {
     expect(view.sparklines[priority[0].key].length).toBeGreaterThanOrEqual(2);
   });
 
+  it('a linha do explorador não se quebra em série já bucketizada', () => {
+    // REGRESSÃO: com o painel consumindo buckets de 1 h, o limiar fixo de 5 min separava
+    // todo ponto do seguinte — o gráfico virava segmentos de um ponto só e, sem `dot`,
+    // não desenhava nada. A lacuna tem de ser relativa ao espaçamento da própria série.
+    const bucketizada = samples('2026-08-29T00:00:00.000Z', [1, 2, 3, 4, 5], 60 * 60 * 1000);
+    const { points } = aggregateSamplesForDetail(bucketizada);
+
+    expect(points.filter((point) => point.value === null)).toHaveLength(0);
+    expect(points.map((point) => point.value)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('mas ainda quebra a linha numa lacuna de verdade', () => {
+    const comLacuna = [
+      ...samples('2026-08-29T00:00:00.000Z', [1, 2, 3], 60 * 60 * 1000),
+      // Três dias de silêncio: muito além do espaçamento típico da série.
+      ...samples('2026-09-01T00:00:00.000Z', [4, 5], 60 * 60 * 1000),
+    ];
+    const { points } = aggregateSamplesForDetail(comLacuna);
+    expect(points.filter((point) => point.value === null)).toHaveLength(1);
+  });
+
   it('ocorrências derivam das leituras reais, uma por sensor, mais recente primeiro', () => {
     const view = buildDashboardView(dashboardState(), NOW);
     const occurrences = buildOccurrences(view.cells);

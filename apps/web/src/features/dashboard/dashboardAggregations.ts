@@ -1228,6 +1228,21 @@ export function computeSampleStats(samples: TimeSeriesSampleDto[]): SeriesMetric
 }
 
 /** Agregação temporal do explorador: preserva buckets vazios como null (lacuna). */
+/**
+ * Intervalo a partir do qual uma lacuna interrompe a linha: quatro vezes o espaçamento
+ * típico da série, com piso na janela de aquisição. Séries de 1 s e séries de 4 h passam
+ * pela mesma regra e chegam ao mesmo lugar — uma linha contínua onde há continuidade.
+ */
+export function breakThreshold(sorted: TimeSeriesSampleDto[]): number {
+  const intervals = sorted
+    .slice(1)
+    .map((sample, index) => Date.parse(sample.timestamp) - Date.parse(sorted[index].timestamp))
+    .filter((interval) => interval > 0)
+    .sort((a, b) => a - b);
+  const typical = intervals[Math.floor(intervals.length / 2)] ?? 0;
+  return Math.max(typical * 4, ACQUISITION_GAP_MS);
+}
+
 export function aggregateSamplesForDetail(
   samples: TimeSeriesSampleDto[],
   maxPoints = 320,
@@ -1237,7 +1252,11 @@ export function aggregateSamplesForDetail(
     .slice()
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
   if (sorted.length <= maxPoints) {
-    const groups = groupAcquisitionWindows(sorted);
+    // A lacuna que quebra a linha tem de ser proporcional ao espaçamento da PRÓPRIA série.
+    // Com o painel consumindo buckets agregados (15 min, 1 h, 4 h), o limiar fixo de 5 min
+    // separava todo ponto do seguinte: o gráfico virava uma sequência de segmentos de um
+    // ponto só e, sem `dot`, não desenhava nada. Mesma regra que `buildTrendView` já usa.
+    const groups = groupAcquisitionWindows(sorted, breakThreshold(sorted));
     const points: TrendPoint[] = [];
     groups.forEach((group, groupIndex) => {
       if (groupIndex > 0) {

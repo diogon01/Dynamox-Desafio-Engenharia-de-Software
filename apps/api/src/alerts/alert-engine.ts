@@ -581,7 +581,10 @@ export class AlertEngine {
             activeKey: { in: [...candidates.map((row) => activeKeyFor(rule.id, row.monitoringPointId)), fleetKey] },
           },
         });
-        const activeFor = (scope: string) => actives.find((row) => row.activeKey === activeKeyFor(rule.id, scope)) ?? null;
+        // Um episódio aberto DEPOIS deste relógio (varredura ao vivo durante um backfill, por
+        // exemplo) não existe para esta varredura: nem se atualiza nem se resolve no passado.
+        const activeFor = (scope: string) =>
+          actives.find((row) => row.activeKey === activeKeyFor(rule.id, scope) && row.openedAt.getTime() <= nowMs) ?? null;
 
         const points: PresencePoint[] = candidates.flatMap((row) => {
           const lastSeenAt = fresh.get(row.id) ?? row.lastSeenAt;

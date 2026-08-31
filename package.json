@@ -37,7 +37,11 @@
     "twin:ros": "npm run test:ros -w @dynamox/sensor-twin",
     "plant": "tsx simulation/sensor-twin/src/cli.ts plant",
     "twin:history": "tsx simulation/sensor-twin/src/cli.ts plant history",
-    "history:purge": "tsx tools/purge-history.ts"
+    "history:purge": "tsx tools/purge-history.ts",
+    "prealerts:backfill": "npx nx run-many -t build --projects @dynamox/domain",
+    "alerts:backfill": "tsx apps/api/src/alerts/backfill.cli.ts",
+    "prealerts:validate": "npx nx run-many -t build --projects @dynamox/domain",
+    "alerts:validate": "tsx apps/api/src/alerts/validate.cli.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

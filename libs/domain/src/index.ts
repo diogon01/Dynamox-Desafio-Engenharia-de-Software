@@ -355,6 +355,18 @@ export interface HeatmapBucketDto {
   reportingSensors: number;
   expectedSensors: number;
   coveragePercent: number;
+  /**
+   * Maior desvio radial da frota no bucket — a leitura mais alta dividida pela baseline
+   * saudável do próprio ponto naquela hora do dia. É a magnitude que a célula pinta.
+   * `null` quando nenhum ponto do bucket tem baseline estabelecida.
+   */
+  maxDeviationRatio: number | null;
+  /** RMS radial (g) que produziu esse desvio. */
+  maxDeviationValue: number | null;
+  /** Quem produziu — o destino do clique na célula mais quente. */
+  maxDeviationSensor: string | null;
+  maxDeviationMachine: string | null;
+  maxDeviationPoint: string | null;
 }
 
 export interface HeatmapResponseDto {

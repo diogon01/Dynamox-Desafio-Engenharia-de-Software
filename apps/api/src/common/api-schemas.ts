@@ -592,6 +592,27 @@ export class HeatmapBucketResponse {
 
   @ApiProperty({ description: 'Cobertura do bucket em porcentagem.', example: 100 })
   coveragePercent!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Maior desvio radial da frota no bucket: a leitura mais alta dividida pela baseline saudável do próprio ponto naquela hora UTC. É a magnitude que o mapa pinta. Nulo quando nenhum ponto do bucket tem baseline estabelecida.',
+    example: 3.58,
+  })
+  maxDeviationRatio!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'RMS radial (g) que produziu esse desvio.', example: 0.0559 })
+  maxDeviationValue!: number | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Sensor que produziu o desvio.', example: 'SIM-HF-002' })
+  maxDeviationSensor!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Máquina do sensor.', example: 'P-101' })
+  maxDeviationMachine!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Ponto monitorado do sensor.', example: 'Mancal lado oposto ao acoplamento' })
+  maxDeviationPoint!: string | null;
+
 }
 
 export class HeatmapResponse {

@@ -168,6 +168,17 @@ async function checkApi(): Promise<void> {
   const conditionBody = condition.ok ? ((await condition.json()) as { points: unknown[] }) : { points: [] };
   record('API: /analytics/fleet-condition responde com os 12 pontos', condition.ok && conditionBody.points.length === 12, `HTTP ${condition.status} · ${conditionBody.points.length} pontos`);
 
+  const heatmap = await authed(`/analytics/heatmap?from=${from}&to=${to}&bucket=hour`);
+  const heatmapBody = heatmap.ok ? ((await heatmap.json()) as { buckets: Array<{ maxDeviationRatio: number | null }> }) : { buckets: [] };
+  const comSeveridade = heatmapBody.buckets.filter((bucket) => bucket.maxDeviationRatio !== null);
+  record(
+    'API: /analytics/heatmap traz severidade (não só cobertura)',
+    heatmap.ok && comSeveridade.length > 0,
+    `HTTP ${heatmap.status} · ${comSeveridade.length}/${heatmapBody.buckets.length} buckets com desvio calculado`,
+    // Sem baseline aprendida o mapa fica neutro: é sinal de backfill não executado, não de bug.
+    false,
+  );
+
   const alerts = await authed('/alerts?status=active');
   const alertsBody = alerts.ok ? ((await alerts.json()) as { total: number; counts: Record<string, number> }) : null;
   record('API: /alerts responde', alerts.ok, `HTTP ${alerts.status}${alertsBody ? ` · ${alertsBody.total} ativos de ${alertsBody.counts.total}` : ''}`);

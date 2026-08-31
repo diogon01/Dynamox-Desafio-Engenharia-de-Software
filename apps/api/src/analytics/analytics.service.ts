@@ -46,6 +46,7 @@ import {
   acquisitionSamplesSql,
   acquisitionSeriesSql,
   fleetConditionSql,
+  heatmapSeveritySql,
   heatmapSql,
   pointSeriesSql,
   sensorAcquisitionsCountSql,
@@ -146,6 +147,16 @@ interface HeatmapRow {
   samples: bigint;
   acquisitions: string | number;
   sensors: bigint;
+}
+
+interface HeatmapSeverityRow {
+  day: Date;
+  hour: number;
+  ratio: number | null;
+  rms: number | null;
+  serial: string | null;
+  point_name: string | null;
+  machine_name: string | null;
 }
 
 interface SeriesPointRow {
@@ -381,13 +392,21 @@ export class AnalyticsService {
           };
         }
 
-        const rows = await this.prisma.$queryRaw<HeatmapRow[]>(
-          heatmapSql(
-            anchors.map((series) => series.id),
-            range.from,
-            range.to,
-            bucket,
+        // Cobertura e severidade são duas leituras do mesmo recorte: a primeira diz se o dado
+        // chegou, a segunda diz o quanto ele estava ruim. Vão juntas em uma resposta só.
+        const [rows, severityRows] = await Promise.all([
+          this.prisma.$queryRaw<HeatmapRow[]>(
+            heatmapSql(
+              anchors.map((series) => series.id),
+              range.from,
+              range.to,
+              bucket,
+            ),
           ),
+          this.prisma.$queryRaw<HeatmapSeverityRow[]>(heatmapSeveritySql(range.from, range.to, bucket)),
+        ]);
+        const severityByBucket = new Map(
+          severityRows.map((row) => [`${row.day.getTime()}:${row.hour}`, row]),
         );
         const spanMs = bucket === 'hour' ? 3_600_000 : 86_400_000;
 
@@ -399,7 +418,13 @@ export class AnalyticsService {
           buckets: rows.map((row) => {
             const start = new Date(row.day.getTime() + row.hour * 3_600_000);
             const reporting = Number(row.sensors);
+            const severity = severityByBucket.get(`${row.day.getTime()}:${row.hour}`);
             return {
+              maxDeviationRatio: severity?.ratio ?? null,
+              maxDeviationValue: severity?.rms ?? null,
+              maxDeviationSensor: severity?.serial ?? null,
+              maxDeviationMachine: severity?.machine_name ?? null,
+              maxDeviationPoint: severity?.point_name ?? null,
               bucketStart: start.toISOString(),
               bucketEnd: new Date(start.getTime() + spanMs).toISOString(),
               day: row.day.toISOString().slice(0, 10),

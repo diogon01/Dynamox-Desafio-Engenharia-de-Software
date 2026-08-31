@@ -196,6 +196,35 @@ describe('Analytics (e2e)', () => {
     expect(b.condition).toBe('normal');
   });
 
+  it('o mapa data × hora traz severidade, não só cobertura', async () => {
+    const mapa = await authed(`/api/analytics/heatmap?from=${WINDOW_FROM}&to=${WINDOW_TO}&bucket=hour`).expect(200);
+
+    // Cobertura continua respondida — é o que distingue "hora calma" de "hora sem dado".
+    expect(mapa.body.expectedSensors).toBeGreaterThan(0);
+    const buckets: Array<Record<string, unknown>> = mapa.body.buckets;
+    expect(buckets.length).toBeGreaterThan(0);
+    for (const bucket of buckets) {
+      expect(bucket).toHaveProperty('coveragePercent');
+      // A severidade é sempre declarada: ou o número, ou null explícito quando não há
+      // baseline aprendida para o ponto — nunca ausente do contrato.
+      expect(bucket).toHaveProperty('maxDeviationRatio');
+      expect(bucket).toHaveProperty('maxDeviationSensor');
+      expect(bucket).toHaveProperty('maxDeviationValue');
+    }
+
+    /*
+     * As fixtures ANL- não passam pelo motor de alertas, então não têm baseline aprendida:
+     * o desvio delas é null e a interface as desenha como ausência. Isso é a garantia de
+     * que o mapa nunca inventa uma severidade sem referência para compará-la.
+     */
+    const semBaseline = buckets.filter((bucket) => bucket.maxDeviationRatio === null);
+    expect(semBaseline.length).toBeGreaterThan(0);
+    for (const bucket of semBaseline) {
+      expect(bucket.maxDeviationSensor).toBeNull();
+      expect(bucket.maxDeviationValue).toBeNull();
+    }
+  });
+
   it('lista máquinas com recorte por condição resolvido no servidor', async () => {
     const listagem = await authed(
       `/api/analytics/machines?from=${WINDOW_FROM}&to=${WINDOW_TO}&pageSize=100`,

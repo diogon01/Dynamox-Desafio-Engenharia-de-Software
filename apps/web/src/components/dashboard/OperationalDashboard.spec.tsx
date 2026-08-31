@@ -162,7 +162,10 @@ function conditionFixture(options: { emptyInventory?: boolean } = {}) {
   };
 }
 
-/** Mapa de atividade como o servidor devolve: uma célula por (dia, hora) com cobertura. */
+/**
+ * Mapa como o servidor devolve: uma célula por (dia, hora) com cobertura E severidade. As
+ * três horas têm desvios diferentes de propósito — é o que o mapa existe para mostrar.
+ */
 function heatmapFixture(options: { emptyInventory?: boolean } = {}) {
   const day = new Date(baseMs).toISOString().slice(0, 10);
   return {
@@ -172,7 +175,7 @@ function heatmapFixture(options: { emptyInventory?: boolean } = {}) {
     expectedSensors: options.emptyInventory ? 0 : 2,
     buckets: options.emptyInventory
       ? []
-      : [13, 14, 15].map((hour) => ({
+      : [13, 14, 15].map((hour, index) => ({
           bucketStart: `${day}T${String(hour).padStart(2, '0')}:00:00.000Z`,
           bucketEnd: `${day}T${String(hour + 1).padStart(2, '0')}:00:00.000Z`,
           day,
@@ -182,6 +185,12 @@ function heatmapFixture(options: { emptyInventory?: boolean } = {}) {
           reportingSensors: 2,
           expectedSensors: 2,
           coveragePercent: 100,
+          // 1,02× normal · 1,60× observação · 3,49× atenção — uma faixa da política cada.
+          maxDeviationRatio: [1.02, 1.6, 3.49][index],
+          maxDeviationValue: [0.0164, 0.0262, 0.0572][index],
+          maxDeviationSensor: index === 0 ? 'SIM-HF-001' : 'SIM-HF-002',
+          maxDeviationMachine: index === 0 ? 'P-101' : 'P-102',
+          maxDeviationPoint: 'Mancal lado oposto ao acoplamento',
         })),
   };
 }
@@ -599,14 +608,21 @@ describe('OperationalDashboard', () => {
     );
   });
 
-  it('o mapa de atividade e o perfil 24 h são mestre/detalhe, e a célula abre a janela', async () => {
+  it('o mapa de severidade e o perfil 24 h são mestre/detalhe, e a célula abre a janela', async () => {
     renderDashboard();
-    const mapa = await screen.findByRole('region', { name: /Mapa de atividade/i });
+    const mapa = await screen.findByRole('region', { name: /Severidade por hora/i });
     const perfil = screen.getByRole('region', { name: /Horários de pico/i });
 
-    // Uma célula por hora com atividade, alimentada pelo mapa agregado do servidor.
-    const celula = within(mapa).getByRole('button', { name: /Investigar .* 14h: 2 de 2 sensores/i });
+    // A célula anuncia MAGNITUDE e de quem ela é — não "quantos sensores reportaram".
+    const celula = within(mapa).getByRole('button', { name: /Investigar .* 14h: pior desvio 1,6× em SIM-HF-002/i });
     expect(celula).toBeDefined();
+    // O pico do período fica no cabeçalho, para não precisar caçar a célula mais escura.
+    expect(within(mapa).getByText(/pico 3,49× · SIM-HF-002/)).toBeDefined();
+    // Cada faixa da política pinta diferente: normal, observação e atenção são distinguíveis.
+    const cores = [13, 14, 15].map((hour) =>
+      getComputedStyle(within(mapa).getByRole('button', { name: new RegExp(`Investigar .* ${hour}h:`) })).backgroundColor,
+    );
+    expect(new Set(cores).size).toBe(3);
     // O perfil detalha o mesmo dia sem nova consulta.
     expect(within(perfil).getAllByRole('button').length).toBeGreaterThan(0);
 

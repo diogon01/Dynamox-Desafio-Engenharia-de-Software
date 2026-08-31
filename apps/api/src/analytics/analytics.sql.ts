@@ -265,6 +265,65 @@ export function heatmapSql(
 }
 
 /**
+ * SEVERIDADE por bucket: o maior desvio radial da frota em cada hora, e de quem foi.
+ *
+ * A pergunta que uma grade data × hora responde melhor que qualquer tabela é "onde no tempo
+ * isso piorou?" — e para isso a célula precisa carregar magnitude, não presença. Cobertura
+ * (quantos sensores reportaram) é praticamente binária numa planta que adquire a cada 15 min:
+ * gasta a escala de cor sem informar nada.
+ *
+ * De onde vem o número, e por que não das amostras: o motor de alertas já calculou o RMS
+ * radial de CADA ciclo uma vez (`alert_cycle_evidence`, imutável) e já aprendeu a baseline
+ * saudável de cada ponto por hora UTC (`alert_rule_states.baselineProfile`). Reaproveitar
+ * essas duas coisas dá a mesma fórmula usada no resto do produto, uma leitura de dezenas de
+ * milhares de linhas em vez de dez milhões, e — o que mais importa — UMA definição de
+ * "quanto isso está pior que o normal" na aplicação inteira.
+ *
+ * Ponto sem baseline estabelecida não entra: sem referência, "1,4×" não significaria nada.
+ * A célula fica sem severidade e a interface a desenha como ausência, não como calmaria.
+ */
+export function heatmapSeveritySql(from: Date, to: Date, bucket: HeatmapBucket): Prisma.Sql {
+  const hourExpression =
+    bucket === 'hour'
+      ? Prisma.sql`extract(hour from e."startedAt" AT TIME ZONE 'UTC')::int`
+      : Prisma.sql`0::int`;
+
+  return Prisma.sql`
+    WITH leituras AS (
+      SELECT
+        date_trunc('day', e."startedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS day,
+        ${hourExpression} AS hour,
+        -- Arrays do Postgres são 1-indexados; o perfil tem 24 posições, uma por hora UTC.
+        e."radialRms" / s."baselineProfile"[extract(hour from e."startedAt" AT TIME ZONE 'UTC')::int + 1] AS ratio,
+        e."radialRms" AS rms,
+        e."sensorSerialNumber" AS serial,
+        mp.name AS point_name,
+        m.name  AS machine_name
+      FROM alert_cycle_evidence e
+      JOIN alert_rule_states s
+        ON s."monitoringPointId" = e."monitoringPointId"
+       AND s."baselineStatus" = 'ESTABLISHED'
+       AND array_length(s."baselineProfile", 1) = 24
+      JOIN alert_rules r
+        ON r.id = s."ruleId" AND r.type = 'VIBRATION_THRESHOLD'
+      JOIN monitoring_points mp ON mp.id = e."monitoringPointId"
+      JOIN machines m ON m.id = mp."machineId"
+      WHERE e."startedAt" >= ${from} AND e."startedAt" < ${to}
+        AND e."radialRms" IS NOT NULL
+        AND s."baselineProfile"[extract(hour from e."startedAt" AT TIME ZONE 'UTC')::int + 1] > 0
+    ),
+    ranqueado AS (
+      SELECT *, row_number() OVER (PARTITION BY day, hour ORDER BY ratio DESC) AS posicao
+      FROM leituras
+    )
+    SELECT day, hour, ratio, rms, serial, point_name, machine_name
+    FROM ranqueado
+    WHERE posicao = 1
+    ORDER BY day, hour
+  `;
+}
+
+/**
  * Resumo de uma JANELA temporal por sensor: o que cada ponto fez naquele intervalo.
  * Uma linha por sensor — o custo não cresce com o tamanho do histórico, só com a janela.
  */

@@ -34,3 +34,5 @@ ser decidida no [ADR-0011](./adr-0011-condition-policy-and-alert-occurrences.md)
 | [0009](./adr-0009-rest-source-of-truth.md) | REST como fonte de verdade; realtime adiado | Aceito (adiado) |
 | [0010](./adr-0010-history-through-contract.md) | Histórico sintético pelo mesmo contrato de ingestão, no banco da aplicação | Aceito |
 | [0011](./adr-0011-condition-policy-and-alert-occurrences.md) | Política de condição centralizada e versionada; alerta como episódio persistido (A1/A2, baseline aprendida, ledger exactly-once) | Aceito |
+| [0012](./adr-0012-analytics-on-the-cycle-ledger.md) | Analytics contam aquisições pelo ledger de evidência por ciclo, com fonte explícita e fallback por amostras | Aceito |
+| [0013](./adr-0013-windows-anchored-on-last-reading.md) | Janelas analíticas ancoradas na última leitura, não no relógio; recência continua contra o relógio real | Aceito |

@@ -1,7 +1,13 @@
 /** Linha do banco → DTO público. Os enums passam pelo mapper; datas viram ISO; ACK vira status derivado. */
-import type { AlertEvent, Prisma } from '@prisma/client';
+import type { AlertEvent, AlertRuleState, Prisma } from '@prisma/client';
 
-import { type AlertEventDto, type AlertOccurrenceDto, alertFamily, deriveAlertStatus } from '@dynamox/domain';
+import {
+  type AlertBaselineDto,
+  type AlertEventDto,
+  type AlertOccurrenceDto,
+  alertFamily,
+  deriveAlertStatus,
+} from '@dynamox/domain';
 
 import {
   toDomainAlertEventType,
@@ -88,5 +94,21 @@ export function toAlertEventDto(row: AlertEvent): AlertEventDto {
     threshold: row.threshold,
     actor: row.actorEmail,
     note: row.note,
+  };
+}
+
+/** Estado do motor → a baseline que a interface mostra. Só a parte que explica o alerta. */
+export function toAlertBaselineDto(state: AlertRuleState, sensorSerialNumber: string | null): AlertBaselineDto {
+  const bins = state.baselineBinCounts;
+  return {
+    status: state.baselineStatus === 'ESTABLISHED' ? 'established' : 'learning',
+    value: state.baselineValue,
+    learningCycles: state.learningCount,
+    learnedFrom: iso(state.baselineFrom),
+    learnedTo: iso(state.baselineTo),
+    establishedAt: iso(state.baselineEstablishedAt),
+    minBinCount: bins.length > 0 ? Math.min(...bins) : null,
+    maxBinCount: bins.length > 0 ? Math.max(...bins) : null,
+    sensorSerialNumber,
   };
 }

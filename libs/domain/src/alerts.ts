@@ -190,8 +190,31 @@ export interface AlertEventDto {
   note: string | null;
 }
 
+/**
+ * A baseline que o motor aprendeu para o par (regra, ponto) — a referência contra a qual
+ * este alerta foi avaliado. É o que responde "por que 1,5× e não 1,5 g": o limiar é
+ * relativo a ISTO, medido no próprio ponto durante o comissionamento.
+ */
+export interface AlertBaselineDto {
+  status: 'learning' | 'established';
+  /** Mediana global do período de aprendizado, na unidade da métrica. */
+  value: number | null;
+  learningCycles: number;
+  /** Janela em que o aprendizado ocorreu (tempo do dado). */
+  learnedFrom: string | null;
+  learnedTo: string | null;
+  establishedAt: string | null;
+  /** Menor e maior contagem entre os 24 bins de hora UTC — expõe baseline esparsa. */
+  minBinCount: number | null;
+  maxBinCount: number | null;
+  /** Sensor a que a baseline pertence; trocar o sensor do ponto reinicia o aprendizado. */
+  sensorSerialNumber: string | null;
+}
+
 export interface AlertDetailDto extends AlertOccurrenceDto {
   rule: AlertRuleDto;
+  /** Nulo em escopo de frota (a regra de presença não aprende baseline). */
+  baseline: AlertBaselineDto | null;
   events: AlertEventDto[];
 }
 

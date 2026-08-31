@@ -1505,9 +1505,46 @@ export class AlertOccurrenceResponse {
   policyVersion!: number;
 }
 
+export class AlertBaselineResponse {
+  @ApiProperty({ enum: ['learning', 'established'], description: 'Se a baseline do ponto já está comissionada.', example: 'established' })
+  status!: string;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Mediana global do período de aprendizado, na unidade da métrica.', example: 0.0156 })
+  value!: number | null;
+
+  @ApiProperty({ description: 'Ciclos com evidência já contados para o aprendizado.', example: 192 })
+  learningCycles!: number;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Início da janela de aprendizado (tempo do dado).', example: ISO })
+  learnedFrom!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Fim da janela de aprendizado.', example: ISO })
+  learnedTo!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Quando a baseline passou a valer.', example: ISO })
+  establishedAt!: string | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Menor contagem entre os 24 bins de hora UTC — expõe baseline esparsa.', example: 8 })
+  minBinCount!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Maior contagem entre os 24 bins de hora UTC.', example: 8 })
+  maxBinCount!: number | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Sensor dono da baseline; trocá-lo reinicia o aprendizado.', example: 'SIM-HF-002' })
+  sensorSerialNumber!: string | null;
+}
+
 export class AlertDetailResponse extends AlertOccurrenceResponse {
   @ApiProperty({ type: AlertRuleResponse, description: 'Regra aplicada, com os limiares vigentes.' })
   rule!: AlertRuleResponse;
+
+  @ApiProperty({
+    type: AlertBaselineResponse,
+    nullable: true,
+    description:
+      'Baseline aprendida do ponto — a referência deste alerta. Nula no escopo de frota. NÃO é a referência da condição do painel (aquisição sincronizada anterior): por isso a razão do alerta e o desvio da condição podem divergir legitimamente.',
+  })
+  baseline!: AlertBaselineResponse | null;
 
   @ApiProperty({ type: [AlertEventResponse], description: 'Linha do tempo: aberto → escalado → reconhecido → resolvido.' })
   events!: AlertEventResponse[];

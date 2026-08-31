@@ -18,7 +18,13 @@ import { toPrismaAlertLevel, toPrismaAlertType } from '../common/alert.mapper';
 import { PrismaService } from '../prisma/prisma.service';
 import { toRuleRecord } from './alert-rules';
 import { type AcknowledgeAlertDto, type AlertListQuery } from './alerts.dto';
-import { OCCURRENCE_INCLUDE, type OccurrenceRow, toAlertEventDto, toAlertOccurrenceDto } from './alerts.presenter';
+import {
+  OCCURRENCE_INCLUDE,
+  type OccurrenceRow,
+  toAlertBaselineDto,
+  toAlertEventDto,
+  toAlertOccurrenceDto,
+} from './alerts.presenter';
 
 export interface Actor {
   sub: string;
@@ -123,8 +129,21 @@ export class AlertsQueryService {
   }
 
   private async toDetail(row: OccurrenceRow): Promise<AlertDetailDto> {
-    const events = await this.prisma.alertEvent.findMany({ where: { alertId: row.id }, orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }] });
-    return { ...toAlertOccurrenceDto(row), rule: toRuleRecord(row.rule), events: events.map(toAlertEventDto) };
+    const [events, state] = await Promise.all([
+      this.prisma.alertEvent.findMany({ where: { alertId: row.id }, orderBy: [{ occurredAt: 'asc' }, { createdAt: 'asc' }] }),
+      // Escopo de frota não tem ponto: a regra de presença não aprende baseline alguma.
+      row.monitoringPointId === null
+        ? Promise.resolve(null)
+        : this.prisma.alertRuleState.findUnique({
+            where: { ruleId_monitoringPointId: { ruleId: row.ruleId, monitoringPointId: row.monitoringPointId } },
+          }),
+    ]);
+    return {
+      ...toAlertOccurrenceDto(row),
+      rule: toRuleRecord(row.rule),
+      baseline: state && row.rule.learningCycles !== null ? toAlertBaselineDto(state, row.sensorSerialNumber) : null,
+      events: events.map(toAlertEventDto),
+    };
   }
 
   /** Universo da consulta SEM o recorte por status — é o que `counts` descreve. */

@@ -360,6 +360,9 @@ describe('Alertas (e2e) — avaliação após a ingestão', () => {
       expect(alert.resolutionReason).toBe('TELEMETRY_RESUMED');
       expect(alert.resolvedAt?.toISOString()).toBe('2026-04-03T12:00:00.000Z');
       expect(alert.activeKey).toBeNull();
+      // Presença não aprende baseline: o detalhe diz isso com null, não com um número inventado.
+      const detail = await http().get(`/api/alerts/${alert.id}`).set('Authorization', bearer).expect(200);
+      expect(detail.body.baseline).toBeNull();
       // O episódio de vibração resolvido antes continua sendo o único da família de condição.
       const all = await occurrences();
       expect(all.map((a) => a.type).sort()).toEqual(['SENSOR_SILENT', 'VIBRATION_THRESHOLD']);
@@ -439,10 +442,21 @@ describe('Alertas (e2e) — avaliação após a ingestão', () => {
       expect(paged.body.totalPages).toBe(2);
     });
 
-    it('detalhe traz a regra e a linha do tempo completa', async () => {
+    it('detalhe traz a regra, a baseline aprendida e a linha do tempo completa', async () => {
       const [alert] = await occurrences();
       const response = await get(`/api/alerts/${alert.id}`).expect(200);
       expect(response.body.rule).toMatchObject({ key: 'vibration-radial', a1Threshold: 1.5, a2Threshold: 2, clearThreshold: 1.4, policyVersion: 1 });
+      // A baseline é a referência que explica o limiar: sem ela, "1,5×" não diz de quê.
+      expect(response.body.baseline).toMatchObject({
+        status: 'established',
+        learningCycles: 192,
+        sensorSerialNumber: SENSOR_SERIAL,
+        minBinCount: 8,
+        maxBinCount: 8,
+      });
+      expect(response.body.baseline.value).toBeCloseTo(BASELINE_G, 9);
+      expect(response.body.baseline.learnedFrom).toBe('2026-03-30T00:00:00.000Z');
+      expect(response.body.baseline.learnedTo).toBe('2026-04-01T00:00:00.000Z');
       expect(response.body.events.map((e: { type: string }) => e.type)).toEqual(['opened', 'escalated', 'resolved']);
       expect(response.body.events[1]).toMatchObject({ fromLevel: 'A1', toLevel: 'A2', fromState: 'active', toState: 'active' });
       // Leitura liberada ao VIEWER.

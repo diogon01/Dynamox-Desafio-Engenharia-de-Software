@@ -31,13 +31,13 @@ describe('sweepPresence — silêncio por ponto', () => {
   });
 
   it('abre A1 entre 4 e 96 intervalos e A2 a partir de 96 (24 h)', () => {
-    const points = fleet(3, NOW);
+    const points = fleet(6, NOW); // 2 de 6 mudos: abaixo da fração de colapso
     points[0].lastSeenAtMs = NOW - 10 * INTERVAL_MS;
     points[1].lastSeenAtMs = NOW - 96 * INTERVAL_MS;
     const sweep = sweepPresence(PRESENCE, points, null, NOW);
     expect(sweep.points[0].decision).toMatchObject({ kind: 'open', level: 'A1', elapsedIntervals: 10 });
     expect(sweep.points[1].decision).toMatchObject({ kind: 'open', level: 'A2', elapsedIntervals: 96 });
-    expect(sweep.points[2].decision).toEqual({ kind: 'none' });
+    expect(kinds(sweep).slice(2)).toEqual(['none', 'none', 'none', 'none']);
     expect(sweep.fleet).toEqual({ kind: 'none' });
   });
 
@@ -57,7 +57,7 @@ describe('sweepPresence — silêncio por ponto', () => {
 });
 
 describe('sweepPresence — colapso de frota', () => {
-  it('12/12 mudos que pararam juntos → UM FLEET_SILENT, nenhum alerta por ponto', () => {
+  it('12/12 mudos → UM FLEET_SILENT, nenhum alerta por ponto', () => {
     const stoppedAt = NOW - 6 * INTERVAL_MS;
     const points = fleet(12, (index) => stoppedAt + index * 30_000); // dentro de um intervalo
     const sweep = sweepPresence(PRESENCE, points, null, NOW);
@@ -73,12 +73,25 @@ describe('sweepPresence — colapso de frota', () => {
     expect(sweep.points[3].decision).toMatchObject({ kind: 'open', level: 'A1' });
   });
 
-  it('7/12 mudos mas em momentos diferentes (spread > 1 intervalo) não colapsam', () => {
+  it('7/12 mudos em momentos diferentes (desligamento máquina a máquina) ainda é a planta', () => {
     const points = fleet(12, NOW);
-    for (let index = 0; index < 7; index += 1) points[index].lastSeenAtMs = NOW - (5 + index * 2) * INTERVAL_MS;
+    for (let index = 0; index < 7; index += 1) points[index].lastSeenAtMs = NOW - (5 + index * 8) * INTERVAL_MS;
+    const sweep = sweepPresence(PRESENCE, points, null, NOW);
+    // "Desde" é a última leitura que calou — o momento em que a planta ficou sem telemetria.
+    expect(sweep.fleet).toMatchObject({ kind: 'open', affectedCount: 7, silentSinceMs: NOW - 5 * INTERVAL_MS });
+    expect(kinds(sweep).filter((kind) => kind === 'open')).toHaveLength(0);
+  });
+
+  it('sensores que morreram um a um (cada um com episódio próprio) não viram planta muda no sétimo', () => {
+    const points = fleet(12, NOW);
+    for (let index = 0; index < 6; index += 1) {
+      points[index].lastSeenAtMs = NOW - (200 + index) * INTERVAL_MS;
+      points[index].active = { id: `ep-${index}`, level: 'A2', acknowledgedAtMs: null, peakMeasure: 199 };
+    }
+    points[6].lastSeenAtMs = NOW - 5 * INTERVAL_MS;
     const sweep = sweepPresence(PRESENCE, points, null, NOW);
     expect(sweep.fleet).toEqual({ kind: 'none' });
-    expect(kinds(sweep).filter((kind) => kind === 'open')).toHaveLength(7);
+    expect(sweep.points[6].decision).toMatchObject({ kind: 'open', level: 'A1' });
   });
 
   it('exatamente metade (6/12) não é "mais que a fração": sem colapso', () => {

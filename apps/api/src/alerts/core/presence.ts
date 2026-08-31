@@ -5,12 +5,16 @@
  * alerta diz isso. Dois escopos:
  *  - SENSOR_SILENT: um ponto instrumentado que já reportou e passou `a1Threshold` intervalos
  *    esperados sem aquisição (A2 aos `a2Threshold` intervalos);
- *  - FLEET_SILENT: quando mais que `fleetCollapseFraction` dos pontos silenciam e pararam
- *    JUNTOS (últimas leituras dentro de um intervalo), é a planta — parada, gateway —, não um
- *    sensor. Vira UM episódio, e os pontos cobertos não abrem alertas próprios.
+ *  - FLEET_SILENT: quando mais que `fleetCollapseFraction` dos pontos instrumentados estão
+ *    mudos SEM episódio próprio, é a planta — parada, gateway, fim de dados —, não um sensor.
+ *    Vira UM episódio, e os pontos cobertos não abrem alertas próprios. Quem já tinha o seu
+ *    SENSOR_SILENT (mudo há dias) fica de fora da conta e preserva o episódio: o sensor que
+ *    morreu sozinho continua sendo um caso à parte, mesmo durante a parada.
  *
- * O que o modelo não sabe, e declara: se a parada foi planejada. Sem calendário de operação,
- * uma parada de domingo e uma falha de gateway são o mesmo fato observável.
+ * Não se exige simultaneidade: uma planta pode desligar máquina a máquina ao longo de horas,
+ * e continua sendo um fato da planta. O que o modelo não sabe, e declara: se a parada foi
+ * planejada. Sem calendário de operação, uma parada de domingo e uma falha de gateway são o
+ * mesmo fato observável.
  */
 import type { AlertLevel } from '@dynamox/domain';
 
@@ -56,17 +60,15 @@ export function sweepPresence(
   const elapsedOf = (point: PresencePoint) => (nowMs - point.lastSeenAtMs) / intervalMs;
   const silent = points.filter((point) => elapsedOf(point) > rule.a1Threshold);
 
-  // Quem já tem episódio próprio não conta para "pararam juntos": o sensor mudo há três
-  // dias não pode impedir que a parada de hoje seja reconhecida como parada.
+  // Quem já tem episódio próprio não conta para o colapso: seis sensores que morreram um a
+  // um ao longo do mês não viram "planta muda" quando o sétimo cala — e o sensor mudo há
+  // três dias não impede que a parada de hoje seja reconhecida como parada.
   const freshlySilent = silent.filter((point) => point.active === null);
   const stops = freshlySilent.map((point) => point.lastSeenAtMs);
-  const stoppedTogether =
-    stops.length > 0 && Math.max(...stops) - Math.min(...stops) <= intervalMs;
   const collapse =
     rule.fleetCollapseFraction !== null &&
     points.length >= 2 &&
-    silent.length / points.length > rule.fleetCollapseFraction &&
-    stoppedTogether;
+    freshlySilent.length / points.length > rule.fleetCollapseFraction;
 
   const decisions: PresenceSweep['points'] = [];
   let fleet: FleetPresenceDecision = { kind: 'none' };

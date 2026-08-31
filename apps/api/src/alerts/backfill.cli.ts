@@ -13,8 +13,10 @@
  * avaliações, estados, ocorrências e eventos de alerta.
  *
  * Presença: a varredura roda a cada 15 min do relógio replayado, depois de aplicada a
- * evidência de cada bloco (`--bucket-minutes`, padrão 60). Um dia sem ciclo algum recebe uma
- * varredura só, no fim do dia.
+ * evidência de cada bloco (`--bucket-minutes`, padrão 60); um dia sem ciclo algum recebe uma
+ * varredura por hora. A janela vai até AGORA por padrão (não até a última amostra): o estado
+ * de presença precisa chegar ao presente — o fim do dataset é "planta sem telemetria", e é o
+ * backfill quem o registra no tempo certo; o timer da API só continua dali.
  */
 import { writeFileSync } from 'node:fs';
 
@@ -26,6 +28,7 @@ import { type CycleEvidence, listCyclesStartedBetween, loadCycleEvidence } from 
 
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
 const SWEEP_STEP_MS = 15 * MINUTE_MS;
 const EVIDENCE_CHUNK = 300;
 
@@ -166,7 +169,7 @@ async function main(): Promise<void> {
       return;
     }
     const fromMs = options.from?.getTime() ?? range.from;
-    const toMs = options.to?.getTime() ?? range.to + 1;
+    const toMs = options.to?.getTime() ?? Math.max(range.to + 1, Date.now());
     console.log(`janela..............: ${iso(fromMs)} → ${iso(toMs)}${options.sensors.length ? ` · sensores ${options.sensors.join(', ')}` : ''}`);
     console.log(`bloco de aplicação..: ${options.bucketMinutes} min · varredura de presença: ${options.presence ? 'a cada 15 min (replay)' : 'desligada'}`);
 
@@ -198,7 +201,8 @@ async function main(): Promise<void> {
       };
 
       if (refs.length === 0) {
-        await sweepAt(dayEnd);
+        for (let tick = dayStart + HOUR_MS; tick <= dayEnd; tick += HOUR_MS) await sweepAt(tick);
+        if ((dayEnd - dayStart) % HOUR_MS !== 0) await sweepAt(dayEnd);
       } else {
         // Evidência do dia em lotes; depois aplicada por bloco, com as varreduras do bloco.
         const evidence: CycleEvidence[] = [];

@@ -4,6 +4,7 @@ import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
+import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -182,7 +183,7 @@ export function MonitoringPointPage(): JSX.Element {
             <KpiStrip
               items={[
                 {
-                  label: 'Desvio vs. referência',
+                  label: 'Desvio radial (Y/Z)',
                   value:
                     point.deviationRatio === null ? '—' : `${formatNumber(point.deviationRatio, 2)}×`,
                   hint:
@@ -192,12 +193,12 @@ export function MonitoringPointPage(): JSX.Element {
                   tone: (point.deviationRatio ?? 0) >= 2 ? 'warning' : 'default',
                 },
                 {
-                  label: 'Último valor',
+                  label: 'RMS radial atual',
                   value:
-                    point.window.lastValue === null
+                    point.currentValue === null
                       ? '—'
-                      : formatMeasurement(point.window.lastValue, point.unit),
-                  hint: formatRelativeTime(point.window.lastAt),
+                      : formatMeasurement(point.currentValue, point.unit),
+                  hint: point.currentAt ? formatRelativeTime(point.currentAt) : 'sem aquisição',
                 },
                 {
                   label: 'Aquisições na janela',
@@ -218,11 +219,11 @@ export function MonitoringPointPage(): JSX.Element {
 
           <Box sx={{ gridColumn: { xs: 'span 12', lg: 'span 8' }, display: 'flex', minWidth: 0 }}>
             <DashboardCard
-              title="Tendência do ponto"
+              title="Tendência — aceleração eixo Y (RMS)"
               titleId="point-trend-title"
               size="chart"
-              subtitle="RMS do eixo âncora por bucket, nas últimas 24 h da janela."
-              info="A história completa do período está na página do sensor, com bucket ajustável."
+              subtitle="Um ponto por bucket, nas últimas 24 h da janela."
+              info="A CURVA é o RMS do eixo Y; a CONDIÇÃO ao lado usa o RMS radial (Y e Z pareados por instante). A história completa do período está na página do sensor, com bucket ajustável."
             >
               {chartData.length < 2 ? (
                 <EmptyState
@@ -275,7 +276,7 @@ export function MonitoringPointPage(): JSX.Element {
 
           <Box sx={{ gridColumn: { xs: 'span 12', lg: 'span 4' }, display: 'flex', minWidth: 0 }}>
             <DashboardCard
-              title="Classificação"
+              title="Condição — RMS radial (Y/Z)"
               titleId="point-condition-title"
               subtitle="Quais aquisições produziram o desvio."
             >
@@ -319,6 +320,41 @@ export function MonitoringPointPage(): JSX.Element {
                 </Box>
               </Stack>
             </DashboardCard>
+          </Box>
+
+          {/*
+            IDENTIDADE — o ponto é contexto físico: máquina, posição e sensor instalado.
+            Fica antes das séries porque é o que a pessoa precisa confirmar quando chega
+            aqui vinda de um alerta futuro ou de um link compartilhado.
+          */}
+          <Box sx={{ gridColumn: 'span 12' }}>
+            <Card variant="outlined">
+              <Stack
+                direction="row"
+                gap={{ xs: 2, md: 4 }}
+                flexWrap="wrap"
+                useFlexGap
+                alignItems="center"
+                sx={(theme) => ({ p: `${theme.dashboard.cardPadding}px`, minWidth: 0 })}
+              >
+                <Field label="Máquina" value={point.machineName} />
+                <Field label="Ponto" value={point.monitoringPointName} />
+                <Field
+                  label="Sensor instalado"
+                  value={point.sensorSerialNumber ?? 'nenhum'}
+                  to={
+                    point.sensorSerialNumber
+                      ? links.sensor(point.sensorSerialNumber, range)
+                      : undefined
+                  }
+                />
+                <Field label="Modelo" value={point.sensorModel ?? '—'} />
+                <Field
+                  label="Última leitura"
+                  value={formatDateTime(point.window.lastAt, 'ainda sem leituras')}
+                />
+              </Stack>
+            </Card>
           </Box>
 
           <Box sx={{ gridColumn: 'span 12' }}>
@@ -394,6 +430,31 @@ export function MonitoringPointPage(): JSX.Element {
           }}
         />
       ) : null}
+    </Box>
+  );
+}
+
+/** Par rótulo/valor da faixa de identidade; vira link quando há para onde ir. */
+function Field({ label, value, to }: { label: string; value: string; to?: string }): JSX.Element {
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Typography variant="overline" color="text.secondary" component="div" noWrap>
+        {label}
+      </Typography>
+      {to ? (
+        <Link
+          component={RouterLink}
+          to={to}
+          underline="hover"
+          sx={{ fontWeight: 600, fontSize: '0.8125rem' }}
+        >
+          {value}
+        </Link>
+      ) : (
+        <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={value}>
+          {value}
+        </Typography>
+      )}
     </Box>
   );
 }

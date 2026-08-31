@@ -434,7 +434,9 @@ describe('drill-down analítico', () => {
     renderAt(`/sensors/SIM-HF-002?from=${FROM}&to=${TO}&bucket=15m`);
 
     expect(await screen.findByRole('heading', { name: 'SIM-HF-002' })).toBeDefined();
-    await screen.findByText(/Aceleração radial/);
+    // O título nomeia a GRANDEZA: a curva é do eixo Y, e o desvio ao lado é radial Y/Z.
+    await screen.findByText(/Tendência — aceleração eixo Y \(RMS por bucket\)/);
+    expect(screen.getByText(/Desvio radial \(Y\/Z\)/)).toBeDefined();
 
     const pontos = calls.filter((url) => url.includes('/analytics/series/'));
     expect(pontos).toHaveLength(1);

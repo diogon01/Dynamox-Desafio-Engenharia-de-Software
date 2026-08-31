@@ -1,6 +1,8 @@
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
+import Link from '@mui/material/Link';
+import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -13,7 +15,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import { useTheme } from '@mui/material/styles';
 import { useCallback } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Area,
   CartesianGrid,
@@ -38,6 +40,7 @@ import {
   formatAxisValue,
   formatMeasurement,
   formatNumber,
+  seriesMetricLabel,
 } from '../../features/dashboard/dashboardFormatters';
 import {
   TIME_ZONE_LABEL,
@@ -91,12 +94,12 @@ export function SensorPage(): JSX.Element {
 
   // A série âncora do sensor vem da listagem de séries (uma requisição pequena).
   const series = useAnalyticsQuery(() => api.timeSeries(), []);
+  const sensorSeries = (series.data ?? []).filter(
+    (item) => item.sensorSerialNumber === serialNumber,
+  );
   const anchor =
-    series.data?.find(
-      (item) =>
-        item.sensorSerialNumber === serialNumber &&
-        item.physicalQuantity === 'acceleration' &&
-        item.axis === 'y',
+    sensorSeries.find(
+      (item) => item.physicalQuantity === 'acceleration' && item.axis === 'y',
     ) ?? null;
 
   const points = useAnalyticsQuery(
@@ -199,26 +202,49 @@ export function SensorPage(): JSX.Element {
 
       <KpiStrip
         items={[
-          { label: 'Aquisições', value: formatNumber(points.data?.stats.acquisitionCount ?? 0, 0) },
-          { label: 'Amostras na janela', value: formatNumber(points.data?.stats.sampleCount ?? 0, 0) },
-          { label: 'Mínimo', value: points.data?.stats.min == null ? '—' : formatMeasurement(points.data.stats.min, 'g') },
-          { label: 'Máximo', value: points.data?.stats.max == null ? '—' : formatMeasurement(points.data.stats.max, 'g') },
-          { label: 'Média', value: points.data?.stats.avg == null ? '—' : formatMeasurement(points.data.stats.avg, 'g') },
           {
-            label: 'Desvio vs. referência',
+            label: 'Desvio radial (Y/Z)',
             value: point?.deviationRatio == null ? '—' : `${formatNumber(point.deviationRatio, 2)}×`,
-            hint: point?.baselineValue == null ? undefined : `ref ${formatMeasurement(point.baselineValue, 'g')}`,
+            hint:
+              point?.baselineValue == null
+                ? 'sem referência na janela'
+                : `referência ${formatMeasurement(point.baselineValue, 'g')}`,
             tone: (point?.deviationRatio ?? 0) >= 2 ? 'warning' : 'default',
+          },
+          {
+            label: 'Aquisições',
+            value: formatNumber(points.data?.stats.acquisitionCount ?? 0, 0),
+            hint: 'ciclos de 60 s na janela',
+          },
+          {
+            label: 'Amostras agregadas',
+            value: formatNumber(points.data?.stats.sampleCount ?? 0, 0),
+            hint: 'nenhuma transportada ao navegador',
+          },
+          {
+            label: 'Faixa do eixo Y',
+            value:
+              points.data?.stats.min == null || points.data?.stats.max == null
+                ? '—'
+                : `${formatNumber(points.data.stats.min, 3)} – ${formatNumber(points.data.stats.max, 3)}`,
+            hint: 'g',
+          },
+          {
+            label: 'Média do eixo Y',
+            value: points.data?.stats.avg == null ? '—' : formatMeasurement(points.data.stats.avg, 'g'),
+            hint: 'na janela consultada',
           },
         ]}
       />
 
       <Box sx={{ mt: 2 }}>
         <DashboardCard
-          title="Aceleração radial — eixo Y (agregado)"
+          title="Tendência — aceleração eixo Y (RMS por bucket)"
           titleId="sensor-trend-title"
           size="primaryChart"
-          subtitle={`Um ponto por bucket de ${bucket}; a faixa mostra mínimo e máximo do bucket. Nenhuma amostra bruta é transportada.`}
+          subtitle={`Um ponto por bucket de ${bucket}; a faixa sombreada é o mínimo e o máximo do bucket. Nenhuma amostra bruta é transportada.`}
+          info="Esta curva é do EIXO Y. O desvio publicado no indicador usa o RMS radial (Y e Z pareados por instante) — grandezas diferentes, nomes diferentes."
+
         >
           {points.status === 'loading' || points.status === 'idle' ? (
             <LoadingState label="Agregando a série…" />
@@ -391,6 +417,77 @@ export function SensorPage(): JSX.Element {
           </>
         ) : null}
       </Card>
+
+      {/*
+        FICHA TÉCNICA — fecha a página do sensor com o que ele é, e não com o que ele mediu.
+        É também a costura prevista para a próxima frente: uma seção de alertas do sensor
+        entra ENTRE as aquisições e esta ficha sem reescrever a composição.
+      */}
+      <Card variant="outlined" sx={{ mt: 2 }}>
+        <Stack
+          direction="row"
+          gap={{ xs: 2, md: 4 }}
+          flexWrap="wrap"
+          useFlexGap
+          alignItems="center"
+          sx={(theme) => ({ p: `${theme.dashboard.cardPadding}px`, minWidth: 0 })}
+        >
+          <TechnicalField label="Número de série" value={serialNumber} />
+          <TechnicalField label="Modelo" value={point?.sensorModel ?? '—'} />
+          <TechnicalField
+            label="Máquina"
+            value={point?.machineName ?? '—'}
+            to={point?.machineName ? links.machine(point.machineName, range) : undefined}
+          />
+          <TechnicalField
+            label="Ponto"
+            value={point?.monitoringPointName ?? '—'}
+            to={
+              point?.machineName && point.monitoringPointName
+                ? links.point(point.machineName, point.monitoringPointName, range)
+                : undefined
+            }
+          />
+          <TechnicalField
+            label="Séries medidas"
+            value={
+              sensorSeries.length === 0
+                ? '—'
+                : sensorSeries
+                    .map((item) => seriesMetricLabel(item.physicalQuantity, item.axis))
+                    .join(' · ')
+            }
+          />
+        </Stack>
+      </Card>
+    </Box>
+  );
+}
+
+/** Par rótulo/valor da ficha técnica; vira link quando há um nível para onde subir. */
+function TechnicalField({
+  label,
+  value,
+  to,
+}: {
+  label: string;
+  value: string;
+  to?: string;
+}): JSX.Element {
+  return (
+    <Box sx={{ minWidth: 0, maxWidth: '100%' }}>
+      <Typography variant="overline" color="text.secondary" component="div" noWrap>
+        {label}
+      </Typography>
+      {to ? (
+        <Link component={RouterLink} to={to} underline="hover" sx={{ fontWeight: 600, fontSize: '0.8125rem' }}>
+          {value}
+        </Link>
+      ) : (
+        <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={value}>
+          {value}
+        </Typography>
+      )}
     </Box>
   );
 }

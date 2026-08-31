@@ -72,6 +72,20 @@ Comandos citados na coluna *Evidência* estão documentados em
 | Latência abaixo de 350 ms | `tools/measure-latency.ts` | — | `npm run perf:latency` | medição local em estado estacionário; não é teste de carga |
 | Contrato publicado (OpenAPI) | `apps/api/src/openapi.ts`, `common/api-schemas.ts`, schema derivado | `openapi-contract.e2e-spec.ts`, `telemetry-schema-parity.e2e-spec.ts` | `/api/docs-json` | Swagger UI padrão, sem alternativas |
 
+## Alertas
+
+| Requisito | Implementação | Testes | Evidência | Limitações |
+|---|---|---|---|---|
+| Política de condição única e versionada | `libs/domain/src/condition.ts` (`DEFAULT_CONDITION_POLICY` v1); API e web delegam | `apps/api/src/analytics/condition.spec.ts`, `dashboardAggregations.spec.ts` (fronteiras 1,4999/1,5/1,9999/2,0) | mesmo `3,49×` no painel antes e depois | condição continua derivada, por decisão ([ADR-0011](../06-decisions/adr-0011-condition-policy-and-alert-occurrences.md)) |
+| Alerta como episódio persistido (A1/A2, ciclo de vida, ACK ortogonal) | `prisma/schema.prisma` (`alert_*`), `libs/domain/src/alerts.ts`, `apps/api/src/alerts/core/` | tabelas de casos em `core/*.spec.ts`; `test/alerts.e2e-spec.ts` (abre, escala o MESMO episódio, resolve, ACK, escalada limpa ACK) | `GET /api/alerts/:id` responde regra, evidência, transições | tipo descreve a regra, nunca a causa |
+| Baseline aprendida por ponto (192 ciclos, mediana por hora UTC) | `core/baseline.ts`, `alert-engine.ts` (`establishBaseline`) | `baseline.spec.ts`, e2e (`learningCount`) | tabela de baselines em [`alert-validation.md`](./alert-validation.md) | presume máquina sadia no comissionamento; SIM-HF-003 tem janela degradada (fumaça de junho) |
+| Idempotência exactly-once e dedup pelo banco | `alert_cycle_evidence` (PK ciclo), `alert_rule_evaluations` (`UNIQUE(cycleId, ruleId, policyVersion)`), `activeKey` única | e2e (reenvio → 0 avaliações; ciclo atrasado → `OUT_OF_ORDER`) | `npm run alerts:backfill` duas vezes → "avaliações novas: 0" | sem P2002 como fluxo de controle |
+| Presença: sensor mudo e colapso de frota | `core/presence.ts`, `alert-engine.ts` (`sweepPresence`), timer em `alerts.service.ts` | `presence.spec.ts` (12/12, 1/12, 7/12 escalonados, sensor antigo preservado), e2e com relógio replayado | `FLEET_SILENT` nas paradas de domingo e no trip; `SENSOR_SILENT` em SIM-TCAS-001 | não distingue parada planejada de falha; timer nunca arma sob Jest |
+| Motor não lê a verdade-terreno | `apps/api/src/alerts/leakage.spec.ts` (grep de `metadata\|configuration\|groundTruth\|scenario`) | o próprio teste | só `validate.cli.ts` lê o rótulo | — |
+| Backfill e validação | `apps/api/src/alerts/backfill.cli.ts`, `validate.cli.ts` | — | `npm run alerts:backfill`, `npm run alerts:validate` → [`alert-validation.md`](./alert-validation.md) | validação depende do rótulo sintético; rodar com a API parada |
+| API de alertas | `apps/api/src/alerts/alerts.controller.ts`, `alerts-query.service.ts` | `test/alerts.e2e-spec.ts` (filtros, interseção `from/to`, 401/403/404/400), `openapi-contract.e2e-spec.ts` | `/api/docs` → tag `alerts` | `from/to` é interseção com o período ativo, documentado |
+| UI de alertas | `apps/web/src/pages/alerts/`, `components/alerts/`, seções em máquina/ponto/sensor, KPI e feed da home | `pages/alerts/alerts.spec.tsx`, `OperationalDashboard.spec.tsx` | `/alerts?status=active`, `/alerts/:id`, reconhecer como ADMIN | VIEWER não vê o botão de reconhecer (e a API responde 403) |
+
 ## Qualidade e bônus
 
 | Requisito | Implementação | Testes | Evidência | Limitações |

@@ -60,6 +60,8 @@ Todas vivem no `.env` da raiz, criado a partir do `.env.example`. O `.env` real 
 | `VITE_API_BASE_URL` | não | `http://localhost:3000/api` | base da API no frontend; domínios `dynamox.solutions`/`dynamox.net` são recusados por código |
 | `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` | não | ver abaixo | credencial fixa criada pelo seed |
 | `DEMO_DATA_ANCHOR` | não | bloco de 6 h da execução | fixa o instante de referência dos dados de demonstração (ISO 8601). Sem ela, seed e planta ancoram no início do bloco de 6 h corrente: os dados nascem no passado recente e o painel os classifica como atuais em qualquer dia |
+| `ALERTS_EVALUATE_ON_INGEST` | não | `true` | avalia as regras de alerta logo após o commit de cada ciclo ingerido. `false` para carregar um histórico em massa e reconciliar depois com `npm run alerts:backfill` |
+| `ALERTS_PRESENCE_SWEEP_MS` | não | `300000` | cadência da varredura de presença (sensor mudo / planta sem telemetria). `0` desliga; sob Jest nunca arma |
 
 O valor `dev-only-change-me` é um placeholder de desenvolvimento — troque em qualquer
 ambiente compartilhado.
@@ -178,6 +180,15 @@ máximo de 90 dias). É o que garante que nenhuma consulta volte a varrer o hist
 | `GET` | `/api/analytics/sensors/:serialNumber/acquisitions` | Aquisições do sensor, paginadas; `?includeTotal=true` custa uma contagem |
 | `GET` | `/api/analytics/acquisitions/:cycleId` | Detalhe da aquisição com estatística por série |
 | `GET` | `/api/analytics/acquisitions/:cycleId/samples` | **Único** ponto do sistema que devolve amostra bruta — recortado por aquisição e paginado por cursor keyset |
+
+Alertas — episódios persistidos pelo motor (ver
+[`analysis/03-domain/alert-domain.md`](analysis/03-domain/alert-domain.md)):
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/api/alerts` | Lista episódios com `?status=open\|acknowledged\|resolved\|active`, `?level=`, `?type=`, `?machine=` (chave natural), `?sensor=`, `?from=&to=` (**interseção** com o período ativo), paginação e ordenação; `counts` descreve o universo antes do recorte por status |
+| `GET` | `/api/alerts/:id` | Episódio com a regra aplicada (limiares e versão da política) e a linha do tempo de transições |
+| `POST` | `/api/alerts/:id/acknowledge` | Reconhece (`{ note? }`): não resolve nem silencia; idempotente; permitido em episódio resolvido; **ADMIN** (VIEWER recebe `403`) |
 
 A documentação interativa (Swagger UI) fica em <http://localhost:3000/api/docs>, com o
 documento OpenAPI 3 em `/api/docs-json`: todas as rotas e códigos de erro, com schemas
@@ -373,6 +384,33 @@ Rode `npm run twin:integration` **antes** da carga (ou após um purge): com o m�
 supervisor do twin e o dashboard degradam — de propósito. Os gargalos expostos e a direção
 da próxima fase estão em
 [`analysis/07-validation/testing-strategy.md`](analysis/07-validation/testing-strategy.md#bottlenecks-expostos-pelo-histórico-e-direção-da-próxima-fase).
+
+## Alertas: motor, backfill e validação
+
+O motor avalia cada ciclo logo depois do commit da ingestão e varre a presença por timer
+(ver variáveis acima). Para um banco recém-carregado — ou um histórico ingerido com a API
+desligada / `ALERTS_EVALUATE_ON_INGEST=false` — o backfill reexecuta a mesma função de decisão
+com relógio replayado, idempotente:
+
+```bash
+npm run alerts:backfill -- --dry-run          # ciclos por dia, nada aplicado
+npm run alerts:backfill                       # ~3 min para 30 dias; reexecutar → 0 avaliações novas
+npm run alerts:backfill -- --reset --yes      # zera SÓ as tabelas do motor e refaz (amostras/ciclos intactos)
+npm run alerts:validate                       # matriz TP/FP/TN/FN contra a verdade-terreno → docs/analysis/07-validation/alert-validation.md
+```
+
+Ordem recomendada depois de `npm run db:reset`: planta (`plant bootstrap/baseline/condition`)
+→ `npm run twin:history` **com a API desligada** (ou `ALERTS_EVALUATE_ON_INGEST=false`) →
+`npm run alerts:backfill` → subir a API. Com a API viva e o motor ligado, ciclos do histórico
+chegam fora de ordem temporal e ficam no ledger como `OUT_OF_ORDER` (registrados, não
+aplicados); `alerts:backfill --reset --yes` reconcilia. **Não rode o backfill com a API no ar**:
+a varredura de presença ao vivo abriria episódios com o relógio de parede no meio do replay.
+
+Fim do dataset é estado honesto: sem aquisição desde 30/08, a presença abre um
+`FLEET_SILENT` ("planta sem telemetria") e o mantém enquanto durar. Na interface: `/alerts`
+(listagem com recorte na URL), `/alerts/:id` (regra, evidência, linha do tempo,
+reconhecimento) e seções de alertas nas páginas de máquina, ponto e sensor; o KPI "Alertas
+abertos" da home leva à listagem.
 
 ## Estado do bônus BON-06 (concluído; ver `docs/analysis/07-validation/traceability.md`)
 

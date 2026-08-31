@@ -14,9 +14,10 @@ documento arquitetural começar a defender a escolha, a defesa pertence ao ADR.
 
 Só existe ADR onde houve **decisão real com alternativa viável**. Não há ADR para escolhas
 triviais nem para assuntos ainda em aberto — uma decisão pendente é registrada como
-pendente no documento correspondente, e não maquiada de decisão tomada. É o caso da
-semântica de condição do dashboard, discutida em
-[`../01-dashboard/condition-monitoring.md`](../01-dashboard/condition-monitoring.md).
+pendente no documento correspondente, e não maquiada de decisão tomada. Foi o caso da
+semântica de condição do dashboard, que permaneceu aberta em
+[`../01-dashboard/condition-monitoring.md`](../01-dashboard/condition-monitoring.md) até
+ser decidida no [ADR-0011](./adr-0011-condition-policy-and-alert-occurrences.md).
 
 ## Índice
 
@@ -32,3 +33,4 @@ semântica de condição do dashboard, discutida em
 | [0008](./adr-0008-synthetic-isolation.md) | Isolamento do ambiente sintético imposto por código | Aceito |
 | [0009](./adr-0009-rest-source-of-truth.md) | REST como fonte de verdade; realtime adiado | Aceito (adiado) |
 | [0010](./adr-0010-history-through-contract.md) | Histórico sintético pelo mesmo contrato de ingestão, no banco da aplicação | Aceito |
+| [0011](./adr-0011-condition-policy-and-alert-occurrences.md) | Política de condição centralizada e versionada; alerta como episódio persistido (A1/A2, baseline aprendida, ledger exactly-once) | Aceito |

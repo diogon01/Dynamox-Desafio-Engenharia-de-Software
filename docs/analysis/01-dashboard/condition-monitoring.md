@@ -125,18 +125,23 @@ agregadas, bucket sem amostra permanece `null` pelo mesmo motivo.
   limites industriais nem derivados de norma — ver
   [`../05-simulation/simulation-vs-real.md`](../05-simulation/simulation-vs-real.md).
 
-## Decisão em aberto
+## Decisão tomada (ADR-0011)
 
-Antes de redesenhar a matriz é preciso decidir o **domínio**: "condição" vira conceito de
-primeira classe (persistido, com histórico e filtrável na API) ou permanece uma leitura
-derivada no cliente?
+A pergunta que esta página manteve aberta — condição vira conceito persistido ou continua
+derivada? — foi decidida no
+[ADR-0011](../06-decisions/adr-0011-condition-policy-and-alert-occurrences.md):
 
-As duas opções são defensáveis. Persistir dá histórico, filtro server-side e alerta, ao
-custo de versionar regra de classificação e migrar dados quando o limiar mudar. Manter
-derivado mantém o backend livre de uma semântica ainda provisória.
+- **Condição continua derivada e recalculável**, agora com uma única política versionada em
+  `libs/domain/src/condition.ts` (`DEFAULT_CONDITION_POLICY`, v1). API e cliente classificam
+  pela mesma função, e o cliente passa a confiar em `condition`/`freshness` do servidor.
+  `ConditionTag` continua sendo a etiqueta de condição.
+- **Alerta nasceu como conceito próprio**: episódio persistido com nível A1/A2, estado,
+  reconhecimento ortogonal e linha do tempo, comparado a uma **baseline aprendida por ponto**
+  (não à aquisição anterior). Descrito em
+  [`../03-domain/alert-domain.md`](../03-domain/alert-domain.md).
 
-O que **não** se deve fazer é transformar os rótulos atuais em schema sem essa decisão —
-seria congelar em banco um vocabulário escolhido para uma demonstração. Por isso esta
-página descreve o modelo e **não** propõe o redesenho: a decisão está registrada como
-aberta, e é assim que ela deve permanecer até ser tomada. É também a razão de não existir
-um ADR para "condição no cliente": não há decisão fechada a registrar.
+O que isso muda nesta página: nada no cálculo da condição — a semântica, os limiares e a
+referência (aquisição sincronizada anterior) são os mesmos, agora centralizados. O painel
+passa a mostrar os dois conceitos lado a lado ("Ativos em atenção" e "Alertas abertos"), e
+um ponto pode ter alerta aberto com condição "normal": referências diferentes, ambas
+verdadeiras.

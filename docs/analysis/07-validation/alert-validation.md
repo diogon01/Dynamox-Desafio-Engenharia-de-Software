@@ -1,7 +1,7 @@
 # Validação do motor de alertas contra a verdade-terreno sintética
 
-Gerado em 2026-08-31 13:53 UTC pelo `npm run alerts:validate` — regras `telemetry-presence` v1, `temperature-delta` v1, `vibration-radial` v1.
-Universo rotulado: **33.552 ciclos `dataset:history`** de 12 sensores; ocorrências no banco: **11** (2 ativas).
+Gerado em 2026-08-31 14:09 UTC pelo `npm run alerts:validate` — regras `telemetry-presence` v1, `temperature-delta` v1, `vibration-radial` v1.
+Universo rotulado: **33.552 ciclos `dataset:history`** de 12 sensores; ocorrências no banco: **12** (3 ativas).
 
 O motor nunca lê o rótulo; este relatório o lê para medir o motor. "FP-antecipado" é um ciclo já em
 degradação (`fault=true`) que o rótulo ainda não chama de alerta — o motor viu antes; "FP-sadio" é
@@ -42,6 +42,7 @@ Episódios de presença DENTRO do mês sem lacuna correspondente (falso alarme d
 
 Episódios após o último ciclo rotulado (2026-08-30T19:52:00Z) — fim do histórico, não erro: 
 - FLEET_SILENT A1 (12 pontos) 2026-08-30T21:00:00Z → 2026-08-30T21:15:00Z
+- FLEET_SILENT A1 (12 pontos) 2026-08-30T23:15:00Z → ativo
 
 ## Baselines aprendidas por ponto
 

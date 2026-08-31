@@ -235,6 +235,13 @@ O enunciado pede que ambiguidades sejam resolvidas com pressupostos explícitos:
   tests.
 - O gráfico exibe a primeira página de amostras (até 500 pontos); a API entrega a série
   completa por paginação.
+- Alertas: sem notificação (e-mail/push), snooze, responsável, SLA ou resolução manual —
+  o episódio persistido é o produto desta rodada; notificar é conceito separado. Não há
+  calendário de operação: uma parada planejada e uma falha de gateway são o mesmo fato
+  observável (`FLEET_SILENT`). Alerta de RPM foi adiado por ADR e alerta espectral é só
+  ponto de extensão (o contrato traz RMS por janela, não espectro). A baseline de
+  comissionamento presume máquina sadia no aprendizado. Ver
+  [ADR-0011](docs/analysis/06-decisions/adr-0011-condition-policy-and-alert-occurrences.md).
 
 ## Latência (< 350 ms)
 

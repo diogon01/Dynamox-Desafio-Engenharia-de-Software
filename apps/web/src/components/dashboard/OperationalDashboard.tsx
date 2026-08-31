@@ -36,17 +36,19 @@ import { TrendPanel } from './TrendPanel';
 import { WeeklyHeatmap } from './WeeklyHeatmap';
 
 /**
- * Central operacional de condition monitoring, num único grid de 12 colunas:
+ * Central operacional de condition monitoring num único grid de 12 colunas, em faixas
+ * de 2/3 + 1/3: à esquerda o que precisa de eixo horizontal (tabela, séries temporais,
+ * 24 horas), à direita os painéis compactos empilhados, alinhados pela faixa.
  *
- *   KPIs                     3 + 3 + 3 + 3
- *   Evidência                Tendência 7 | (Prioridade / Saúde) 5
- *   Padrão temporal          Heatmap 7   | (Ocorrências / Qualidade) 5
- *   Contexto da frota        4 + 4 + 4
- *   Exploração               Explorador 9 | Matriz 3
+ *   KPIs                3 + 3 + 3 + 3
+ *   Onde investigar     Prioridade de inspeção 8 | Saúde dos sensores 4
+ *   Evidência           Tendência crítica 8      | Ocorrências recentes / Qualidade dos dados 4
+ *   Padrão temporal     Mapa de calor 8          | Horários de pico / Atividade de aquisição 4
+ *   Frota e exploração  Explorador 8             | Condição por ativo / Matriz da frota 4
  *
- * A ordem do DOM segue a decisão operacional (prioridade antes da evidência); a posição
- * visual vem de `order`, o que também permite reempilhar a página no mobile sem duplicar
- * marcação.
+ * Cada faixa junta painéis da mesma pergunta — a coluna estreita comenta a larga
+ * (o perfil detalha o dia escolhido no heatmap; condição por ativo e matriz olham as
+ * mesmas máquinas). A ordem do DOM é a de leitura; `order` reempilha no celular.
  */
 export function OperationalDashboard(): JSX.Element {
   const dispatch = useAppDispatch();
@@ -129,34 +131,29 @@ export function OperationalDashboard(): JSX.Element {
       { day: new Date(nowMs).getDay(), total: 0 },
     ).day;
 
-  /** Coluna de um item do grid principal. */
-  const slot = (opts: {
-    md?: number;
-    lg: number | 'auto';
-    order: { xs: number; md: number };
-  }) => ({
+  /** Item do grid principal: colunas por breakpoint e posição no empilhamento. */
+  const slot = (opts: { md?: number; lg?: number; xs: number; md_order?: number }) => ({
     gridColumn: {
       xs: 'span 12',
       md: `span ${opts.md ?? 12}`,
-      lg: opts.lg === 'auto' ? 'auto' : `span ${opts.lg}`,
+      lg: opts.lg === undefined ? 'auto' : `span ${opts.lg}`,
     },
-    order: opts.order,
+    order: { xs: opts.xs, lg: 0 },
     minWidth: 0,
     display: 'flex',
     '& > *': { flex: 1, minWidth: 0 },
   });
 
   /**
-   * Coluna dupla à direita de um painel largo. Em telas menores ela se dissolve
-   * (`display: contents`) e os dois cards voltam a ser itens do grid principal, cada um
-   * com sua própria posição no empilhamento.
+   * Coluna estreita de uma faixa: dois painéis empilhados que dividem a altura do painel
+   * largo ao lado. Abaixo de `lg` ela se dissolve (`display: contents`) e cada painel
+   * volta a ser um item do grid com o próprio span.
    */
-  const pairedColumn = (rows: string, order: number) => ({
+  const stack = (rows: string) => ({
     display: { xs: 'contents', lg: 'grid' },
-    gridColumn: { lg: 'span 5' },
+    gridColumn: { lg: 'span 4' },
     gridTemplateRows: { lg: rows },
     gap: `${gridGap}px`,
-    order: { lg: order },
     minWidth: 0,
   });
 
@@ -198,25 +195,25 @@ export function OperationalDashboard(): JSX.Element {
           alignItems: 'stretch',
         }}
       >
-        {/* SITUAÇÃO */}
+        {/* SITUAÇÃO — quatro perguntas, quatro números */}
         <KpiRow view={view} loading={inventoryLoading} />
 
-        {/* EVIDÊNCIA — tendência larga, prioridade e saúde empilhadas ao lado */}
-        <Box sx={pairedColumn('1fr 1fr', 6)}>
-          <Box sx={slot({ md: 6, lg: 'auto', order: { xs: 5, md: 6 } })}>
-            <InspectionPriorityTable
-              view={view}
-              loading={inventoryLoading}
-              evaluating={evaluating}
-              selectedSeriesId={dashboard.selectedSeriesId}
-              onInvestigate={investigate}
-            />
-          </Box>
-          <Box sx={slot({ md: 6, lg: 'auto', order: { xs: 11, md: 7 } })}>
-            <SensorHealthDonut view={view} loading={inventoryLoading} />
-          </Box>
+        {/* ONDE INVESTIGAR — o ranking, e se os sensores que o alimentam estão vivos */}
+        <Box sx={slot({ lg: 8, xs: 5 })}>
+          <InspectionPriorityTable
+            view={view}
+            loading={inventoryLoading}
+            evaluating={evaluating}
+            selectedSeriesId={dashboard.selectedSeriesId}
+            onInvestigate={investigate}
+          />
         </Box>
-        <Box sx={slot({ md: 12, lg: 7, order: { xs: 6, md: 5 } })}>
+        <Box sx={slot({ lg: 4, md: 6, xs: 8 })}>
+          <SensorHealthDonut view={view} loading={inventoryLoading} />
+        </Box>
+
+        {/* EVIDÊNCIA — a série que classificou, as últimas leituras e a confiança no dado */}
+        <Box sx={slot({ lg: 8, xs: 6 })}>
           <TrendPanel
             period={dashboard.period}
             series={dashboard.series.data}
@@ -231,17 +228,17 @@ export function OperationalDashboard(): JSX.Element {
             headingRef={investigationRef}
           />
         </Box>
-
-        {/* PADRÃO TEMPORAL — heatmap largo, ocorrências e qualidade ao lado */}
-        <Box sx={pairedColumn('minmax(128px, auto) minmax(80px, auto)', 9)}>
-          <Box sx={slot({ md: 6, lg: 'auto', order: { xs: 7, md: 9 } })}>
+        <Box sx={stack('minmax(0, 1fr) auto')}>
+          <Box sx={slot({ md: 6, xs: 7 })}>
             <RecentOccurrences view={view} loading={inventoryLoading} onInvestigate={investigate} />
           </Box>
-          <Box sx={slot({ md: 6, lg: 'auto', order: { xs: 9, md: 10 } })}>
+          <Box sx={slot({ md: 6, xs: 9 })}>
             <DataQualityPanel view={view} loading={inventoryLoading} />
           </Box>
         </Box>
-        <Box sx={slot({ md: 12, lg: 7, order: { xs: 12, md: 8 } })}>
+
+        {/* PADRÃO TEMPORAL — quando o dado chega: semana, dia escolhido e últimas 24 h */}
+        <Box sx={slot({ lg: 8, xs: 10 })}>
           <WeeklyHeatmap
             weekMap={view.weekMap}
             loading={inventoryLoading || evaluating}
@@ -249,25 +246,22 @@ export function OperationalDashboard(): JSX.Element {
             onSelectDay={setSelectedDay}
           />
         </Box>
-
-        {/* CONTEXTO DA FROTA */}
-        <Box sx={slot({ md: 6, lg: 4, order: { xs: 10, md: 11 } })}>
-          <AssetConditionColumns view={view} loading={inventoryLoading} />
-        </Box>
-        <Box sx={slot({ md: 6, lg: 4, order: { xs: 13, md: 12 } })}>
-          <AcquisitionActivity view={view} loading={inventoryLoading || evaluating} />
-        </Box>
-        <Box sx={slot({ md: 12, lg: 4, order: { xs: 14, md: 13 } })}>
-          <DayProfilePanel
-            weekMap={view.weekMap}
-            loading={inventoryLoading || evaluating}
-            selectedDay={activeDay}
-            onSelectDay={setSelectedDay}
-          />
+        <Box sx={stack('1fr 1fr')}>
+          <Box sx={slot({ md: 6, xs: 11 })}>
+            <DayProfilePanel
+              weekMap={view.weekMap}
+              loading={inventoryLoading || evaluating}
+              selectedDay={activeDay}
+              onSelectDay={setSelectedDay}
+            />
+          </Box>
+          <Box sx={slot({ md: 6, xs: 12 })}>
+            <AcquisitionActivity view={view} loading={inventoryLoading || evaluating} />
+          </Box>
         </Box>
 
-        {/* EXPLORAÇÃO */}
-        <Box sx={slot({ md: 12, lg: 9, order: { xs: 15, md: 14 } })}>
+        {/* FROTA E EXPLORAÇÃO — as mesmas máquinas em duas leituras, ao lado da série completa */}
+        <Box sx={slot({ lg: 8, xs: 15 })}>
           <SeriesExplorer
             series={dashboard.series.data}
             selectedSeriesId={dashboard.selectedSeriesId}
@@ -278,14 +272,19 @@ export function OperationalDashboard(): JSX.Element {
             onRetry={retryDetail}
           />
         </Box>
-        <Box sx={slot({ md: 12, lg: 3, order: { xs: 16, md: 15 } })}>
-          <FleetConditionMatrix
-            view={view}
-            loading={inventoryLoading}
-            nowMs={nowMs}
-            selectedSeriesId={dashboard.selectedSeriesId}
-            onSelect={investigate}
-          />
+        <Box sx={stack('minmax(0, 1fr) auto')}>
+          <Box sx={slot({ md: 6, xs: 13 })}>
+            <AssetConditionColumns view={view} loading={inventoryLoading} />
+          </Box>
+          <Box sx={slot({ md: 6, xs: 14 })}>
+            <FleetConditionMatrix
+              view={view}
+              loading={inventoryLoading}
+              nowMs={nowMs}
+              selectedSeriesId={dashboard.selectedSeriesId}
+              onSelect={investigate}
+            />
+          </Box>
         </Box>
       </Box>
     </>

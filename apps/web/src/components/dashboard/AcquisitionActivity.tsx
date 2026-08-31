@@ -39,6 +39,7 @@ export function AcquisitionActivity({
     <DashboardCard
       title="Atividade de aquisição (24 h)"
       titleId="acquisition-activity-title"
+      size="chart"
       subtitle="Amostras radiais persistidas por hora, nas últimas 24 horas."
       info="Contagem das amostras já carregadas para a avaliação de condição (séries radiais dos sensores demonstrativos)."
     >

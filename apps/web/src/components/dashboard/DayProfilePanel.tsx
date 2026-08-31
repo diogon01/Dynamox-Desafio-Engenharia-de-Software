@@ -64,6 +64,7 @@ export function DayProfilePanel({
     <DashboardCard
       title="Horários de pico (visão semanal)"
       titleId="day-profile-title"
+      size="chart"
       subtitle="% de sensores com leitura por hora, no dia selecionado."
       info="Detalhe do mapa de calor: mesmo cálculo, um dia por vez. Aquisição do período carregado — não é tempo real."
     >

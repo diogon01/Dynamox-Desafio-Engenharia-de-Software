@@ -66,6 +66,7 @@ export function SensorHealthDonut({
     <DashboardCard
       title="Saúde dos sensores"
       titleId="sensor-health-title"
+      size="chart"
       subtitle="Disponibilidade e recência das leituras — não é condição."
       info="Atualizado = leitura nas últimas 24 h. Condição (Normal/Atenção) vive nos painéis de condição."
     >

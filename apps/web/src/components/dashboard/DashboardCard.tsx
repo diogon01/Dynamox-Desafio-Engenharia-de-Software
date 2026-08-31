@@ -26,7 +26,7 @@ export interface DashboardCardProps {
   action?: ReactNode;
   /** Remove o padding lateral do corpo — para tabelas encostarem nas bordas. */
   flush?: boolean;
-  /** Categoria de altura mínima. */
+  /** Piso de altura — só para cards que desenham gráfico; os demais seguem o conteúdo. */
   size?: DashboardCardSize;
   children: ReactNode;
 }
@@ -38,7 +38,7 @@ export function DashboardCard({
   info,
   action,
   flush = false,
-  size = 'medium',
+  size,
   children,
 }: DashboardCardProps): JSX.Element {
   return (
@@ -50,7 +50,7 @@ export function DashboardCard({
         minWidth: 0,
         width: '100%',
         height: '100%',
-        minHeight: muiTheme.dashboard.cardMinHeight[size],
+        minHeight: size ? muiTheme.dashboard.cardMinHeight[size] : undefined,
         display: 'flex',
         flexDirection: 'column',
       })}

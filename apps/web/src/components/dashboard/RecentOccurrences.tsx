@@ -1,12 +1,9 @@
 import Box from '@mui/material/Box';
+import ButtonBase from '@mui/material/ButtonBase';
 import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
-import Table from '@mui/material/Table';
-import TableBody from '@mui/material/TableBody';
-import TableCell from '@mui/material/TableCell';
-import TableContainer from '@mui/material/TableContainer';
-import TableHead from '@mui/material/TableHead';
-import TableRow from '@mui/material/TableRow';
+import Typography from '@mui/material/Typography';
+import { alpha } from '@mui/material/styles';
 
 import { EmptyState } from '@dynamox/ui';
 
@@ -16,9 +13,12 @@ import { DashboardCard } from './DashboardCard';
 import { StatusTag } from './StatusTag';
 
 /**
- * Ocorrências recentes — derivadas honestamente do estado disponível: cada linha é a
+ * Ocorrências recentes — derivadas honestamente do estado disponível: cada item é a
  * última leitura real de um sensor com a classificação atual. O domínio não persiste
  * eventos, e o painel não finge que persiste.
+ *
+ * Lista em vez de tabela: numa coluna de um terço, duas linhas por item deixam a
+ * mensagem visível — e é ela que diz por que o item importa.
  */
 export function RecentOccurrences({
   view,
@@ -29,100 +29,78 @@ export function RecentOccurrences({
   loading: boolean;
   onInvestigate: (seriesId: string) => void;
 }): JSX.Element {
+  const rows = view.occurrences.slice(0, 6);
+
   return (
     <DashboardCard
       title="Ocorrências recentes"
       titleId="occurrences-title"
+      subtitle="Última leitura de cada sensor e a classificação atual."
       info="Derivado das leituras persistidas — o domínio não possui eventos/alarmes persistidos."
+      flush
     >
       {loading ? (
-        <Stack spacing={1}>
+        <Stack spacing={1} sx={{ px: 2 }}>
           {[0, 1, 2, 3].map((key) => (
             <Skeleton key={key} variant="rounded" height={44} />
           ))}
         </Stack>
       ) : null}
 
-      {!loading && view.occurrences.length === 0 ? (
-        <EmptyState
-          title="Sem leituras registradas"
-          description="As ocorrências aparecem quando os sensores começam a reportar."
-        />
+      {!loading && rows.length === 0 ? (
+        <Box sx={{ px: 2 }}>
+          <EmptyState
+            title="Sem leituras registradas"
+            description="As ocorrências aparecem quando os sensores começam a reportar."
+          />
+        </Box>
       ) : null}
 
-      {!loading && view.occurrences.length > 0 ? (
-        <TableContainer sx={{ overflowX: 'auto' }}>
-          <Table
-            size="small"
-            aria-label="Ocorrências recentes"
-            sx={{
-              // Colunas densas mas legíveis; a mensagem só aparece quando há largura.
-              '& .MuiTableCell-root': { py: 0.5, px: 0.85, lineHeight: 1.25, borderColor: 'divider' },
-            }}
-          >
-            <TableHead>
-              <TableRow>
-                <TableCell>Data / hora</TableCell>
-                <TableCell>Máquina</TableCell>
-                <TableCell>Ponto / sensor</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell sx={{ display: { xs: 'none', xl: 'table-cell' } }}>Mensagem</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {view.occurrences.slice(0, 6).map((row) => (
-                <TableRow
-                  key={row.id}
-                  hover={Boolean(row.seriesId)}
+      {!loading && rows.length > 0 ? (
+        <Stack component="ul" aria-label="Ocorrências recentes" sx={{ listStyle: 'none', m: 0, p: 0 }}>
+          {rows.map((row) => {
+            const shortMachine = row.machineName.split(' — ')[0];
+            const identity = `${shortMachine} · ${row.pointLabel} · ${row.sensorSerial}`;
+            return (
+              <Box component="li" key={row.id}>
+                <ButtonBase
+                  disabled={!row.seriesId}
                   onClick={() => {
                     if (row.seriesId) onInvestigate(row.seriesId);
                   }}
-                  aria-label={`${row.machineName} ${row.pointLabel} ${row.sensorSerial}: ${row.statusLabel} — ${row.message}`}
-                  sx={{ cursor: row.seriesId ? 'pointer' : 'default' }}
+                  aria-label={`${identity}: ${row.statusLabel} — ${row.message}`}
+                  sx={(theme) => ({
+                    width: '100%',
+                    display: 'block',
+                    textAlign: 'left',
+                    px: `${theme.dashboard.cardPadding}px`,
+                    py: 0.9,
+                    borderTop: 1,
+                    borderColor: 'divider',
+                    '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.05) },
+                    '&:focus-visible': {
+                      outline: `2px solid ${alpha(theme.palette.primary.main, 0.55)}`,
+                      outlineOffset: -2,
+                    },
+                    '&.Mui-disabled': { opacity: 1 },
+                  })}
                 >
-                  <TableCell sx={{ whiteSpace: 'nowrap', color: 'text.secondary' }}>
-                    {formatShortDateTime(row.timestamp)}
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 650, whiteSpace: 'nowrap' }}>
-                    {row.machineName.split(' — ')[0]}
-                    <Box
-                      component="span"
-                      sx={{
-                        position: 'absolute',
-                        display: 'block',
-                        left: 0,
-                        width: 1,
-                        height: 1,
-                        overflow: 'hidden',
-                        clip: 'rect(0 0 0 0)',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {row.machineName.split(' — ')[0]} · {row.pointLabel} · {row.sensorSerial}
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                    {row.pointLabel} · {row.sensorSerial}
-                  </TableCell>
-                  <TableCell><StatusTag kind={row.statusKind} label={row.statusLabel} /></TableCell>
-                  <TableCell
-                    sx={{
-                      display: { xs: 'none', xl: 'table-cell' },
-                      whiteSpace: 'nowrap',
-                      maxWidth: 220,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                    title={row.message}
-                  >
-                    {row.message}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+                    <Typography variant="body2" sx={{ fontWeight: 650 }} noWrap title={row.machineName}>
+                      {identity}
+                    </Typography>
+                    <StatusTag kind={row.statusKind} label={row.statusLabel} />
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary" component="div" noWrap title={row.message}>
+                    {formatShortDateTime(row.timestamp)} · {row.message}
+                  </Typography>
+                </ButtonBase>
+              </Box>
+            );
+          })}
+        </Stack>
       ) : null}
+
       <Box
         component="span"
         sx={{

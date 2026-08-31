@@ -74,6 +74,7 @@ export function AssetConditionColumns({
     <DashboardCard
       title="Condição por ativo"
       titleId="asset-condition-title"
+      size="chart"
       subtitle="Distribuição da frota e proporção da condição em cada máquina."
       info="Classificação demonstrativa por ponto. Recência e cobertura têm painéis próprios."
     >

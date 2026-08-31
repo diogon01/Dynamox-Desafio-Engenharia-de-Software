@@ -91,7 +91,6 @@ export function FleetConditionMatrix({
       titleId="fleet-matrix-title"
       subtitle="Todos os pontos por máquina."
       info="Cada ponto é um sensor: cor indica a condição demonstrativa. Selecione para investigar."
-      size="explorer"
       flush
     >
       {loading ? (

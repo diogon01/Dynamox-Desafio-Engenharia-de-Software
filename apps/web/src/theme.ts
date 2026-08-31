@@ -52,16 +52,15 @@ const DASHBOARD = {
   cardRadius: 10,
   headerHeight: 44,
   /**
-   * Altura mínima por categoria de painel. Cards da mesma linha esticam pelo grid;
-   * o mínimo evita que um card com pouco conteúdo desalinhe a linha inteira.
+   * Piso de altura para cards que desenham gráfico — sem ele um Recharts colapsa a zero
+   * quando o card tem pouco conteúdo. Tabelas, listas e KPIs não têm piso: assumem a
+   * altura do próprio conteúdo e esticam na linha do grid.
    */
   cardMinHeight: {
-    kpi: 96,
-    compact: 164,
-    medium: 180,
-    heatmap: 220,
+    chart: 220,
     primaryChart: 340,
-    explorer: 360,
+    heatmap: 260,
+    explorer: 380,
   },
   chart: {
     tickFontSize: 11,

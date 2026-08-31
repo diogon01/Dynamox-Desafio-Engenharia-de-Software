@@ -166,13 +166,13 @@ export function InspectionPriorityTable({
                 <TableCell>Máquina</TableCell>
                 <TableCell>Ponto · Sensor</TableCell>
                 <TableCell>Severidade</TableCell>
-                <TableCell align="right" sx={{ display: { xs: 'none', xl: 'table-cell' } }}>
+                <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                   Valor atual
                 </TableCell>
                 <TableCell sx={{ whiteSpace: 'normal', lineHeight: 1.25, minWidth: 96 }}>
                   Desvio vs. baseline
                 </TableCell>
-                <TableCell sx={{ display: { xs: 'none', xl: 'table-cell' } }}>Tendência</TableCell>
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Tendência</TableCell>
                 <TableCell sx={{ width: 44 }} aria-label="Ação" />
               </TableRow>
             </TableHead>
@@ -216,7 +216,7 @@ export function InspectionPriorityTable({
                     <TableCell
                       align="right"
                       sx={{
-                        display: { xs: 'none', xl: 'table-cell' },
+                        display: { xs: 'none', md: 'table-cell' },
                         whiteSpace: 'nowrap',
                         fontWeight: 600,
                       }}
@@ -228,7 +228,7 @@ export function InspectionPriorityTable({
                     <TableCell>
                       <DeviationCell cell={cell} />
                     </TableCell>
-                    <TableCell sx={{ display: { xs: 'none', xl: 'table-cell' } }}>
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                       <Sparkline points={view.sparklines[cell.key] ?? []} cell={cell} />
                     </TableCell>
                     <TableCell padding="none" align="center">

@@ -91,6 +91,7 @@ export function TrendPanel({
     <DashboardCard
       title={`Tendência crítica — ${PERIOD_LABELS[period]}`}
       titleId="trend-title"
+      size="primaryChart"
       subtitle={
         selected
           ? `${selected.machineName ?? 'Máquina não associada'} · ${selected.monitoringPointName ?? 'Sem ponto'} · ${selected.sensorSerialNumber} · ${seriesMetricLabel(selected.physicalQuantity, selected.axis)}`

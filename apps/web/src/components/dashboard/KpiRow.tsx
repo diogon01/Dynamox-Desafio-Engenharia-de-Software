@@ -98,7 +98,7 @@ export function KpiRow({
             // Dois por linha já no celular: quatro cards de largura inteira empurrariam a
             // prioridade de inspeção para fora da primeira tela.
             gridColumn: { xs: 'span 6', lg: 'span 3' },
-            order: index + 1,
+            order: { xs: index + 1, lg: 0 },
             minWidth: 0,
             display: 'flex',
           }}
@@ -111,7 +111,6 @@ export function KpiRow({
               minWidth: 0,
               display: 'flex',
               alignItems: 'center',
-              minHeight: muiTheme.dashboard.cardMinHeight.kpi,
               px: `${muiTheme.dashboard.cardPadding}px`,
               py: 1.5,
               borderColor: 'divider',

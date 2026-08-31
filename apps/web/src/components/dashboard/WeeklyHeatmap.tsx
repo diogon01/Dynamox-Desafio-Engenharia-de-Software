@@ -43,6 +43,7 @@ export function WeeklyHeatmap({
     <DashboardCard
       title="Mapa de calor semanal (24 h)"
       titleId="weekly-heatmap-title"
+      size="heatmap"
       subtitle="Intensidade de aquisição por dia da semana e hora — % de sensores com leitura."
       info="Derivado das amostras radiais carregadas. Selecione um dia para detalhá-lo no perfil 24 h."
     >
@@ -93,7 +94,7 @@ export function WeeklyHeatmap({
                   flex: 1,
                   minHeight: 16,
                   // Teto: dias sem leitura não viram faixas gigantes de vazio.
-                  maxHeight: 38,
+                  maxHeight: 46,
                 }}
               >
                 <Box

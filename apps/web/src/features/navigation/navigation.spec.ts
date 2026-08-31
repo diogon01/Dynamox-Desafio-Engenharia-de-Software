@@ -43,10 +43,10 @@ describe('isNavItemActive', () => {
   });
 
   it.each([
-    // A investigação desce de uma máquina — a trilha do breadcrumb começa nela.
-    ['/sensors/SIM-HF-002', '/machines'],
-    ['/acquisitions/63ca6282', '/machines'],
-    ['/acquisitions/63ca6282/samples', '/machines'],
+    // O índice do sensor é o registro de instrumentação, não a lista de máquinas.
+    ['/sensors/SIM-HF-002', '/monitoring-points'],
+    ['/acquisitions/63ca6282', '/monitoring-points'],
+    ['/acquisitions/63ca6282/samples', '/monitoring-points'],
     ['/assets/P-101', '/machines'],
     // A janela horária nasce do mapa de calor do painel.
     ['/monitoring/windows/2026-08-30/14', '/'],

@@ -1,4 +1,5 @@
 import ApiOutlinedIcon from '@mui/icons-material/ApiOutlined';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import NotificationsActiveOutlinedIcon from '@mui/icons-material/NotificationsActiveOutlined';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import PrecisionManufacturingOutlinedIcon from '@mui/icons-material/PrecisionManufacturingOutlined';
@@ -6,6 +7,7 @@ import SensorsOutlinedIcon from '@mui/icons-material/SensorsOutlined';
 import SpaceDashboardOutlinedIcon from '@mui/icons-material/SpaceDashboardOutlined';
 import Avatar from '@mui/material/Avatar';
 import Box from '@mui/material/Box';
+import Collapse from '@mui/material/Collapse';
 import Divider from '@mui/material/Divider';
 import Drawer from '@mui/material/Drawer';
 import List from '@mui/material/List';
@@ -16,13 +18,13 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { alpha, useTheme, type Theme } from '@mui/material/styles';
-import { Suspense, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
 
 import { LoadingState } from '@dynamox/ui';
 
 import { API_BASE_URL } from '../api/client';
-import { NAV_GROUPS, isNavItemActive, type NavItem } from '../features/navigation/navigation';
+import { NAV_GROUPS, activeNavGroup, isNavItemActive, type NavItem } from '../features/navigation/navigation';
 import { AppHeader } from './AppHeader';
 
 /**
@@ -37,18 +39,61 @@ const NAV_ICONS: Record<string, ReactNode> = {
   '/monitoring-points': <SensorsOutlinedIcon />,
 };
 
-/** Rótulo de seção: presente para orientar, discreto para não competir com os destinos. */
-function SectionLabel({ id, children }: { id: string; children: string }): JSX.Element {
+/**
+ * Cabeçalho do grupo. É categoria, não destino: sem ícone, sem fundo tonal e com a mesma
+ * tipografia de rótulo que tinha antes — só que agora clicável, para recolher a seção. O
+ * chevron é a única promessa visual de que algo acontece ao clicar.
+ */
+function GroupHeader({
+  id,
+  controls,
+  label,
+  expanded,
+  onToggle,
+}: {
+  id: string;
+  controls: string;
+  label: string;
+  expanded: boolean;
+  onToggle: () => void;
+}): JSX.Element {
   return (
-    <Typography
+    <ListItemButton
       id={id}
-      variant="overline"
-      component="h2"
-      color="text.secondary"
-      sx={{ display: 'block', px: 1.75, pb: 0.5, fontSize: '0.63rem', letterSpacing: 0.9 }}
+      component="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-controls={controls}
+      sx={{
+        width: '100%',
+        minHeight: 30,
+        px: 1.5,
+        py: 0.25,
+        mb: 0.25,
+        borderRadius: 1.5,
+        justifyContent: 'space-between',
+        '&:hover': { bgcolor: 'action.hover' },
+        '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 },
+      }}
     >
-      {children}
-    </Typography>
+      <Typography
+        variant="overline"
+        component="span"
+        color="text.secondary"
+        sx={{ fontSize: '0.63rem', letterSpacing: 0.9, lineHeight: 1.8 }}
+      >
+        {label}
+      </Typography>
+      <ExpandMoreIcon
+        aria-hidden
+        sx={{
+          fontSize: 16,
+          color: 'text.disabled',
+          transition: 'transform 160ms',
+          transform: expanded ? 'none' : 'rotate(-90deg)',
+        }}
+      />
+    </ListItemButton>
   );
 }
 
@@ -61,7 +106,10 @@ const navItemSx = (theme: Theme) => ({
   position: 'relative' as const,
   minHeight: 46,
   borderRadius: 2,
-  px: 1.75,
+  // Meio passo à direita do cabeçalho do grupo: o suficiente para ler como filho, sem
+  // comer a largura útil do texto.
+  pl: 2.25,
+  pr: 1.5,
   py: 0.85,
   mb: 0.25,
   color: 'text.primary',
@@ -100,6 +148,20 @@ const secondaryTypographyProps = { variant: 'caption', sx: { lineHeight: 1.3 } }
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Element {
   const { pathname } = useLocation();
+  const activeGroupId = activeNavGroup(pathname)?.id ?? null;
+  /*
+   * Estado local, e guardando o que foge do padrão: os grupos nascem abertos, então o mapa
+   * começa vazio e só registra o que a pessoa recolheu. Enquanto a sessão durar, a escolha
+   * dela permanece — o menu não se reabre sozinho a cada navegação.
+   */
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  // Navegar para dentro de um grupo recolhido o reabre: esconder onde a pessoa acabou de
+  // chegar seria perder a referência de lugar.
+  useEffect(() => {
+    if (!activeGroupId) return;
+    setCollapsed((current) => (current[activeGroupId] ? { ...current, [activeGroupId]: false } : current));
+  }, [activeGroupId]);
 
   return (
     <Box
@@ -157,10 +219,21 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Elemen
         "navegação principal" uma vez e ouve as seções, em vez de tropeçar em duas landmarks.
       */}
       <Box component="nav" aria-label="Navegação principal" sx={{ px: 1, pt: 1.5, flexGrow: 1, overflowY: 'auto' }}>
-        {NAV_GROUPS.map((group, index) => (
-          <Box key={group.id} sx={{ mb: index === NAV_GROUPS.length - 1 ? 0 : 2 }}>
-            <SectionLabel id={`nav-group-${group.id}`}>{group.label}</SectionLabel>
-            <List disablePadding aria-labelledby={`nav-group-${group.id}`}>
+        {NAV_GROUPS.map((group, index) => {
+          const expanded = !collapsed[group.id];
+          const headerId = `nav-group-${group.id}`;
+          const listId = `nav-group-${group.id}-items`;
+          return (
+          <Box key={group.id} sx={{ mb: index === NAV_GROUPS.length - 1 ? 0 : 1.5 }}>
+            <GroupHeader
+              id={headerId}
+              controls={listId}
+              label={group.label}
+              expanded={expanded}
+              onToggle={() => setCollapsed((current) => ({ ...current, [group.id]: !current[group.id] }))}
+            />
+            <Collapse in={expanded} timeout="auto" unmountOnExit>
+            <List disablePadding id={listId} aria-labelledby={headerId}>
               {group.items.map((item) => (
                 <ListItemButton
                   key={item.to}
@@ -191,8 +264,10 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }): JSX.Elemen
                 </ListItemButton>
               ))}
             </List>
+            </Collapse>
           </Box>
-        ))}
+          );
+        })}
       </Box>
 
       {/*

@@ -18,8 +18,9 @@ export interface NavItem {
   description: string;
   /**
    * Prefixos extras que mantêm este item ativo. É aqui que a árvore de investigação se
-   * declara: `/sensors/:serial` e `/acquisitions/:id` descem de uma máquina (a trilha do
-   * breadcrumb começa nela), então quem está lá continua vendo "Máquinas" como o ramo ativo.
+   * declara: cada rota profunda aponta para o ÍNDICE do seu recurso, não para o degrau
+   * anterior da trilha — `/sensors/:serial` pertence ao registro de instrumentação, que é a
+   * página que lista sensores, e não à lista de máquinas.
    */
   match?: string[];
 }
@@ -57,13 +58,22 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       {
         to: '/machines',
         label: 'Máquinas',
-        description: 'Ativos, pontos e operação de cada um',
-        match: ['/sensors', '/acquisitions', '/assets'],
+        description: 'Cadastro e condição dos ativos',
+        // `/machines/:key/points/:point` já cai aqui pelo prefixo: um ponto pertence a uma
+        // máquina, e é dentro dela que ele é descoberto. `/assets` é o endereço antigo.
+        match: ['/assets'],
       },
       {
         to: '/monitoring-points',
         label: 'Pontos e sensores',
-        description: 'Registro de toda a planta, com busca',
+        description: 'Instrumentação de toda a planta',
+        /*
+         * O sensor tem rota própria de primeiro nível (`/sensors/:serial`) e o índice dele é
+         * ESTE registro — é aqui que cada série aparece como linha e leva à página do sensor.
+         * A aquisição e as amostras descem do sensor, então herdam o mesmo ramo. Marcar
+         * "Máquinas" seria apontar para o índice do recurso errado.
+         */
+        match: ['/sensors', '/acquisitions'],
       },
     ],
   },

@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
@@ -30,6 +31,7 @@ import {
   type TimeSeriesSummary,
 } from '@dynamox/domain';
 
+import { AlertsService } from '../alerts/alerts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { toDomainMachineType } from '../common/machine-type.mapper';
 import {
@@ -103,7 +105,14 @@ interface TimeSeriesSummaryRow {
 export class TelemetryService {
   private readonly logger = new Logger(TelemetryService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  /**
+   * O motor de alertas é opcional na construção: os testes unitários instanciam o serviço
+   * sem ele, e a ingestão nunca depende dele para responder.
+   */
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly alerts?: AlertsService,
+  ) {}
 
   async ingestCycle(rawPayload: unknown, headerKey?: string): Promise<IngestionResult> {
     const validation = validateTelemetryCycle(rawPayload);
@@ -153,7 +162,16 @@ export class TelemetryService {
       });
     }
 
-    return this.persistCycle(payload, idempotencyKey, payloadFingerprint);
+    const result = await this.persistCycle(payload, idempotencyKey, payloadFingerprint);
+
+    // A avaliação corre DEPOIS do commit do ciclo e nunca altera a resposta da ingestão:
+    // um erro do motor é registrado, não devolvido ao produtor. Duplicatas (200) não passam
+    // por aqui — já foram avaliadas quando entraram.
+    if (!result.duplicate && this.alerts) {
+      await this.alerts.afterCycleIngested(result.cycleId);
+    }
+
+    return result;
   }
 
   private assertCanonicalTimestamps(payload: TelemetryCyclePayload): void {

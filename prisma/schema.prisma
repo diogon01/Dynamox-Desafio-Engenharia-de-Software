@@ -180,8 +180,9 @@ model IngestionCycle {
 
   createdAt DateTime @default(now())
 
-  samples       TimeSeriesSample[]
-  alertEvidence AlertCycleEvidence?
+  samples          TimeSeriesSample[]
+  alertEvidence    AlertCycleEvidence?
+  alertEvaluations AlertRuleEvaluation[]
 
   @@index([measuringSystemUid, createdAt])
   @@index([cycleId])
@@ -327,8 +328,9 @@ model AlertRuleEvaluation {
   id String @id @default(uuid())
 
   cycleId String
+  cycle   IngestionCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
   ruleId  String
-  rule    AlertRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  rule    AlertRule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
   policyVersion Int
   outcome       AlertEvaluationOutcome

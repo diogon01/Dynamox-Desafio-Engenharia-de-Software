@@ -134,19 +134,6 @@ export interface FleetHeadline {
   recency: { current: number; installed: number };
 }
 
-/** Linha derivada de leitura real + classificação atual — não é um Event persistido. */
-export interface OccurrenceRow {
-  id: string;
-  timestamp: string | null;
-  machineName: string;
-  pointLabel: string;
-  sensorSerial: string;
-  statusKind: ConditionKind | 'stale' | 'future';
-  statusLabel: string;
-  message: string;
-  seriesId: string | null;
-}
-
 export interface HourActivityBucket {
   hourStartMs: number;
   label: string;
@@ -178,7 +165,6 @@ export interface DashboardView {
   headline: FleetHeadline;
   /** Top da fila de inspeção: exceções primeiro, depois maiores razões — máx. 5. */
   priority: SensorCellView[];
-  occurrences: OccurrenceRow[];
   activity24h: HourActivityBucket[];
   weekMap: WeekHeatmap;
   /**
@@ -473,7 +459,7 @@ function positionLabel(name: string): string {
   return name;
 }
 
-const CONDITION_LABELS: Record<ConditionKind, string> = {
+export const CONDITION_LABELS: Record<ConditionKind, string> = {
   attention: 'Atenção demonstrativa',
   observation: 'Observação demonstrativa',
   normal: 'Normal demonstrativo',
@@ -729,69 +715,6 @@ export function buildAttentionSignals(cells: SensorCellView[]): AttentionSignal[
 }
 
 const WEEKDAY_LABELS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
-
-const CONDITION_STATUS_LABELS: Record<ConditionKind, string> = {
-  normal: 'Normal',
-  observation: 'Observação',
-  attention: 'Atenção',
-  unclassified: 'Sem classificação',
-  'no-data': 'Sem dados',
-  'no-sensor': 'Sem sensor',
-};
-
-/**
- * Ocorrências recentes DERIVADAS do estado disponível — o domínio não persiste eventos,
- * então cada linha é a última leitura real de um sensor com a classificação atual dela.
- * O painel se chama "ocorrências", nunca "alarmes persistidos".
- */
-export function buildOccurrences(cells: SensorCellView[], limit = 6): OccurrenceRow[] {
-  const rows: OccurrenceRow[] = [];
-  for (const cell of cells) {
-    if (!cell.sensorSerial) continue;
-    let statusKind: OccurrenceRow['statusKind'] = cell.condition;
-    let statusLabel = CONDITION_STATUS_LABELS[cell.condition];
-    let message: string;
-    if (cell.condition === 'attention') {
-      message = `Desvio ${formatRatioText(cell.assessment?.deviationRatio)} acima da referência`;
-    } else if (cell.condition === 'observation') {
-      message = `Tendência de aumento detectada (${formatRatioText(cell.assessment?.deviationRatio)})`;
-    } else if (cell.condition === 'no-data') {
-      message = 'Sensor instalado sem leitura disponível';
-    } else if (cell.condition === 'unclassified') {
-      message = 'Leitura registrada; baseline demonstrativo não calculável';
-    } else {
-      message = 'Operação dentro do esperado (demonstrativo)';
-    }
-    // Recência sobrepõe a mensagem quando é o fato mais relevante da linha.
-    if (cell.freshness === 'stale') {
-      statusKind = 'stale';
-      statusLabel = 'Desatualizado';
-      message = 'Última leitura fora da janela de 24 h';
-    } else if (cell.freshness === 'future') {
-      statusKind = 'future';
-      statusLabel = 'Relógio divergente';
-      message = 'Instante à frente do relógio local';
-    }
-    rows.push({
-      id: cell.key,
-      timestamp: cell.lastTimestamp,
-      machineName: cell.machineName,
-      pointLabel: cell.positionLabel,
-      sensorSerial: cell.sensorSerial,
-      statusKind,
-      statusLabel,
-      message,
-      seriesId: cell.preferredSeriesId,
-    });
-  }
-  return rows
-    .sort((a, b) => (b.timestamp ?? '').localeCompare(a.timestamp ?? ''))
-    .slice(0, limit);
-}
-
-function formatRatioText(ratio: number | undefined): string {
-  return ratio === undefined ? '—' : `${ratio.toFixed(2).replace('.', ',')}×`;
-}
 
 /** serial do sensor por id de série, para agrupar amostras carregadas por sensor. */
 function serialBySeriesId(series: TimeSeriesSummary[]): Map<string, string> {
@@ -1056,7 +979,6 @@ export function buildDashboardView(
     signals,
     headline,
     priority,
-    occurrences: buildOccurrences(cells),
     activity24h: buildAcquisitionActivity(state.series.data, state.radialSamplesBySeries, nowMs),
     weekMap: buildWeeklyAcquisitionMap(state.series.data, state.radialSamplesBySeries),
     sparklines,

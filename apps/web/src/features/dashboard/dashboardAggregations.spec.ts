@@ -13,7 +13,6 @@ import {
   aggregateSamplesForDetail,
   buildAcquisitionActivity,
   buildDashboardView,
-  buildOccurrences,
   buildPriorityList,
   buildWeeklyAcquisitionMap,
   buildTrendView,
@@ -417,17 +416,6 @@ describe('painéis derivados do dashboard v2', () => {
     ];
     const { points } = aggregateSamplesForDetail(comLacuna);
     expect(points.filter((point) => point.value === null)).toHaveLength(1);
-  });
-
-  it('ocorrências derivam das leituras reais, uma por sensor, mais recente primeiro', () => {
-    const view = buildDashboardView(dashboardState(), NOW);
-    const occurrences = buildOccurrences(view.cells);
-    // Só sensores com leitura entram; o ponto sem sensor não vira "evento".
-    expect(occurrences).toHaveLength(2);
-    expect(occurrences[0].statusLabel).toBeDefined();
-    const attention = occurrences.find((row) => row.sensorSerial === 'SIM-HF-002');
-    expect(attention?.statusLabel).toBe('Atenção');
-    expect(attention?.message).toContain('referência');
   });
 
   it('a atividade de 24 h conta amostras e sensores por hora, sem inventar buckets', () => {

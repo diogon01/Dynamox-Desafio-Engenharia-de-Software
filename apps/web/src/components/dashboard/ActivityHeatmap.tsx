@@ -105,7 +105,6 @@ export function ActivityHeatmap({
     <DashboardCard
       title="Severidade por hora (data × hora)"
       titleId="activity-heatmap-title"
-      size="heatmap"
       subtitle="Maior desvio radial da frota em cada hora, contra a baseline aprendida do ponto. Clique numa célula para investigar a janela."
       info="Reaproveita a evidência por ciclo já calculada pelo motor de alertas e a baseline por hora UTC de cada ponto — a mesma fórmula do resto do produto, sem baixar amostra bruta. Hora sem aquisição, ou ponto ainda sem baseline, fica neutra."
       action={
@@ -158,8 +157,7 @@ export function ActivityHeatmap({
                   gap: '1px',
                   mb: '1px',
                   flex: 1,
-                  minHeight: 16,
-                  maxHeight: 30,
+                  minHeight: 18,
                 }}
               >
                 <Typography

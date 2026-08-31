@@ -232,7 +232,7 @@ export function OperationalDashboard(): JSX.Element {
           />
         </Box>
         <Box sx={slot({ lg: 4, md: 6, xs: 8 })}>
-          <SensorHealthDonut view={view} loading={inventoryLoading} />
+          <SensorHealthDonut view={view} loading={inventoryLoading} alerts={dashboard.alerts} />
         </Box>
 
         {/* PADRÃO TEMPORAL — a severidade da semana logo abaixo da prioridade: onde piorou */}

@@ -1,6 +1,12 @@
 import type {
   AcquisitionDetailDto,
   AcquisitionPageDto,
+  AlertDetailDto,
+  AlertLevel,
+  AlertListResponseDto,
+  AlertListSortColumn,
+  AlertStatusFilter,
+  AlertType,
   ConditionKind,
   MachineListResponseDto,
   MachineListSortColumn,
@@ -271,6 +277,37 @@ async function getAllSamples(id: string): Promise<TimeSeriesSamplePage['items']>
   return items;
 }
 
+/** Recorte da listagem de alertas — tudo opcional; a URL da tela é a fonte. */
+export interface AlertListParams {
+  status?: AlertStatusFilter | null;
+  level?: AlertLevel | null;
+  type?: AlertType | null;
+  machine?: string | null;
+  sensor?: string | null;
+  from?: string | null;
+  to?: string | null;
+  page?: number;
+  pageSize?: number;
+  sortBy?: AlertListSortColumn;
+  sortDir?: 'asc' | 'desc';
+}
+
+export function alertListQuery(params: AlertListParams): string {
+  const query = new URLSearchParams();
+  if (params.status) query.set('status', params.status);
+  if (params.level) query.set('level', params.level);
+  if (params.type) query.set('type', params.type);
+  if (params.machine) query.set('machine', params.machine);
+  if (params.sensor) query.set('sensor', params.sensor);
+  if (params.from) query.set('from', params.from);
+  if (params.to) query.set('to', params.to);
+  if (params.page !== undefined) query.set('page', String(params.page));
+  if (params.pageSize !== undefined) query.set('pageSize', String(params.pageSize));
+  if (params.sortBy) query.set('sortBy', params.sortBy);
+  if (params.sortDir) query.set('sortDir', params.sortDir);
+  return query.toString();
+}
+
 /** Janela temporal de uma consulta analítica; `to` é exclusivo. */
 export interface AnalyticsRange {
   from: string;
@@ -418,6 +455,22 @@ export const api = {
     requestJson<TimeWindowResponseDto>(
       `/analytics/time-windows?${rangeQuery(range, { page: String(page), pageSize: String(pageSize) })}`,
     ),
+
+  /**
+   * ALERTAS — episódios persistidos pelo motor, distintos da condição derivada. A listagem
+   * recorta no servidor; `from`/`to` é interseção com o período em que o alerta esteve ativo.
+   */
+  alerts: (params: AlertListParams = {}) => {
+    const query = alertListQuery(params);
+    return requestJson<AlertListResponseDto>(`/alerts${query ? `?${query}` : ''}`);
+  },
+  alert: (id: string) => requestJson<AlertDetailDto>(`/alerts/${encodeURIComponent(id)}`),
+  /** Reconhecer não resolve: registra quem viu; idempotente no servidor. */
+  acknowledgeAlert: (id: string, note: string | null = null) =>
+    requestJson<AlertDetailDto>(`/alerts/${encodeURIComponent(id)}/acknowledge`, {
+      method: 'POST',
+      body: note ? { note } : {},
+    }),
 
   /** Aquisições do sensor, paginadas no servidor. `includeTotal` custa uma contagem. */
   sensorAcquisitions: (

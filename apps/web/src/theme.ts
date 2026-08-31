@@ -41,6 +41,19 @@ const CONDITION = {
   stale: '#E58A00',
 };
 
+/**
+ * Cores de ALERTA — episódios persistidos, com nível A1/A2 e ciclo de vida. Grupo separado
+ * de `condition` de propósito: um A1 aberto e uma condição "normal" podem coexistir no
+ * mesmo ponto (referências diferentes), e a tela precisa dizer as duas coisas sem que uma
+ * pareça a outra.
+ */
+const ALERT = {
+  a1: '#D97706',
+  a2: '#C0262C',
+  resolved: '#5B6B7A',
+  acknowledged: '#2E6FB0',
+};
+
 /** Tokens de layout do dashboard: uma fonte só para dimensões repetidas. */
 const DASHBOARD = {
   sidebarWidth: 232,
@@ -79,9 +92,11 @@ const DASHBOARD = {
 declare module '@mui/material/styles' {
   interface Palette {
     condition: typeof CONDITION;
+    alert: typeof ALERT;
   }
   interface PaletteOptions {
     condition?: typeof CONDITION;
+    alert?: typeof ALERT;
   }
   interface Theme {
     dashboard: typeof DASHBOARD;
@@ -105,6 +120,7 @@ export const theme = createTheme({
     warning: { main: BRAND.warning },
     error: { main: BRAND.error },
     condition: CONDITION,
+    alert: ALERT,
     divider: BRAND.border,
     background: { default: BRAND.background, paper: BRAND.surface },
     text: { primary: BRAND.onSurface, secondary: BRAND.muted },

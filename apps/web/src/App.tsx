@@ -56,6 +56,16 @@ const RawSamplesPage = lazy(async () => {
   return { default: module.RawSamplesPage };
 });
 
+const AlertsListPage = lazy(async () => {
+  const module = await import('./pages/alerts/AlertsListPage');
+  return { default: module.AlertsListPage };
+});
+
+const AlertDetailPage = lazy(async () => {
+  const module = await import('./pages/alerts/AlertDetailPage');
+  return { default: module.AlertDetailPage };
+});
+
 const MonitoringPointsPanel = lazy(async () => {
   const module = await import('./components/MonitoringPointsPanel');
   return { default: module.MonitoringPointsPanel };
@@ -106,6 +116,10 @@ export function App(): JSX.Element {
         <Route path="/machines/:machineKey/points/new" element={<PointFormPage />} />
         <Route path="/machines/:machineKey/points/:pointKey" element={<MonitoringPointPage />} />
         <Route path="/monitoring-points" element={<MonitoringPointsPanel />} />
+
+        {/* Alertas: episódios persistidos, com endereço próprio — a lista recortada e cada episódio. */}
+        <Route path="/alerts" element={<AlertsListPage />} />
+        <Route path="/alerts/:id" element={<AlertDetailPage />} />
 
         {/* Investigação: cada rota é um nível do drill-down, com o recorte na URL. */}
         <Route path="/monitoring/windows/:date/:hour" element={<TimeWindowPage />} />

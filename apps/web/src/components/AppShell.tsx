@@ -1,4 +1,5 @@
 import ApiOutlinedIcon from '@mui/icons-material/ApiOutlined';
+import NotificationsActiveOutlinedIcon from '@mui/icons-material/NotificationsActiveOutlined';
 import PrecisionManufacturingOutlinedIcon from '@mui/icons-material/PrecisionManufacturingOutlined';
 import SensorsOutlinedIcon from '@mui/icons-material/SensorsOutlined';
 import SpaceDashboardOutlinedIcon from '@mui/icons-material/SpaceDashboardOutlined';
@@ -39,6 +40,12 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Visão geral',
     description: 'Condição, prioridade e tendência',
     icon: <SpaceDashboardOutlinedIcon />,
+  },
+  {
+    to: '/alerts',
+    label: 'Alertas',
+    description: 'Episódios A1/A2 abertos pelo motor',
+    icon: <NotificationsActiveOutlinedIcon />,
   },
   {
     to: '/machines',

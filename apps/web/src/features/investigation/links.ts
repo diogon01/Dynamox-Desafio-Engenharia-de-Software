@@ -63,6 +63,23 @@ export const links = {
   },
 
 
+  /**
+   * Listagem de alertas com o recorte na query. Sem `range`: os alertas têm o próprio tempo
+   * (abertura e resolução) e a lista padrão é "o que está ativo agora", não uma janela.
+   */
+  alerts(filters: Record<string, string | undefined> = {}): string {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== '') query.set(key, value);
+    }
+    const suffix = query.toString();
+    return suffix ? `/alerts?${suffix}` : '/alerts';
+  },
+
+  alert(id: string): string {
+    return `/alerts/${encodeURIComponent(id)}`;
+  },
+
   acquisition(cycleId: string, range: AnalyticsRange): string {
     return withQuery(`/acquisitions/${cycleId}`, range);
   },

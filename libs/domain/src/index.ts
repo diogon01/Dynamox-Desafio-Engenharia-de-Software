@@ -260,8 +260,10 @@ export interface TimeSeriesSamplePage {
 
 // ————— Camada analítica: resultados agregados, nunca telemetria bruta —————
 
-// A política de condição (vocabulário, limiares, avaliação pura) mora em `condition.ts`.
+// A política de condição (vocabulário, limiares, avaliação pura) mora em `condition.ts`;
+// o vocabulário de alertas (episódio persistido, A1/A2, ciclo de vida) em `alerts.ts`.
 export * from './condition';
+export * from './alerts';
 
 /**
  * Condição de um ponto na janela consultada.

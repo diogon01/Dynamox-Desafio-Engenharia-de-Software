@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import type { TimeSeriesSampleDto, TimeSeriesSummary } from '@dynamox/domain';
+import { EMPTY_CONDITION_COUNTS } from '@dynamox/domain';
+import type {
+  ConditionKind,
+  FleetConditionResponseDto,
+  TimeSeriesSampleDto,
+  TimeSeriesSummary,
+} from '@dynamox/domain';
 
 import type { MachineDto, MonitoringPointDto } from '../../api/client';
 import {
@@ -453,5 +459,89 @@ describe('painéis derivados do dashboard v2', () => {
     const otherDay = (day + 3) % 7;
     expect(weekMap.days[otherDay].hours.every((entry) => entry.samples === 0)).toBe(true);
     expect(weekMap.peak?.day).toBe(day);
+  });
+});
+
+/**
+ * CHARACTERIZATION: o caminho de PRODUÇÃO é a resposta do servidor. Estes testes congelam
+ * como o cliente classifica a partir dela nas fronteiras exatas — antes de a regra ser
+ * centralizada, para que a centralização seja provadamente neutra.
+ */
+describe('fronteiras da condição a partir da resposta do servidor', () => {
+  function serverPoint(
+    serial: string,
+    pointId: string,
+    pointName: string,
+    ratio: number,
+    condition: ConditionKind,
+  ): FleetConditionResponseDto['points'][number] {
+    return {
+      machineName: machine.name,
+      machineType: machine.type,
+      monitoringPointId: pointId,
+      monitoringPointName: pointName,
+      sensorSerialNumber: serial,
+      sensorModel: 'HF+',
+      condition,
+      freshness: 'current',
+      currentValue: ratio,
+      baselineValue: 1,
+      deviationRatio: ratio,
+      currentAt: LAST_READING,
+      baselineAt: '2026-08-29T10:00:00.000Z',
+      currentSampleCount: 60,
+      currentCycleId: `cycle-${serial}-current`,
+      baselineCycleId: `cycle-${serial}-baseline`,
+      unit: 'g',
+      trend: [],
+    };
+  }
+
+  function stateWithServerRatio(ratio: number, condition: ConditionKind): DashboardState {
+    return {
+      ...initialDashboardState,
+      machines: { status: 'succeeded', data: [machine], error: null },
+      points: { status: 'succeeded', data: points, error: null },
+      series: { status: 'succeeded', data: series.map((item) => ({ ...item })), error: null },
+      conditionStatus: 'succeeded',
+      // Produção: nenhuma amostra bruta no cliente — só a resposta agregada.
+      radialSamplesBySeries: {},
+      fleetCondition: {
+        from: '2026-08-22T12:00:00.000Z',
+        to: '2026-08-29T12:00:00.000Z',
+        generatedAt: '2026-08-29T12:00:00.000Z',
+        counts: { ...EMPTY_CONDITION_COUNTS, total: 2 },
+        condition: null,
+        points: [
+          serverPoint('SIM-HF-001', 'p-de', points[0].name, 1, 'normal'),
+          serverPoint('SIM-HF-002', 'p-nde', points[1].name, ratio, condition),
+        ],
+      },
+    };
+  }
+
+  it.each([
+    [1.4999, 'normal'],
+    [1.5, 'observation'],
+    [1.9999, 'observation'],
+    [2.0, 'attention'],
+    [3.49, 'attention'],
+  ] as const)('razão %s do servidor vira condição %s na célula', (ratio, expected) => {
+    const view = buildDashboardView(stateWithServerRatio(ratio, expected), NOW);
+    const cell = view.cells.find((item) => item.sensorSerial === 'SIM-HF-002');
+    expect(cell?.condition).toBe(expected);
+    expect(cell?.assessment?.deviationRatio).toBeCloseTo(ratio, 10);
+    // A evidência exibida é a mesma medição que classificou.
+    expect(cell?.evidence?.deviationRatio).toBeCloseTo(ratio, 10);
+  });
+
+  it('a manchete e a fila seguem a mesma fronteira que a célula', () => {
+    const observation = buildDashboardView(stateWithServerRatio(1.5, 'observation'), NOW);
+    expect(observation.headline.attention.count).toBe(1);
+    expect(observation.priority[0]?.sensorSerial).toBe('SIM-HF-002');
+
+    const normal = buildDashboardView(stateWithServerRatio(1.4999, 'normal'), NOW);
+    expect(normal.headline.attention.count).toBe(0);
+    expect(normal.ranking).toHaveLength(0);
   });
 });

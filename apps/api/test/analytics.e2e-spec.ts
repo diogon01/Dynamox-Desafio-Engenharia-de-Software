@@ -26,6 +26,8 @@ const WINDOW_FROM = '2026-03-02T00:00:00.000Z';
 const WINDOW_TO = '2026-03-03T00:00:00.000Z';
 const BASELINE_START = Date.parse('2026-03-02T10:00:00.000Z');
 const CURRENT_START = Date.parse('2026-03-02T11:00:00.000Z');
+/** Aquisição posterior de UM sensor só — o que o twin chama de confirmatória. */
+const CONFIRM_START = Date.parse('2026-03-02T12:00:00.000Z');
 
 describe('Analytics (e2e)', () => {
   let app: INestApplication;
@@ -351,6 +353,67 @@ describe('Analytics (e2e)', () => {
     await authed(
       `/api/analytics/fleet-condition?from=${WINDOW_FROM}&to=${WINDOW_TO}&includeTrend=talvez`,
     ).expect(400);
+  });
+
+  it('uma aquisição posterior de um sensor só não vira a referência nem a atual', async () => {
+    // CHARACTERIZATION da regra "duas últimas aquisições sincronizadas por ≥2 sensores":
+    // uma aquisição mais nova, mas de UM sensor apenas, é persistida e listada — e ainda
+    // assim ignorada pela classificação. É o que mantém o 3,49× do painel estável quando a
+    // planta emite a confirmatória.
+    const series = await prisma.timeSeries.findMany({
+      where: { sensor: { serialNumber: SENSOR_A }, axis: { in: ['Y', 'Z'] } },
+      select: { id: true },
+    });
+    const confirm = await prisma.ingestionCycle.create({
+      data: {
+        idempotencyKey: `${PREFIX}${SENSOR_A}-confirm`,
+        payloadFingerprint: randomBytes(32).toString('hex'),
+        measuringSystemUid: SENSOR_A,
+        modelName: 'analytics-e2e',
+        modelVersion: 1,
+        origin: 'MANUAL',
+        tags: [`${PREFIX}fixture`],
+        metadata: {},
+        configuration: { rpm: 1750, loadPercent: 70 },
+        measurementCount: 2,
+        sampleCount: 12,
+        timeSeriesIds: [],
+      },
+    });
+    for (const item of series) {
+      await prisma.timeSeriesSample.createMany({
+        data: Array.from({ length: 6 }, (_, second) => ({
+          timeSeriesId: item.id,
+          timestamp: new Date(CONFIRM_START + second * 1000),
+          // Se entrasse como "atual", a razão seria 3,0; como "referência", 0,67.
+          value: 0.06,
+          ingestionCycleId: confirm.id,
+        })),
+      });
+    }
+
+    try {
+      const listed = await authed(
+        `/api/analytics/sensors/${SENSOR_A}/acquisitions?from=${WINDOW_FROM}&to=${WINDOW_TO}&includeTotal=true`,
+      ).expect(200);
+      expect(listed.body.total).toBe(3);
+
+      const response = await authed(
+        `/api/analytics/fleet-condition?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+      ).expect(200);
+      const a = response.body.points.find(
+        (p: { sensorSerialNumber: string }) => p.sensorSerialNumber === SENSOR_A,
+      );
+      expect(a.deviationRatio).toBeCloseTo(2, 5);
+      expect(a.condition).toBe('attention');
+      expect(a.currentCycleId).toBe(cycles[`${SENSOR_A}-current`]);
+      expect(a.baselineCycleId).toBe(cycles[`${SENSOR_A}-baseline`]);
+      // A recência, essa sim, enxerga a aquisição mais nova.
+      expect(Date.parse(a.currentAt)).toBeLessThan(CONFIRM_START);
+    } finally {
+      await prisma.timeSeriesSample.deleteMany({ where: { ingestionCycleId: confirm.id } });
+      await prisma.ingestionCycle.delete({ where: { id: confirm.id } });
+    }
   });
 
   it('agrega a série em buckets e nunca devolve amostra bruta', async () => {

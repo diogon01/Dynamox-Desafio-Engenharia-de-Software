@@ -36,7 +36,14 @@ export function KpiStrip({ items }: { items: KpiItem[] }): JSX.Element {
           variant="outlined"
           sx={(theme) => ({ px: `${theme.dashboard.cardPadding}px`, py: 1.25, minWidth: 0 })}
         >
-          <Typography variant="overline" color="text.secondary" component="div" noWrap>
+          {/* O rótulo quebra em vez de truncar: em duas colunas no celular, "Maior desvio
+              radi…" não diz o que o número mede. */}
+          <Typography
+            variant="overline"
+            color="text.secondary"
+            component="div"
+            sx={{ lineHeight: 1.3, minHeight: { xs: 'auto', md: 18 } }}
+          >
             {item.label}
           </Typography>
           <Typography

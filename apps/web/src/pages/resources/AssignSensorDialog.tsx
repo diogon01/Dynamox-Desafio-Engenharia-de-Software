@@ -9,6 +9,7 @@ import DialogTitle from '@mui/material/DialogTitle';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import { useState, type FormEvent } from 'react';
 
 import {
@@ -37,6 +38,7 @@ export function AssignSensorDialog({
   open,
   pointId,
   pointName,
+  machineName,
   machineType,
   onClose,
   onAssigned,
@@ -44,6 +46,7 @@ export function AssignSensorDialog({
   open: boolean;
   pointId: string;
   pointName: string;
+  machineName: string;
   machineType: MachineType;
   onClose: () => void;
   onAssigned: () => void;
@@ -83,11 +86,17 @@ export function AssignSensorDialog({
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="xs" fullWidth>
       <Stack component="form" onSubmit={submit} noValidate>
-        <DialogTitle>Associar sensor a “{pointName}”</DialogTitle>
+        <DialogTitle sx={{ pb: 0.5 }}>Associar sensor</DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
+          <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.25 }}>
+            {machineName} · {pointName}
+          </Typography>
+          <DialogContentText variant="caption" component="div" sx={{ mb: 2 }}>
             Um ponto recebe no máximo um sensor. As séries temporais passam a ser gravadas na
             primeira ingestão feita com este número de série.
+            {allowed.length < SENSOR_MODELS.length
+              ? ' Esta é uma bomba: só modelos compatíveis aparecem na lista.'
+              : ''}
           </DialogContentText>
 
           {failure ? (

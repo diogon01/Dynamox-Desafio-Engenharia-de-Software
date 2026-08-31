@@ -423,6 +423,7 @@ export function MonitoringPointPage(): JSX.Element {
           open={assigning}
           pointId={point.monitoringPointId}
           pointName={point.monitoringPointName}
+          machineName={point.machineName}
           machineType={point.machineType}
           onClose={() => setAssigning(false)}
           onAssigned={() => {

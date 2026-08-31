@@ -1,5 +1,14 @@
+import {
+  CONDITION_SEVERITY,
+  DEFAULT_CONDITION_POLICY,
+  classifyCondition as classifyConditionKind,
+  classifyFreshness as classifyFreshnessKind,
+  isConditionException,
+} from '@dynamox/domain';
 import type {
+  ConditionKind,
   FleetConditionResponseDto,
+  FreshnessKind,
   SensorModel,
   SeriesMetrics,
   TimeSeriesSampleDto,
@@ -10,30 +19,26 @@ import type {
 import type { MachineDto, MonitoringPointDto } from '../../api/client';
 import type { DashboardPeriod, DashboardState } from './dashboardSlice';
 
-export const SYNTHETIC_ATTENTION_RATIO = 2;
-export const SYNTHETIC_OBSERVATION_RATIO = 1.5;
-export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
-const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+/**
+ * Os limiares vêm da política de condição compartilhada (`@dynamox/domain`): o web não tem
+ * mais uma cópia própria da regra. Os nomes antigos continuam exportados como aliases.
+ */
+export const SYNTHETIC_ATTENTION_RATIO = DEFAULT_CONDITION_POLICY.attentionRatio;
+export const SYNTHETIC_OBSERVATION_RATIO = DEFAULT_CONDITION_POLICY.observationRatio;
+export const STALE_AFTER_MS = DEFAULT_CONDITION_POLICY.staleAfterMs;
 const ACQUISITION_GAP_MS = 5 * 60 * 1000;
 /** Amostras mínimas para uma janela de aquisição valer como baseline. */
-export const MIN_BASELINE_SAMPLES = 3;
+export const MIN_BASELINE_SAMPLES = DEFAULT_CONDITION_POLICY.minWindowSamples;
 const MIN_SERIES_BASELINE_SAMPLES = 60;
+
+// O vocabulário é o do domínio; re-exportado para quem já importava daqui.
+export type { ConditionKind, FreshnessKind };
 
 export const PERIOD_MS: Record<Exclude<DashboardPeriod, 'all'>, number> = {
   '24h': 24 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
   '30d': 30 * 24 * 60 * 60 * 1000,
 };
-
-export type ConditionKind =
-  | 'normal'
-  | 'observation'
-  | 'attention'
-  | 'unclassified'
-  | 'no-data'
-  | 'no-sensor';
-
-export type FreshnessKind = 'current' | 'stale' | 'future' | 'unknown';
 
 export interface SyntheticAssessment {
   serialNumber: string;
@@ -201,6 +206,12 @@ function parseTimestamp(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** `sqrt(mean(v²))` — a média quadrática que o banco usa para o RMS radial. */
+function quadraticMean(values: number[]): number {
+  if (values.length === 0) return Number.NaN;
+  return Math.sqrt(values.reduce((sum, value) => sum + value * value, 0) / values.length);
+}
+
 function mean(values: number[]): number {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
@@ -297,8 +308,10 @@ function assessmentFromWindows(
   baselineWindow: TimeSeriesSampleDto[],
   conditionWindow: TimeSeriesSampleDto[],
 ): SyntheticAssessment | null {
-  const baseline = mean(baselineWindow.map((sample) => sample.value));
-  const condition = mean(conditionWindow.map((sample) => sample.value));
+  // Média QUADRÁTICA das magnitudes radiais — a mesma fórmula do banco
+  // (`sqrt(avg((y²+z²)/2))`), para que o caminho local nunca discorde do servidor.
+  const baseline = quadraticMean(baselineWindow.map((sample) => sample.value));
+  const condition = quadraticMean(conditionWindow.map((sample) => sample.value));
   if (!Number.isFinite(baseline) || baseline <= 0 || !Number.isFinite(condition)) return null;
   return {
     serialNumber,
@@ -413,19 +426,23 @@ export function computeDemonstrativeSeriesBaseline(
   return first ? mean(first.map((sample) => sample.value)) : null;
 }
 
+const FRESHNESS_LABELS: Record<FreshnessKind, string> = {
+  current: 'Atual',
+  stale: 'Desatualizado',
+  future: 'Relógio divergente',
+  unknown: 'Sem leitura',
+};
+
+/** Recência pela política compartilhada; só o rótulo é do web. */
 export function classifyFreshness(
   lastTimestamp: string | null,
   nowMs: number,
 ): { kind: FreshnessKind; label: string } {
-  if (!lastTimestamp) return { kind: 'unknown', label: 'Sem leitura' };
+  if (!lastTimestamp) return { kind: 'unknown', label: FRESHNESS_LABELS.unknown };
   const timestamp = parseTimestamp(lastTimestamp);
   if (timestamp === null) return { kind: 'unknown', label: 'Timestamp inválido' };
-  const age = nowMs - timestamp;
-  if (age < -FUTURE_TOLERANCE_MS) {
-    return { kind: 'future', label: 'Relógio divergente' };
-  }
-  if (age > STALE_AFTER_MS) return { kind: 'stale', label: 'Desatualizado' };
-  return { kind: 'current', label: 'Atual' };
+  const kind = classifyFreshnessKind(timestamp, nowMs, DEFAULT_CONDITION_POLICY);
+  return { kind, label: FRESHNESS_LABELS[kind] };
 }
 
 function preferredSeries(series: TimeSeriesSummary[]): TimeSeriesSummary | null {
@@ -447,21 +464,28 @@ function positionLabel(name: string): string {
   return name;
 }
 
+const CONDITION_LABELS: Record<ConditionKind, string> = {
+  attention: 'Atenção demonstrativa',
+  observation: 'Observação demonstrativa',
+  normal: 'Normal demonstrativo',
+  unclassified: 'Sem classificação',
+  'no-data': 'Sem dados',
+  'no-sensor': 'Sem sensor',
+};
+
+/** Classificação pela política compartilhada; só o rótulo é do web. */
 function conditionFrom(
   hasSensor: boolean,
   hasSamples: boolean,
   assessment: SyntheticAssessment | null,
 ): { kind: ConditionKind; label: string } {
-  if (!hasSensor) return { kind: 'no-sensor', label: 'Sem sensor' };
-  if (!hasSamples) return { kind: 'no-data', label: 'Sem dados' };
-  if (!assessment) return { kind: 'unclassified', label: 'Sem classificação' };
-  if (assessment.deviationRatio >= SYNTHETIC_ATTENTION_RATIO) {
-    return { kind: 'attention', label: 'Atenção demonstrativa' };
-  }
-  if (assessment.deviationRatio >= SYNTHETIC_OBSERVATION_RATIO) {
-    return { kind: 'observation', label: 'Observação demonstrativa' };
-  }
-  return { kind: 'normal', label: 'Normal demonstrativo' };
+  const kind = classifyConditionKind(
+    hasSensor,
+    hasSamples,
+    assessment?.deviationRatio ?? null,
+    DEFAULT_CONDITION_POLICY,
+  );
+  return { kind, label: CONDITION_LABELS[kind] };
 }
 
 /**
@@ -635,7 +659,7 @@ export function buildAttentionSignals(cells: SensorCellView[]): AttentionSignal[
     if (cell.condition === 'attention') {
       reasons.push({
         severity: 'high',
-        text: `Índice demonstrativo ${cell.assessment?.deviationRatio.toFixed(2)}× o baseline (limiar didático 2,0×).`,
+        text: `Índice demonstrativo ${cell.assessment?.deviationRatio.toFixed(2)}× o baseline (limiar didático ${SYNTHETIC_ATTENTION_RATIO.toLocaleString('pt-BR', { minimumFractionDigits: 1 })}×).`,
       });
     } else if (cell.condition === 'observation') {
       reasons.push({
@@ -900,14 +924,6 @@ export function buildRadialSparkline(
     .slice(-8);
 }
 
-const CONDITION_SEVERITY_RANK: Record<ConditionKind, number> = {
-  attention: 5,
-  observation: 4,
-  unclassified: 2,
-  'no-data': 1,
-  'no-sensor': 0,
-  normal: 3,
-};
 
 /** Fila de prioridade: exceções primeiro; o restante por razão decrescente. Máx. 5. */
 export function buildPriorityList(cells: SensorCellView[], limit = 5): SensorCellView[] {
@@ -915,11 +931,11 @@ export function buildPriorityList(cells: SensorCellView[], limit = 5): SensorCel
     .filter((cell) => cell.sensorSerial)
     .sort((a, b) => {
       const exceptional = (cell: SensorCellView) =>
-        cell.condition === 'attention' || cell.condition === 'observation' ? 1 : 0;
+        isConditionException(cell.condition) ? 1 : 0;
       return (
         exceptional(b) - exceptional(a) ||
         (b.assessment?.deviationRatio ?? 0) - (a.assessment?.deviationRatio ?? 0) ||
-        CONDITION_SEVERITY_RANK[b.condition] - CONDITION_SEVERITY_RANK[a.condition] ||
+        CONDITION_SEVERITY[b.condition] - CONDITION_SEVERITY[a.condition] ||
         a.machineName.localeCompare(b.machineName, 'pt-BR')
       );
     })
@@ -952,7 +968,7 @@ export function buildDashboardView(
   // Ranking de exceções: só entra quem está acima do normal. Uma lista em que 4 dos 5
   // primeiros marcam 1,00× ocupa a área nobre da tela sem informar nada.
   const ranking = cells
-    .filter((cell) => cell.condition === 'attention' || cell.condition === 'observation')
+    .filter((cell) => isConditionException(cell.condition))
     .sort(
       (a, b) =>
         (b.assessment?.deviationRatio ?? 0) - (a.assessment?.deviationRatio ?? 0) ||
@@ -976,7 +992,7 @@ export function buildDashboardView(
   const headline: FleetHeadline = {
     attention: {
       count: cells.filter(
-        (cell) => cell.condition === 'attention' || cell.condition === 'observation',
+        (cell) => isConditionException(cell.condition),
       ).length,
       top: ranking[0] ?? null,
     },
@@ -1034,7 +1050,7 @@ export function buildDashboardView(
       sensors: sensors.length,
       // Condição: o que a MEDIÇÃO diz. Nunca mistura ausência de sensor nem recência.
       attention: cells.filter(
-        (cell) => cell.condition === 'attention' || cell.condition === 'observation',
+        (cell) => isConditionException(cell.condition),
       ).length,
       // Recência: leitura velha demais ou instante à frente do relógio.
       stale: cells.filter((cell) => cell.freshness === 'stale' || cell.freshness === 'future')

@@ -12,6 +12,8 @@ import type { ReactNode } from 'react';
 
 import { Link as RouterLink } from 'react-router-dom';
 
+import { DEFAULT_CONDITION_POLICY } from '@dynamox/domain';
+
 import type { DashboardView } from '../../features/dashboard/dashboardAggregations';
 import { formatMeasurement, formatNumber, formatPercent } from '../../features/dashboard/dashboardFormatters';
 import { links, type AnalyticsRange } from '../../features/investigation/links';
@@ -75,7 +77,7 @@ export function KpiRow({
         : 'sem referência comparável na janela',
       icon: <MonitorHeartOutlinedIcon />,
       tone: 'primary',
-      active: Boolean(deviation && deviation.ratio >= 2),
+      active: Boolean(deviation && deviation.ratio >= DEFAULT_CONDITION_POLICY.attentionRatio),
       to: deviation?.cell.sensorSerial ? links.sensor(deviation.cell.sensorSerial, range) : undefined,
     },
     {

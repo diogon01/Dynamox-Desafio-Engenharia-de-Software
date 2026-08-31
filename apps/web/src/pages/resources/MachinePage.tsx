@@ -30,6 +30,7 @@ import {
 
 import {
   CONDITION_KINDS,
+  DEFAULT_CONDITION_POLICY,
   conditionCountKey,
   isConditionKind,
   machineSlug,
@@ -292,7 +293,10 @@ export function MachinePage(): JSX.Element {
                   hint: asset.kpis.maxDeviationPoint
                     ? `${asset.kpis.maxDeviationPoint} · RMS radial Y/Z`
                     : undefined,
-                  tone: (asset.kpis.maxDeviationRatio ?? 0) >= 2 ? 'warning' : 'default',
+                  tone:
+                    (asset.kpis.maxDeviationRatio ?? 0) >= DEFAULT_CONDITION_POLICY.attentionRatio
+                      ? 'warning'
+                      : 'default',
                 },
               ]}
             />

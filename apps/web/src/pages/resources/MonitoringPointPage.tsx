@@ -26,6 +26,7 @@ import {
   YAxis,
 } from 'recharts';
 
+import { DEFAULT_CONDITION_POLICY } from '@dynamox/domain';
 import { EmptyState, ErrorState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
@@ -197,7 +198,10 @@ export function MonitoringPointPage(): JSX.Element {
                     point.baselineValue === null
                       ? 'sem referência na janela'
                       : `ref ${formatMeasurement(point.baselineValue, point.unit)}`,
-                  tone: (point.deviationRatio ?? 0) >= 2 ? 'warning' : 'default',
+                  tone:
+                    (point.deviationRatio ?? 0) >= DEFAULT_CONDITION_POLICY.attentionRatio
+                      ? 'warning'
+                      : 'default',
                 },
                 {
                   label: 'RMS radial atual',

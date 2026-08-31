@@ -28,7 +28,7 @@ import {
   YAxis,
 } from 'recharts';
 
-import { machineTag } from '@dynamox/domain';
+import { DEFAULT_CONDITION_POLICY, machineTag } from '@dynamox/domain';
 import { EmptyState, ErrorState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
@@ -205,7 +205,10 @@ export function SensorPage(): JSX.Element {
               point?.baselineValue == null
                 ? 'sem referência na janela'
                 : `referência ${formatMeasurement(point.baselineValue, 'g')}`,
-            tone: (point?.deviationRatio ?? 0) >= 2 ? 'warning' : 'default',
+            tone:
+              (point?.deviationRatio ?? 0) >= DEFAULT_CONDITION_POLICY.attentionRatio
+                ? 'warning'
+                : 'default',
           },
           {
             label: 'Aquisições',

@@ -34,11 +34,15 @@ import {
   formatDateTime,
   formatRange,
 } from '../../features/time/instant';
+import { DEFAULT_CONDITION_POLICY } from '@dynamox/domain';
+
 import type { DashboardPeriod } from '../../features/dashboard/dashboardSlice';
 import type { RequestStatus } from '../../store/requestStatus';
 import { DashboardCard } from './DashboardCard';
 import { SeriesHierarchyFilters } from './SeriesHierarchyFilters';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from './chartTheme';
+
+const ATTENTION_RATIO = DEFAULT_CONDITION_POLICY.attentionRatio;
 
 const PERIOD_LABELS: Record<DashboardPeriod, string> = {
   '24h': '24 horas',
@@ -168,7 +172,7 @@ export function TrendPanel({
                 : null,
               baseline !== null
                 ? {
-                    label: `Limiar didático 2×: ${formatMeasurement(baseline * 2, selected.unit)}`,
+                    label: `Limiar didático ${ATTENTION_RATIO}×: ${formatMeasurement(baseline * ATTENTION_RATIO, selected.unit)}`,
                     color: muiTheme.palette.condition.attention,
                     dashed: true,
                   }
@@ -236,7 +240,7 @@ export function TrendPanel({
                 ) : null}
                 {baseline !== null ? (
                   <ReferenceLine
-                    y={baseline * 2}
+                    y={baseline * ATTENTION_RATIO}
                     stroke={muiTheme.palette.condition.attention}
                     strokeDasharray="5 4"
                   />

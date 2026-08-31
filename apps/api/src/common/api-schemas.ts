@@ -374,6 +374,14 @@ export class TelemetryIngestionResponse {
 
 // ————— Analytics —————
 
+export class TrendPointResponse {
+  @ApiProperty({ format: 'date-time', description: 'Início do bucket agregado.', example: ISO })
+  timestamp!: string;
+
+  @ApiProperty({ description: 'RMS do eixo âncora no bucket.', example: 0.0171 })
+  value!: number;
+}
+
 export class FleetConditionPointResponse {
   @ApiProperty({ description: 'Máquina do ponto.', example: 'P-101' })
   machineName!: string;
@@ -433,6 +441,13 @@ export class FleetConditionPointResponse {
 
   @ApiProperty({ description: 'Unidade das grandezas radiais.', example: 'g' })
   unit!: string;
+
+  @ApiProperty({
+    type: [TrendPointResponse],
+    description:
+      'Tendência curta (até 12 buckets das últimas 24 h da janela). Vazia sem includeTrend=true.',
+  })
+  trend!: TrendPointResponse[];
 }
 
 export class FleetConditionResponse {
@@ -873,4 +888,249 @@ export class RawSamplePageResponse {
 
   @ApiProperty({ type: String, nullable: true, description: 'Filtro de eixo aplicado.', example: null })
   axis!: string | null;
+}
+
+export class AssetPointSummaryResponse {
+  @ApiProperty({ format: 'uuid', description: 'Identificador do ponto de monitoramento.' })
+  monitoringPointId!: string;
+
+  @ApiProperty({ description: 'Nome do ponto.', example: 'Mancal lado oposto ao acoplamento' })
+  monitoringPointName!: string;
+
+  @ApiProperty({ description: 'Segmento de URL do ponto dentro do ativo.', example: 'mancal-lado-acoplamento' })
+  slug!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Sensor associado.', example: 'SIM-HF-002' })
+  sensorSerialNumber!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Modelo público do sensor.', example: 'HF+' })
+  sensorModel!: string | null;
+
+  @ApiProperty({
+    description: 'Classificação demonstrativa do ponto.',
+    enum: ['normal', 'observation', 'attention', 'unclassified', 'no-data', 'no-sensor'],
+    example: 'attention',
+  })
+  condition!: string;
+
+  @ApiProperty({
+    description: 'Recência da última leitura.',
+    enum: ['current', 'stale', 'future', 'unknown'],
+    example: 'current',
+  })
+  freshness!: string;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'RMS radial da aquisição atual.', example: 0.0571 })
+  currentValue!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'RMS radial da aquisição de referência.', example: 0.0164 })
+  baselineValue!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Razão entre atual e referência.', example: 3.49 })
+  deviationRatio!: number | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Última leitura conhecida do ponto.', example: ISO })
+  lastAt!: string | null;
+
+  @ApiProperty({ description: 'Aquisições do ponto na janela.', example: 672 })
+  acquisitionCount!: number;
+
+  @ApiProperty({ description: 'Amostras da série âncora na janela.', example: 40320 })
+  sampleCount!: number;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Mínimo da janela.', example: 0.0121 })
+  min!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Máximo da janela.', example: 0.0611 })
+  max!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Média da janela.', example: 0.0187 })
+  avg!: number | null;
+
+  @ApiProperty({ description: 'Unidade das grandezas radiais.', example: 'g' })
+  unit!: string;
+
+  @ApiProperty({ type: [TrendPointResponse], description: 'Tendência curta do ponto.' })
+  trend!: TrendPointResponse[];
+}
+
+export class AssetKpisResponse {
+  @ApiProperty({ description: 'Pontos de monitoramento do ativo.', example: 2 })
+  points!: number;
+
+  @ApiProperty({ description: 'Pontos com sensor instalado.', example: 2 })
+  sensors!: number;
+
+  @ApiProperty({ description: 'Pontos em atenção ou observação.', example: 1 })
+  attention!: number;
+
+  @ApiProperty({ description: 'Aquisições do ativo na janela.', example: 1344 })
+  acquisitionCount!: number;
+
+  @ApiProperty({ description: 'Percentual de pontos que reportaram na janela.', example: 100 })
+  coveragePercent!: number;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Maior razão observada no ativo.', example: 3.49 })
+  maxDeviationRatio!: number | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Ponto de maior razão.', example: 'Mancal lado oposto ao acoplamento' })
+  maxDeviationPoint!: string | null;
+}
+
+export class AssetSummaryResponse {
+  @ApiProperty({ format: 'uuid', description: 'Identificador da máquina.' })
+  machineId!: string;
+
+  @ApiProperty({ description: 'Nome cadastrado da máquina.', example: 'P-101' })
+  machineName!: string;
+
+  @ApiProperty({ description: 'Tipo público da máquina.', enum: ['Pump', 'Fan'], example: 'Pump' })
+  machineType!: string;
+
+  @ApiProperty({ description: 'Segmento de URL do ativo.', example: 'P-101' })
+  slug!: string;
+
+  @ApiProperty({ format: 'date-time', description: 'Início da janela.', example: ISO })
+  from!: string;
+
+  @ApiProperty({ format: 'date-time', description: 'Fim exclusivo da janela.', example: ISO })
+  to!: string;
+
+  @ApiProperty({ type: AssetKpisResponse, description: 'Indicadores do ativo na janela.' })
+  kpis!: AssetKpisResponse;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Última leitura do ativo.', example: ISO })
+  lastAt!: string | null;
+
+  @ApiProperty({ type: [AssetPointSummaryResponse], description: 'Um item por ponto do ativo.' })
+  points!: AssetPointSummaryResponse[];
+}
+
+export class PointSeriesResponse {
+  @ApiProperty({ format: 'uuid', description: 'Identificador da série temporal.' })
+  seriesId!: string;
+
+  @ApiProperty({
+    description: 'Grandeza pública da série.',
+    enum: ['acceleration', 'velocity', 'temperature', 'rotationalSpeed'],
+    example: 'acceleration',
+  })
+  physicalQuantity!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Eixo público; nulo em grandezas escalares.', enum: ['x', 'y', 'z'], example: 'y' })
+  axis!: string | null;
+
+  @ApiProperty({ description: 'Unidade da série.', example: 'g' })
+  unit!: string;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Última leitura da série na janela.', example: 0.0171 })
+  lastValue!: number | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Instante da última leitura na janela.', example: ISO })
+  lastAt!: string | null;
+}
+
+export class PointWindowResponse {
+  @ApiProperty({ description: 'Aquisições na janela.', example: 672 })
+  acquisitionCount!: number;
+
+  @ApiProperty({ description: 'Amostras da série âncora na janela.', example: 40320 })
+  sampleCount!: number;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Mínimo da janela.', example: 0.0121 })
+  min!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Máximo da janela.', example: 0.0611 })
+  max!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Média da janela.', example: 0.0187 })
+  avg!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Último valor da janela.', example: 0.0171 })
+  lastValue!: number | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Instante da última leitura.', example: ISO })
+  lastAt!: string | null;
+}
+
+export class PointSummaryResponse {
+  @ApiProperty({ format: 'uuid', description: 'Identificador da máquina.' })
+  machineId!: string;
+
+  @ApiProperty({ description: 'Nome cadastrado da máquina.', example: 'P-101' })
+  machineName!: string;
+
+  @ApiProperty({ description: 'Tipo público da máquina.', enum: ['Pump', 'Fan'], example: 'Pump' })
+  machineType!: string;
+
+  @ApiProperty({ description: 'Segmento de URL do ativo.', example: 'P-101' })
+  machineSlug!: string;
+
+  @ApiProperty({ format: 'uuid', description: 'Identificador do ponto.' })
+  monitoringPointId!: string;
+
+  @ApiProperty({ description: 'Nome do ponto.', example: 'Mancal lado oposto ao acoplamento' })
+  monitoringPointName!: string;
+
+  @ApiProperty({ description: 'Segmento de URL do ponto.', example: 'mancal-lado-oposto-ao-acoplamento' })
+  slug!: string;
+
+  @ApiProperty({ format: 'date-time', description: 'Início da janela.', example: ISO })
+  from!: string;
+
+  @ApiProperty({ format: 'date-time', description: 'Fim exclusivo da janela.', example: ISO })
+  to!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Sensor associado ao ponto.', example: 'SIM-HF-002' })
+  sensorSerialNumber!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Modelo público do sensor.', example: 'HF+' })
+  sensorModel!: string | null;
+
+  @ApiProperty({
+    description: 'Classificação demonstrativa do ponto.',
+    enum: ['normal', 'observation', 'attention', 'unclassified', 'no-data', 'no-sensor'],
+    example: 'attention',
+  })
+  condition!: string;
+
+  @ApiProperty({
+    description: 'Recência da última leitura.',
+    enum: ['current', 'stale', 'future', 'unknown'],
+    example: 'current',
+  })
+  freshness!: string;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'RMS radial da aquisição atual.', example: 0.0571 })
+  currentValue!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'RMS radial da aquisição de referência.', example: 0.0164 })
+  baselineValue!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Razão entre atual e referência.', example: 3.49 })
+  deviationRatio!: number | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Instante da aquisição atual.', example: ISO })
+  currentAt!: string | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Instante da aquisição de referência.', example: ISO })
+  baselineAt!: string | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Ciclo da aquisição atual.' })
+  currentCycleId!: string | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'Ciclo da aquisição de referência.' })
+  baselineCycleId!: string | null;
+
+  @ApiProperty({ description: 'Unidade das grandezas radiais.', example: 'g' })
+  unit!: string;
+
+  @ApiProperty({ type: PointWindowResponse, description: 'Agregados da janela consultada.' })
+  window!: PointWindowResponse;
+
+  @ApiProperty({ type: [TrendPointResponse], description: 'Tendência curta do ponto.' })
+  trend!: TrendPointResponse[];
+
+  @ApiProperty({ type: [PointSeriesResponse], description: 'Séries disponíveis no ponto.' })
+  series!: PointSeriesResponse[];
 }

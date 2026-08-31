@@ -92,6 +92,7 @@ export function fleetConditionSql(from: Date, to: Date): Prisma.Sql {
       GROUP BY serial
     )
     SELECT
+      m.id               AS machine_id,
       m.name             AS machine_name,
       m.type             AS machine_type,
       mp.id              AS monitoring_point_id,
@@ -263,20 +264,28 @@ export function heatmapSql(
  * Resumo de uma JANELA temporal por sensor: o que cada ponto fez naquele intervalo.
  * Uma linha por sensor — o custo não cresce com o tamanho do histórico, só com a janela.
  */
-export function timeWindowSql(from: Date, to: Date): Prisma.Sql {
+export function timeWindowSql(from: Date, to: Date, serialNumbers?: readonly string[]): Prisma.Sql {
+  // O recorte por sensor não muda a semântica: cada linha já é agregada por sensor, de
+  // forma independente. A página do ativo lê dois sensores em vez dos doze da frota.
+  const sensorFilter =
+    serialNumbers === undefined
+      ? Prisma.empty
+      : Prisma.sql`AND s."serialNumber" IN (${Prisma.join(serialNumbers.map((serial) => Prisma.sql`${serial}`))})`;
+
   return Prisma.sql`
     WITH anchor AS (
       SELECT s.id AS sensor_id, s."serialNumber" AS serial, s.model AS model,
              ts.id AS series_id, mp.name AS point_name, mp.id AS point_id,
-             m.name AS machine_name, m.type AS machine_type
+             m.id AS machine_id, m.name AS machine_name, m.type AS machine_type
       FROM time_series ts
       JOIN sensors s ON s.id = ts."sensorId"
       LEFT JOIN monitoring_points mp ON mp.id = s."monitoringPointId"
       LEFT JOIN machines m ON m.id = mp."machineId"
       WHERE ts."physicalQuantity" = 'ACCELERATION' AND ts.axis = 'Y'
+        ${sensorFilter}
     )
     SELECT
-      a.serial, a.model, a.series_id, a.point_name, a.point_id, a.machine_name, a.machine_type,
+      a.serial, a.model, a.series_id, a.point_name, a.point_id, a.machine_id, a.machine_name, a.machine_type,
       w.samples, w.acquisitions, w.min, w.max, w.avg, w.last_at, w.last_value
     FROM anchor a
     LEFT JOIN LATERAL (
@@ -420,5 +429,74 @@ export function acquisitionSamplesSql(
     WHERE ${Prisma.join(conditions, ' AND ')}
     ORDER BY p."timestamp" ASC, p.id ASC
     LIMIT ${limit}
+  `;
+}
+
+/** Buckets da tendência curta: doze pontos são suficientes para ler a direção. */
+export const TREND_BUCKETS = 12;
+
+/**
+ * Tendência curta de cada sensor: RMS do eixo âncora (aceleração Y) por bucket.
+ *
+ * Serve às miniaturas — a pergunta é "sobe, estabiliza ou cai", não "qual o valor". Por
+ * isso são doze buckets sobre a MESMA janela em que a condição é avaliada (as últimas 24 h
+ * do recorte), e não sobre os trinta dias: um sparkline de 700 pontos não responde nada
+ * melhor e custaria uma varredura inteira.
+ *
+ * A razão publicada continua vindo do RMS radial (Y/Z pareados) da `fleetConditionSql`;
+ * aqui só a FORMA da curva importa, e o eixo âncora a descreve com metade da leitura.
+ */
+export function sensorTrendSql(from: Date, to: Date, serialNumbers?: readonly string[]): Prisma.Sql {
+  const seconds = Math.max(60, Math.round((to.getTime() - from.getTime()) / 1000 / TREND_BUCKETS));
+  const sensorFilter =
+    serialNumbers === undefined
+      ? Prisma.empty
+      : Prisma.sql`AND s."serialNumber" IN (${Prisma.join(serialNumbers.map((serial) => Prisma.sql`${serial}`))})`;
+
+  return Prisma.sql`
+    WITH anchor AS (
+      SELECT s."serialNumber" AS serial, ts.id AS series_id
+      FROM time_series ts
+      JOIN sensors s ON s.id = ts."sensorId"
+      WHERE ts."physicalQuantity" = 'ACCELERATION' AND ts.axis = 'Y'
+        ${sensorFilter}
+    )
+    SELECT a.serial, b.bucket_start, b.rms
+    FROM anchor a
+    CROSS JOIN LATERAL (
+      SELECT
+        to_timestamp(floor(extract(epoch FROM p."timestamp") / ${seconds}) * ${seconds}) AS bucket_start,
+        sqrt(avg(p.value * p.value)) AS rms
+      FROM time_series_samples p
+      WHERE p."timeSeriesId" = a.series_id
+        AND p."timestamp" >= ${from} AND p."timestamp" < ${to}
+      GROUP BY 1
+      ORDER BY 1 ASC
+    ) b
+    ORDER BY a.serial ASC, b.bucket_start ASC
+  `;
+}
+
+/**
+ * Séries disponíveis de um sensor, com a última leitura de cada uma dentro da janela.
+ * É inventário de grandezas — uma linha por série, nunca amostras.
+ */
+export function pointSeriesSql(serialNumber: string, from: Date, to: Date): Prisma.Sql {
+  return Prisma.sql`
+    SELECT
+      ts.id AS series_id, ts."physicalQuantity" AS physical_quantity, ts.axis AS axis,
+      ts.unit AS unit, last.value AS last_value, last."timestamp" AS last_at
+    FROM time_series ts
+    JOIN sensors s ON s.id = ts."sensorId"
+    LEFT JOIN LATERAL (
+      SELECT p.value, p."timestamp"
+      FROM time_series_samples p
+      WHERE p."timeSeriesId" = ts.id
+        AND p."timestamp" >= ${from} AND p."timestamp" < ${to}
+      ORDER BY p."timestamp" DESC
+      LIMIT 1
+    ) last ON true
+    WHERE s."serialNumber" = ${serialNumber}
+    ORDER BY ts."physicalQuantity" ASC, ts.axis ASC
   `;
 }

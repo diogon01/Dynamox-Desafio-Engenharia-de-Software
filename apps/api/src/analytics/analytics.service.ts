@@ -8,6 +8,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import type {
   AcquisitionDetailDto,
   AcquisitionPageDto,
+  AssetPointSummaryDto,
+  AssetSummaryDto,
   ConditionKind,
   HeatmapResponseDto,
   RawSamplePageDto,
@@ -15,8 +17,11 @@ import type {
   FleetConditionPoint,
   FleetConditionResponseDto,
   FreshnessKind,
+  PointSummaryDto,
   SeriesPointsResponseDto,
+  TrendPointDto,
 } from '@dynamox/domain';
+import { machineSlug, pointSlug } from '@dynamox/domain';
 import { toDomainAxis, toDomainPhysicalQuantity } from '../telemetry/telemetry.mappers';
 
 import { toDomainMachineType } from '../common/machine-type.mapper';
@@ -24,12 +29,15 @@ import { toDomainSensorModel } from '../common/sensor-model.mapper';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TimeRange } from './analytics.dto';
 import {
+  CONDITION_LOOKBACK_MS,
   acquisitionSamplesSql,
   acquisitionSeriesSql,
   fleetConditionSql,
   heatmapSql,
+  pointSeriesSql,
   sensorAcquisitionsCountSql,
   sensorAcquisitionsSql,
+  sensorTrendSql,
   seriesPointsSql,
   seriesStatsSql,
   timeWindowSql,
@@ -49,6 +57,7 @@ interface TimeWindowRow {
   series_id: string;
   point_name: string | null;
   point_id: string | null;
+  machine_id: string | null;
   machine_name: string | null;
   machine_type: 'PUMP' | 'FAN' | null;
   samples: bigint | null;
@@ -141,7 +150,23 @@ interface SeriesStatsRow {
   last_at: Date | null;
 }
 
+interface TrendRow {
+  serial: string;
+  bucket_start: Date;
+  rms: number | null;
+}
+
+interface PointSeriesRow {
+  series_id: string;
+  physical_quantity: 'ACCELERATION' | 'VELOCITY' | 'TEMPERATURE' | 'ROTATIONAL_SPEED';
+  axis: 'X' | 'Y' | 'Z' | 'NONE';
+  unit: string;
+  last_value: number | null;
+  last_at: Date | null;
+}
+
 interface FleetConditionRow {
+  machine_id: string;
   machine_name: string;
   machine_type: 'PUMP' | 'FAN';
   monitoring_point_id: string;
@@ -164,6 +189,12 @@ export function classifyFreshness(at: Date | null, nowMs: number): FreshnessKind
   if (age < -FUTURE_TOLERANCE_MS) return 'future';
   if (age > STALE_AFTER_MS) return 'stale';
   return 'current';
+}
+
+/** Razão entre a aquisição atual e a de referência; `null` quando falta uma das duas. */
+export function deviationRatio(current: number | null, baseline: number | null): number | null {
+  if (current === null || baseline === null || baseline <= 0) return null;
+  return current / baseline;
 }
 
 export function classifyCondition(
@@ -193,22 +224,57 @@ export class AnalyticsService {
     return result;
   }
 
-  async fleetCondition(range: TimeRange, nowMs = Date.now()): Promise<FleetConditionResponseDto> {
+  /**
+   * Janela em que a condição é avaliada: as últimas 24 h do recorte pedido. Mais velho
+   * que isso o próprio painel já classifica como desatualizado — e é a mesma janela que a
+   * tendência curta acompanha, para que miniatura e razão falem do mesmo período.
+   */
+  private evaluationWindow(range: TimeRange): TimeRange {
+    return {
+      from: new Date(Math.max(range.from.getTime(), range.to.getTime() - CONDITION_LOOKBACK_MS)),
+      to: range.to,
+    };
+  }
+
+  /** Tendência curta por sensor, agregada no banco. Doze valores por sensor, no máximo. */
+  private async trendBySensor(
+    range: TimeRange,
+    serialNumbers?: readonly string[],
+  ): Promise<Map<string, TrendPointDto[]>> {
+    const window = this.evaluationWindow(range);
+    const rows = await this.prisma.$queryRaw<TrendRow[]>(
+      sensorTrendSql(window.from, window.to, serialNumbers),
+    );
+    const trend = new Map<string, TrendPointDto[]>();
+    for (const row of rows) {
+      if (row.rms === null) continue;
+      const points = trend.get(row.serial) ?? [];
+      points.push({ timestamp: row.bucket_start.toISOString(), value: row.rms });
+      trend.set(row.serial, points);
+    }
+    return trend;
+  }
+
+  async fleetCondition(
+    range: TimeRange,
+    options: { includeTrend?: boolean } = {},
+    nowMs = Date.now(),
+  ): Promise<FleetConditionResponseDto> {
     return this.measured(
       'analytics/fleet-condition',
       async () => {
         const rows = await this.prisma.$queryRaw<FleetConditionRow[]>(
           fleetConditionSql(range.from, range.to),
         );
+        const trend = options.includeTrend
+          ? await this.trendBySensor(range)
+          : new Map<string, TrendPointDto[]>();
 
         const points: FleetConditionPoint[] = rows.map((row) => {
           const hasSensor = row.sensor_serial !== null;
           const currentValue = row.current_rms;
           const baselineValue = row.baseline_rms;
-          const ratio =
-            currentValue !== null && baselineValue !== null && baselineValue > 0
-              ? currentValue / baselineValue
-              : null;
+          const ratio = deviationRatio(currentValue, baselineValue);
 
           return {
             machineName: row.machine_name,
@@ -229,6 +295,7 @@ export class AnalyticsService {
             currentCycleId: row.current_cycle_id,
             baselineCycleId: row.baseline_cycle_id,
             unit: 'g',
+            trend: (row.sensor_serial && trend.get(row.sensor_serial)) || [],
           };
         });
 
@@ -360,12 +427,13 @@ export class AnalyticsService {
     range: TimeRange,
     page: number,
     pageSize: number,
+    serialNumbers?: readonly string[],
   ): Promise<TimeWindowResponseDto> {
     return this.measured(
       'analytics/time-window',
       async () => {
         const rows = await this.prisma.$queryRaw<TimeWindowRow[]>(
-          timeWindowSql(range.from, range.to),
+          timeWindowSql(range.from, range.to, serialNumbers),
         );
 
         const items = rows.map((row) => ({
@@ -550,6 +618,201 @@ export class AnalyticsService {
         };
       },
       (result) => result?.series.length ?? 0,
+    );
+  }
+
+  /**
+   * Resumo de um ATIVO na janela: cabeçalho, indicadores e uma linha por ponto.
+   *
+   * Reaproveita as consultas que já existem em vez de ganhar uma variante própria. Em
+   * particular, a CLASSIFICAÇÃO vem da mesma `fleetConditionSql` do painel e é filtrada
+   * depois: a escolha da aquisição de referência depende de quais sensores adquiriram
+   * juntos, que é uma propriedade da FROTA — restringir a consulta a uma máquina poderia
+   * eleger outra referência e fazer a mesma leitura aparecer com dois números diferentes
+   * conforme a página. As agregações independentes por sensor (janela e tendência), essas
+   * sim, são recortadas: dois sensores em vez de doze.
+   */
+  async assetSummary(
+    machine: { id: string; name: string; type: 'PUMP' | 'FAN' },
+    range: TimeRange,
+    nowMs = Date.now(),
+  ): Promise<AssetSummaryDto> {
+    return this.measured(
+      'analytics/asset-summary',
+      async () => {
+        const conditionRows = (
+          await this.prisma.$queryRaw<FleetConditionRow[]>(fleetConditionSql(range.from, range.to))
+        ).filter((row) => row.machine_id === machine.id);
+
+        const serials = conditionRows
+          .map((row) => row.sensor_serial)
+          .filter((serial): serial is string => serial !== null);
+
+        const [windowRows, trend] = await Promise.all([
+          serials.length === 0
+            ? Promise.resolve([] as TimeWindowRow[])
+            : this.prisma.$queryRaw<TimeWindowRow[]>(
+                timeWindowSql(range.from, range.to, serials),
+              ),
+          serials.length === 0
+            ? Promise.resolve(new Map<string, TrendPointDto[]>())
+            : this.trendBySensor(range, serials),
+        ]);
+        const windowByPoint = new Map(windowRows.map((row) => [row.point_id, row]));
+
+        const points: AssetPointSummaryDto[] = conditionRows.map((row) => {
+          const window = windowByPoint.get(row.monitoring_point_id);
+          const ratio = deviationRatio(row.current_rms, row.baseline_rms);
+          return {
+            monitoringPointId: row.monitoring_point_id,
+            monitoringPointName: row.monitoring_point_name,
+            slug: pointSlug(row.monitoring_point_name),
+            sensorSerialNumber: row.sensor_serial,
+            sensorModel: row.sensor_model ? toDomainSensorModel(row.sensor_model) : null,
+            condition: classifyCondition(row.sensor_serial !== null, row.current_rms !== null, ratio),
+            freshness: classifyFreshness(row.last_seen_at ?? row.current_at, nowMs),
+            currentValue: row.current_rms,
+            baselineValue: row.baseline_rms,
+            deviationRatio: ratio,
+            // Última leitura DA JANELA; sem leitura nela, a última conhecida do sensor —
+            // é o que responde "quando esse ponto falou pela última vez".
+            lastAt: (window?.last_at ?? row.last_seen_at)?.toISOString() ?? null,
+            acquisitionCount: Number(window?.acquisitions ?? 0),
+            sampleCount: Number(window?.samples ?? 0),
+            min: window?.min ?? null,
+            max: window?.max ?? null,
+            avg: window?.avg ?? null,
+            unit: 'g',
+            trend: (row.sensor_serial && trend.get(row.sensor_serial)) || [],
+          };
+        });
+
+        const reporting = points.filter((point) => point.sampleCount > 0);
+        const worst = points.reduce<AssetPointSummaryDto | null>(
+          (best, point) =>
+            point.deviationRatio !== null && (best?.deviationRatio ?? -Infinity) < point.deviationRatio
+              ? point
+              : best,
+          null,
+        );
+        const lastAt = points.reduce<string | null>(
+          (latest, point) =>
+            point.lastAt && (!latest || point.lastAt > latest) ? point.lastAt : latest,
+          null,
+        );
+
+        return {
+          machineId: machine.id,
+          machineName: machine.name,
+          machineType: toDomainMachineType(machine.type) ?? 'Pump',
+          slug: machineSlug(machine.name),
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          kpis: {
+            points: points.length,
+            sensors: serials.length,
+            attention: points.filter(
+              (point) => point.condition === 'attention' || point.condition === 'observation',
+            ).length,
+            acquisitionCount: points.reduce((sum, point) => sum + point.acquisitionCount, 0),
+            coveragePercent:
+              points.length === 0
+                ? 0
+                : Number(((reporting.length / points.length) * 100).toFixed(1)),
+            maxDeviationRatio: worst?.deviationRatio ?? null,
+            maxDeviationPoint: worst?.monitoringPointName ?? null,
+          },
+          lastAt,
+          points,
+        };
+      },
+      (result) => result.points.length,
+    );
+  }
+
+  /**
+   * Resumo de um PONTO: o contexto entre o ativo e o sensor.
+   *
+   * Deliberadamente mais raso que a página do sensor — condição, disponibilidade e as
+   * séries existentes. Quem quer a história de trinta dias desce mais um nível.
+   */
+  async pointSummary(
+    machine: { id: string; name: string; type: 'PUMP' | 'FAN' },
+    point: { id: string; name: string },
+    range: TimeRange,
+    nowMs = Date.now(),
+  ): Promise<PointSummaryDto> {
+    return this.measured(
+      'analytics/point-summary',
+      async () => {
+        const row =
+          (
+            await this.prisma.$queryRaw<FleetConditionRow[]>(
+              fleetConditionSql(range.from, range.to),
+            )
+          ).find((candidate) => candidate.monitoring_point_id === point.id) ?? null;
+
+        const serial = row?.sensor_serial ?? null;
+        const [windowRows, trend, seriesRows] = await Promise.all([
+          serial === null
+            ? Promise.resolve([] as TimeWindowRow[])
+            : this.prisma.$queryRaw<TimeWindowRow[]>(timeWindowSql(range.from, range.to, [serial])),
+          serial === null
+            ? Promise.resolve(new Map<string, TrendPointDto[]>())
+            : this.trendBySensor(range, [serial]),
+          serial === null
+            ? Promise.resolve([] as PointSeriesRow[])
+            : this.prisma.$queryRaw<PointSeriesRow[]>(
+                pointSeriesSql(serial, range.from, range.to),
+              ),
+        ]);
+
+        const window = windowRows[0] ?? null;
+        const ratio = deviationRatio(row?.current_rms ?? null, row?.baseline_rms ?? null);
+
+        return {
+          machineId: machine.id,
+          machineName: machine.name,
+          machineType: toDomainMachineType(machine.type) ?? 'Pump',
+          machineSlug: machineSlug(machine.name),
+          monitoringPointId: point.id,
+          monitoringPointName: point.name,
+          slug: pointSlug(point.name),
+          from: range.from.toISOString(),
+          to: range.to.toISOString(),
+          sensorSerialNumber: serial,
+          sensorModel: row?.sensor_model ? toDomainSensorModel(row.sensor_model) : null,
+          condition: classifyCondition(serial !== null, (row?.current_rms ?? null) !== null, ratio),
+          freshness: classifyFreshness(row?.last_seen_at ?? row?.current_at ?? null, nowMs),
+          currentValue: row?.current_rms ?? null,
+          baselineValue: row?.baseline_rms ?? null,
+          deviationRatio: ratio,
+          currentAt: row?.current_at?.toISOString() ?? null,
+          baselineAt: row?.baseline_at?.toISOString() ?? null,
+          currentCycleId: row?.current_cycle_id ?? null,
+          baselineCycleId: row?.baseline_cycle_id ?? null,
+          unit: 'g',
+          window: {
+            acquisitionCount: Number(window?.acquisitions ?? 0),
+            sampleCount: Number(window?.samples ?? 0),
+            min: window?.min ?? null,
+            max: window?.max ?? null,
+            avg: window?.avg ?? null,
+            lastValue: window?.last_value ?? null,
+            lastAt: (window?.last_at ?? row?.last_seen_at)?.toISOString() ?? null,
+          },
+          trend: (serial && trend.get(serial)) || [],
+          series: seriesRows.map((series) => ({
+            seriesId: series.series_id,
+            physicalQuantity: toDomainPhysicalQuantity(series.physical_quantity),
+            axis: toDomainAxis(series.axis),
+            unit: series.unit,
+            lastValue: series.last_value,
+            lastAt: series.last_at?.toISOString() ?? null,
+          })),
+        };
+      },
+      (result) => result.series.length,
     );
   }
 

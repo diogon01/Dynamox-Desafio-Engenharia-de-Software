@@ -119,6 +119,80 @@ export function isSensorModel(value: unknown): value is SensorModel {
   return typeof value === 'string' && (SENSOR_MODELS as readonly string[]).includes(value);
 }
 
+/**
+ * IDENTIFICADORES NATURAIS EM URL
+ *
+ * A aplicação já tem chaves únicas de domínio: o nome da máquina, o nome do ponto dentro
+ * da máquina e o serial do sensor. Elas são o que a URL carrega — nada de UUID visível e
+ * nenhuma coluna nova de "slug", que só existiria para ser mantida em sincronia.
+ *
+ * A comparação é normalizada (sem acento, sem caixa, hífen entre termos) para que
+ * `/assets/P-101` e `/assets/p-101` abram o mesmo ativo, e a etiqueta curta da máquina
+ * ("P-102 — Bomba de recirculação" → "P-102") também resolve — é o identificador que a
+ * planta usa no dia a dia e o que a interface já mostrava nas tabelas.
+ */
+export function naturalKey(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Etiqueta curta da máquina: o trecho antes do travessão, quando existe. */
+export function machineTag(name: string): string {
+  const [tag] = name.split('—');
+  return (tag ?? name).trim() || name.trim();
+}
+
+/** Segmento de URL de uma máquina — a etiqueta, quando ela já é segura em URL. */
+export function machineSlug(name: string): string {
+  const tag = machineTag(name);
+  return /^[A-Za-z0-9._~-]+$/.test(tag) ? tag : naturalKey(name);
+}
+
+/** Segmento de URL de um ponto de monitoramento. */
+export function pointSlug(name: string): string {
+  return naturalKey(name);
+}
+
+/** O identificador da URL casa com o nome inteiro OU com a etiqueta curta da máquina. */
+export function matchesMachineKey(name: string, key: string): boolean {
+  const wanted = naturalKey(key);
+  return naturalKey(name) === wanted || naturalKey(machineTag(name)) === wanted;
+}
+
+export function matchesPointKey(name: string, key: string): boolean {
+  return naturalKey(name) === naturalKey(key);
+}
+
+/**
+ * Resolve um identificador de URL contra uma coleção pequena (a planta tem unidades, não
+ * milhares). Empate é reportado como ambiguidade em vez de escolher em silêncio: duas
+ * máquinas resolvíveis pela mesma etiqueta é um problema de cadastro, não do link.
+ */
+export type NaturalKeyResolution<T> =
+  | { kind: 'found'; item: T }
+  | { kind: 'not-found' }
+  | { kind: 'ambiguous'; items: T[] };
+
+export function resolveByNaturalKey<T>(
+  items: readonly T[],
+  key: string,
+  nameOf: (item: T) => string,
+  matches: (name: string, key: string) => boolean = matchesMachineKey,
+): NaturalKeyResolution<T> {
+  const wanted = naturalKey(key);
+  if (wanted === '') return { kind: 'not-found' };
+  // Nome completo tem precedência sobre a etiqueta: quem digitou o nome inteiro decidiu.
+  const exact = items.filter((item) => naturalKey(nameOf(item)) === wanted);
+  const candidates = exact.length > 0 ? exact : items.filter((item) => matches(nameOf(item), key));
+  if (candidates.length === 0) return { kind: 'not-found' };
+  if (candidates.length > 1) return { kind: 'ambiguous', items: candidates };
+  return { kind: 'found', item: candidates[0] };
+}
+
 export interface SeriesMetrics {
   count: number;
   min: number | null;
@@ -225,6 +299,17 @@ export interface FleetConditionPoint {
   currentCycleId: string | null;
   baselineCycleId: string | null;
   unit: string;
+  /**
+   * Tendência curta do ponto — poucos valores agregados, o bastante para a miniatura
+   * responder "subindo, estável ou caindo". Vazia quando não foi pedida (`includeTrend`).
+   */
+  trend: TrendPointDto[];
+}
+
+/** Valor agregado de tendência. Nunca amostra bruta: é um bucket já reduzido no banco. */
+export interface TrendPointDto {
+  timestamp: string;
+  value: number;
 }
 
 export interface FleetConditionResponseDto {
@@ -410,4 +495,98 @@ export interface RawSamplePageDto {
   nextCursor: string | null;
   quantity: string | null;
   axis: string | null;
+}
+
+// ————— Ativo e ponto: o mesmo recorte da frota, restrito a uma máquina —————
+
+/** Linha de ponto na página do ativo: identidade, condição e o que aconteceu na janela. */
+export interface AssetPointSummaryDto {
+  monitoringPointId: string;
+  monitoringPointName: string;
+  /** Segmento de URL do ponto dentro do ativo. */
+  slug: string;
+  sensorSerialNumber: string | null;
+  sensorModel: SensorModel | null;
+  condition: ConditionKind;
+  freshness: FreshnessKind;
+  currentValue: number | null;
+  baselineValue: number | null;
+  deviationRatio: number | null;
+  lastAt: string | null;
+  /** Agregados da janela consultada (não das últimas 24 h da classificação). */
+  acquisitionCount: number;
+  sampleCount: number;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  unit: string;
+  trend: TrendPointDto[];
+}
+
+export interface AssetSummaryDto {
+  machineId: string;
+  machineName: string;
+  machineType: MachineType;
+  /** Segmento de URL do ativo. */
+  slug: string;
+  from: string;
+  to: string;
+  kpis: {
+    points: number;
+    sensors: number;
+    /** Pontos classificados em atenção ou observação. */
+    attention: number;
+    acquisitionCount: number;
+    /** Pontos instrumentados que reportaram na janela, sobre o total de pontos. */
+    coveragePercent: number;
+    maxDeviationRatio: number | null;
+    maxDeviationPoint: string | null;
+  };
+  lastAt: string | null;
+  points: AssetPointSummaryDto[];
+}
+
+/** Série disponível num ponto — o inventário de grandezas, sem trazer amostra. */
+export interface PointSeriesDto {
+  seriesId: string;
+  physicalQuantity: PhysicalQuantity;
+  axis: Axis | null;
+  unit: string;
+  lastValue: number | null;
+  lastAt: string | null;
+}
+
+export interface PointSummaryDto {
+  machineId: string;
+  machineName: string;
+  machineType: MachineType;
+  machineSlug: string;
+  monitoringPointId: string;
+  monitoringPointName: string;
+  slug: string;
+  from: string;
+  to: string;
+  sensorSerialNumber: string | null;
+  sensorModel: SensorModel | null;
+  condition: ConditionKind;
+  freshness: FreshnessKind;
+  currentValue: number | null;
+  baselineValue: number | null;
+  deviationRatio: number | null;
+  currentAt: string | null;
+  baselineAt: string | null;
+  currentCycleId: string | null;
+  baselineCycleId: string | null;
+  unit: string;
+  window: {
+    acquisitionCount: number;
+    sampleCount: number;
+    min: number | null;
+    max: number | null;
+    avg: number | null;
+    lastValue: number | null;
+    lastAt: string | null;
+  };
+  trend: TrendPointDto[];
+  series: PointSeriesDto[];
 }

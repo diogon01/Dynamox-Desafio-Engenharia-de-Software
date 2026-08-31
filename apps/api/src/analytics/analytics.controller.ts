@@ -9,17 +9,22 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@ne
 import type {
   AcquisitionDetailDto,
   AcquisitionPageDto,
+  AssetSummaryDto,
   FleetConditionResponseDto,
+  PointSummaryDto,
   HeatmapResponseDto,
   RawSamplePageDto,
   SeriesPointsResponseDto,
   TimeWindowResponseDto,
 } from '@dynamox/domain';
+import { matchesPointKey, resolveByNaturalKey } from '@dynamox/domain';
 
 import {
   AcquisitionDetailResponse,
   AcquisitionPageResponse,
+  AssetSummaryResponse,
   ErrorResponse,
+  PointSummaryResponse,
   FleetConditionResponse,
   HeatmapResponse,
   RawSamplePageResponse,
@@ -29,6 +34,7 @@ import {
 import { AnalyticsService } from './analytics.service';
 import {
   ACQUISITIONS_QUERY_KEYS,
+  ASSET_QUERY_KEYS,
   DEFAULT_PAGE_SIZE,
   DEFAULT_SAMPLES_LIMIT,
   FLEET_CONDITION_QUERY_KEYS,
@@ -41,6 +47,7 @@ import {
   SAMPLE_QUANTITIES,
   SERIES_POINTS_QUERY_KEYS,
   TIME_WINDOW_QUERY_KEYS,
+  ambiguousResourceKey,
   assertKnownKeys,
   parseBoundedInt,
   parseEnum,
@@ -69,11 +76,64 @@ export class AnalyticsController {
   })
   @ApiQuery({ name: 'from', required: false, description: 'Início da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
   @ApiQuery({ name: 'to', required: false, description: 'Fim exclusivo da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
+  @ApiQuery({ name: 'includeTrend', required: false, description: 'Inclui a tendência curta de cada ponto (até 12 buckets das últimas 24 h).', schema: { type: 'boolean', default: false } })
   @ApiResponse({ status: 200, description: 'Condição por ponto monitorado.', type: FleetConditionResponse })
   @ApiResponse({ status: 400, description: 'Janela ausente, invertida, longa demais ou parâmetro desconhecido.', type: ErrorResponse })
   fleetCondition(@Query() query: Record<string, unknown>): Promise<FleetConditionResponseDto> {
     assertKnownKeys(query, FLEET_CONDITION_QUERY_KEYS);
-    return this.analytics.fleetCondition(parseTimeRange(query));
+    return this.analytics.fleetCondition(parseTimeRange(query), {
+      includeTrend: parseOptionalBoolean(query.includeTrend, 'includeTrend'),
+    });
+  }
+
+  @Get('assets/:machineKey')
+  @ApiOperation({ summary: 'Resumo analítico de um ativo e dos seus pontos na janela' })
+  @ApiQuery({ name: 'from', required: false, description: 'Início da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
+  @ApiQuery({ name: 'to', required: false, description: 'Fim exclusivo da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
+  @ApiResponse({ status: 200, description: 'Ativo, indicadores e pontos monitorados.', type: AssetSummaryResponse })
+  @ApiResponse({ status: 400, description: 'Janela inválida ou identificador ambíguo.', type: ErrorResponse })
+  @ApiResponse({ status: 404, description: 'Ativo inexistente.', type: ErrorResponse })
+  async assetSummary(
+    @Param('machineKey') machineKey: string,
+    @Query() query: Record<string, unknown>,
+  ): Promise<AssetSummaryDto> {
+    assertKnownKeys(query, ASSET_QUERY_KEYS);
+    const machine = await this.resolveMachine(machineKey);
+    return this.analytics.assetSummary(machine, parseTimeRange(query));
+  }
+
+  @Get('assets/:machineKey/points/:pointKey')
+  @ApiOperation({ summary: 'Resumo analítico de um ponto de monitoramento na janela' })
+  @ApiQuery({ name: 'from', required: false, description: 'Início da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
+  @ApiQuery({ name: 'to', required: false, description: 'Fim exclusivo da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
+  @ApiResponse({ status: 200, description: 'Ponto, condição, janela e séries disponíveis.', type: PointSummaryResponse })
+  @ApiResponse({ status: 400, description: 'Janela inválida ou identificador ambíguo.', type: ErrorResponse })
+  @ApiResponse({ status: 404, description: 'Ativo ou ponto inexistente.', type: ErrorResponse })
+  async pointSummary(
+    @Param('machineKey') machineKey: string,
+    @Param('pointKey') pointKey: string,
+    @Query() query: Record<string, unknown>,
+  ): Promise<PointSummaryDto> {
+    assertKnownKeys(query, ASSET_QUERY_KEYS);
+    const machine = await this.resolveMachine(machineKey);
+    const points = await this.prisma.monitoringPoint.findMany({
+      where: { machineId: machine.id },
+      select: { id: true, name: true },
+    });
+    const resolved = resolveByNaturalKey(points, pointKey, (point) => point.name, matchesPointKey);
+    if (resolved.kind === 'ambiguous') {
+      throw ambiguousResourceKey(
+        'AMBIGUOUS_POINT_KEY',
+        `O identificador "${pointKey}" corresponde a mais de um ponto de "${machine.name}".`,
+      );
+    }
+    if (resolved.kind === 'not-found') {
+      throw new NotFoundException({
+        code: 'MONITORING_POINT_NOT_FOUND',
+        message: `Ponto "${pointKey}" não encontrado em "${machine.name}".`,
+      });
+    }
+    return this.analytics.pointSummary(machine, resolved.item, parseTimeRange(query));
   }
 
   @Get('series/:seriesId/points')
@@ -217,5 +277,34 @@ export class AnalyticsController {
         axis: parseOptionalEnum(query.axis, 'axis', SAMPLE_AXES),
       },
     );
+  }
+
+  /**
+   * Resolve o identificador legível da URL contra o nome cadastrado (ou a etiqueta curta).
+   * A tabela de máquinas tem unidades, não milhares: uma leitura completa é mais barata
+   * que uma consulta por padrão, e mantém a regra de casamento num lugar só — o domínio.
+   */
+  private async resolveMachine(
+    machineKey: string,
+  ): Promise<{ id: string; name: string; type: 'PUMP' | 'FAN' }> {
+    const machines = await this.prisma.machine.findMany({
+      select: { id: true, name: true, type: true },
+    });
+    const resolved = resolveByNaturalKey(machines, machineKey, (machine) => machine.name);
+    if (resolved.kind === 'ambiguous') {
+      throw ambiguousResourceKey(
+        'AMBIGUOUS_MACHINE_KEY',
+        `O identificador "${machineKey}" corresponde a mais de uma máquina: ${resolved.items
+          .map((machine) => machine.name)
+          .join(', ')}.`,
+      );
+    }
+    if (resolved.kind === 'not-found') {
+      throw new NotFoundException({
+        code: 'MACHINE_NOT_FOUND',
+        message: `Ativo "${machineKey}" não encontrado.`,
+      });
+    }
+    return resolved.item;
   }
 }

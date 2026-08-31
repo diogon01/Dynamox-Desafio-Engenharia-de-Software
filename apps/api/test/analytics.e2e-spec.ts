@@ -194,6 +194,91 @@ describe('Analytics (e2e)', () => {
     expect(b.condition).toBe('normal');
   });
 
+  it('resume o ativo pelo identificador legível, reaproveitando a classificação da frota', async () => {
+    const response = await authed(
+      `/api/analytics/assets/${PREFIX}P-900?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+    ).expect(200);
+
+    expect(response.body.machineName).toBe(`${PREFIX}P-900`);
+    expect(response.body.kpis.points).toBe(2);
+    expect(response.body.kpis.sensors).toBe(2);
+    expect(response.body.kpis.attention).toBe(1);
+    expect(response.body.kpis.maxDeviationRatio).toBeCloseTo(2, 5);
+
+    // A MESMA razão que a condição da frota publica: a página do ativo não recalcula
+    // com outra referência só porque olha uma máquina de cada vez.
+    const frota = await authed(
+      `/api/analytics/fleet-condition?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+    ).expect(200);
+    const daFrota = frota.body.points.find(
+      (point: { sensorSerialNumber: string }) => point.sensorSerialNumber === SENSOR_A,
+    );
+    const doAtivo = response.body.points.find(
+      (point: { sensorSerialNumber: string }) => point.sensorSerialNumber === SENSOR_A,
+    );
+    expect(doAtivo.deviationRatio).toBeCloseTo(daFrota.deviationRatio, 10);
+    expect(doAtivo.currentValue).toBeCloseTo(daFrota.currentValue, 10);
+    // Agregados da janela vêm junto, sem uma segunda ida do cliente.
+    expect(doAtivo.acquisitionCount).toBe(2);
+    expect(doAtivo.sampleCount).toBe(12);
+
+    // Identificador é case-insensitive; inexistente é 404, nunca 200 vazio.
+    await authed(
+      `/api/analytics/assets/${PREFIX.toLowerCase()}p-900?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+    ).expect(200);
+    const ausente = await authed(
+      `/api/analytics/assets/nao-existe?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+    ).expect(404);
+    expect(ausente.body.code).toBe('MACHINE_NOT_FOUND');
+  });
+
+  it('resume o ponto com condição, janela e séries — sem amostra bruta', async () => {
+    const response = await authed(
+      `/api/analytics/assets/${PREFIX}P-900/points/anl-ponto-0?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+    ).expect(200);
+
+    expect(response.body.monitoringPointName).toBe(`${PREFIX}Ponto 0`);
+    expect(response.body.sensorSerialNumber).toBe(SENSOR_A);
+    expect(response.body.deviationRatio).toBeCloseTo(2, 5);
+    expect(response.body.currentCycleId).not.toBe(response.body.baselineCycleId);
+    expect(response.body.window.acquisitionCount).toBe(2);
+    // Inventário de séries: uma linha por grandeza, com a última leitura da janela.
+    expect(response.body.series).toHaveLength(2);
+    expect(response.body.series.every((item: { seriesId: string }) => item.seriesId)).toBe(true);
+    // TESTE-GUARDA: rota de resumo não pode devolver telemetria individual.
+    expect(JSON.stringify(response.body)).not.toContain('"items"');
+
+    await authed(
+      `/api/analytics/assets/${PREFIX}P-900/points/inexistente?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+    ).expect(404);
+    await authed(`/api/analytics/assets/${PREFIX}P-900/points/anl-ponto-0`).expect(400);
+  });
+
+  it('a tendência curta só vem quando pedida, e é agregada', async () => {
+    const semTendencia = await authed(
+      `/api/analytics/fleet-condition?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+    ).expect(200);
+    const ponto = (body: { points: Array<{ sensorSerialNumber: string; trend: unknown[] }> }) =>
+      body.points.find((item) => item.sensorSerialNumber === SENSOR_A)!;
+    expect(ponto(semTendencia.body).trend).toEqual([]);
+
+    const comTendencia = await authed(
+      `/api/analytics/fleet-condition?from=${WINDOW_FROM}&to=${WINDOW_TO}&includeTrend=true`,
+    ).expect(200);
+    const trend = ponto(comTendencia.body).trend as Array<{ timestamp: string; value: number }>;
+    // Poucos buckets, nunca as amostras: é o suficiente para dizer a direção.
+    expect(trend.length).toBeGreaterThan(0);
+    expect(trend.length).toBeLessThanOrEqual(12);
+    // Cada valor é o RMS do bucket — entre a referência (0,02) e a condição (0,04), nunca
+    // uma amostra solta: a fixture cabe em um bucket e o valor agregado prova a redução.
+    expect(trend.every((point) => point.value > 0.02 && point.value <= 0.04)).toBe(true);
+    expect(trend.every((point) => typeof point.timestamp === 'string')).toBe(true);
+
+    await authed(
+      `/api/analytics/fleet-condition?from=${WINDOW_FROM}&to=${WINDOW_TO}&includeTrend=talvez`,
+    ).expect(400);
+  });
+
   it('agrega a série em buckets e nunca devolve amostra bruta', async () => {
     const series = await prisma.timeSeries.findFirst({
       where: { sensor: { serialNumber: SENSOR_A }, axis: 'Y' },

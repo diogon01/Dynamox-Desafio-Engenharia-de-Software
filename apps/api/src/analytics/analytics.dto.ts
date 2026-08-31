@@ -22,6 +22,14 @@ export function invalidAnalyticsQuery(message: string): BadRequestException {
   return new BadRequestException({ code: 'INVALID_ANALYTICS_QUERY', message });
 }
 
+/**
+ * Identificador de URL que resolve para mais de um recurso. É erro de quem consulta (o
+ * identificador não distingue), por isso 400 — e nunca uma escolha silenciosa entre os dois.
+ */
+export function ambiguousResourceKey(code: string, message: string): BadRequestException {
+  return new BadRequestException({ code, message });
+}
+
 export interface TimeRange {
   from: Date;
   to: Date;
@@ -102,7 +110,8 @@ export function parseEnum<T extends string>(
   return value as T;
 }
 
-export const FLEET_CONDITION_QUERY_KEYS = ['from', 'to'] as const;
+export const FLEET_CONDITION_QUERY_KEYS = ['from', 'to', 'includeTrend'] as const;
+export const ASSET_QUERY_KEYS = ['from', 'to'] as const;
 export const SERIES_POINTS_QUERY_KEYS = ['from', 'to', 'bucket'] as const;
 export const HEATMAP_QUERY_KEYS = ['from', 'to', 'bucket'] as const;
 export const TIME_WINDOW_QUERY_KEYS = ['from', 'to', 'page', 'pageSize'] as const;

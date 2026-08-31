@@ -254,6 +254,8 @@ export interface AlertListResponseDto {
   type: AlertType | null;
   machine: string | null;
   sensor: string | null;
+  /** Busca textual ecoada (sensor, máquina ou ponto). */
+  search: string | null;
   from: string | null;
   to: string | null;
   sortBy: AlertListSortColumn;

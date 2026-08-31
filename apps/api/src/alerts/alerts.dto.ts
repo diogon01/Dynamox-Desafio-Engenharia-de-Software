@@ -29,6 +29,7 @@ export const ALERT_LIST_QUERY_KEYS = [
   'type',
   'machine',
   'sensor',
+  'search',
   'from',
   'to',
   'page',
@@ -47,6 +48,8 @@ export interface AlertListQuery {
   type: AlertType | null;
   machine: string | null;
   sensor: string | null;
+  /** Busca textual (sensor, máquina ou ponto), sem distinção de maiúsculas. */
+  search: string | null;
   from: Date | null;
   to: Date | null;
   page: number;
@@ -102,6 +105,7 @@ export function parseAlertListQuery(query: Record<string, unknown>): AlertListQu
     type: optionalEnum(query.type, 'type', ALERT_TYPES),
     machine: optionalString(query.machine, 'machine', 120),
     sensor: optionalString(query.sensor, 'sensor', 64),
+    search: optionalString(query.search, 'search', 120),
     from,
     to,
     page: boundedInt(query.page, 'page', 1, 1, MAX_PAGE),

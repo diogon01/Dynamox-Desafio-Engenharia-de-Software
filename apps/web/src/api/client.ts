@@ -284,6 +284,7 @@ export interface AlertListParams {
   type?: AlertType | null;
   machine?: string | null;
   sensor?: string | null;
+  search?: string | null;
   from?: string | null;
   to?: string | null;
   page?: number;
@@ -299,6 +300,7 @@ export function alertListQuery(params: AlertListParams): string {
   if (params.type) query.set('type', params.type);
   if (params.machine) query.set('machine', params.machine);
   if (params.sensor) query.set('sensor', params.sensor);
+  if (params.search) query.set('search', params.search);
   if (params.from) query.set('from', params.from);
   if (params.to) query.set('to', params.to);
   if (params.page !== undefined) query.set('page', String(params.page));

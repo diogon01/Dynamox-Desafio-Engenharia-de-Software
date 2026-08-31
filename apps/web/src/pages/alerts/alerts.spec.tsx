@@ -131,6 +131,7 @@ function listResponse(items: AlertOccurrenceDto[], overrides: Partial<AlertListR
     type: null,
     machine: null,
     sensor: null,
+    search: null,
     from: null,
     to: null,
     sortBy: 'openedAt',
@@ -278,6 +279,19 @@ describe('Alertas — listagem', () => {
     // O status padrão é implícito: só o que a pessoa escolheu entra na URL.
     await waitFor(() => expect(screen.getByTestId('rota').textContent).toBe('/alerts?machine=P-101'));
     expect(screen.getByLabelText('Sensor')).toBeDefined();
+  });
+
+  it('a busca digitada vira ?search= na URL (com pausa) e reconsulta o servidor', async () => {
+    const fetcher = stubApi();
+    renderAlerts('/alerts');
+    await screen.findByRole('table', { name: /Alertas/i });
+    await userEvent.type(screen.getByLabelText('Buscar'), 've-202');
+    // Debounce: a URL muda uma vez, depois da pausa — não a cada tecla.
+    await waitFor(() => expect(screen.getByTestId('rota').textContent).toBe('/alerts?search=ve-202'));
+    await waitFor(() => {
+      const urls = fetcher.mock.calls.map(([input]) => String(input));
+      expect(urls.some((url) => /\/alerts\?.*search=ve-202/.test(url))).toBe(true);
+    });
   });
 
   it('abrir uma linha leva ao detalhe do episódio', async () => {

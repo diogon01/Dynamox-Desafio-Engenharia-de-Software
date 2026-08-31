@@ -1625,6 +1625,9 @@ export class AlertListResponse {
   @ApiProperty({ type: String, nullable: true, description: 'Recorte por sensor ecoado.', example: null })
   sensor!: string | null;
 
+  @ApiProperty({ type: String, nullable: true, description: 'Busca textual ecoada (sensor, máquina ou ponto).', example: null })
+  search!: string | null;
+
   @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Início da janela de interseção ecoado.', example: null })
   from!: string | null;
 

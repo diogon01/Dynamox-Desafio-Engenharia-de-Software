@@ -422,6 +422,28 @@ describe('Alertas (e2e) — avaliação após a ingestão', () => {
       expect(byLevel.body.counts.total).toBe(1);
     });
 
+    it('search recorta por sensor, máquina ou ponto nos snapshots, sem diferenciar maiúsculas', async () => {
+      // Pelo nome da máquina, em minúsculas: os dois episódios da fixture.
+      const maquina = await get(`/api/alerts?search=${encodeURIComponent(MACHINE_NAME.toLowerCase())}&pageSize=50`).expect(200);
+      expect(ours(maquina.body)).toHaveLength(2);
+      expect(maquina.body.search).toBe(MACHINE_NAME.toLowerCase());
+      // Pelo número de série do sensor.
+      const sensor = await get(`/api/alerts?search=${encodeURIComponent(SENSOR_SERIAL.toLowerCase())}&pageSize=50`).expect(200);
+      expect(ours(sensor.body)).toHaveLength(2);
+      // Pelo nome do ponto (fragmento).
+      const ponto = await get(`/api/alerts?search=${encodeURIComponent(POINT_NAME.toLowerCase())}&pageSize=50`).expect(200);
+      expect(ours(ponto.body)).toHaveLength(2);
+      // Sem correspondência: universo vazio, counts idem.
+      const nada = await get('/api/alerts?search=zzz-sem-correspondencia').expect(200);
+      expect(nada.body.total).toBe(0);
+      expect(nada.body.counts.total).toBe(0);
+      // Busca combinada com os demais recortes.
+      const combinada = await get(`/api/alerts?search=${encodeURIComponent(MACHINE_NAME.toLowerCase())}&type=vibration-threshold&status=resolved`).expect(200);
+      expect(ours(combinada.body).map((item) => item.type)).toEqual(['vibration-threshold']);
+      // Longa demais: 400 do vocabulário fechado.
+      await get(`/api/alerts?search=${'x'.repeat(200)}`).expect(400);
+    });
+
     it('status recorta a página, mas counts continua descrevendo o universo; from/to é interseção', async () => {
       const key = `machine=${encodeURIComponent(MACHINE_NAME)}`;
       const open = await get(`/api/alerts?${key}&status=open`).expect(200);

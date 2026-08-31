@@ -44,6 +44,7 @@ export class AlertsController {
   @ApiQuery({ name: 'type', required: false, schema: { type: 'string', enum: [...ALERT_TYPES] } })
   @ApiQuery({ name: 'machine', required: false, description: 'Nome cadastrado ou etiqueta curta da máquina (mesma resolução das rotas analíticas).', schema: { type: 'string' } })
   @ApiQuery({ name: 'sensor', required: false, description: 'Número de série do sensor.', schema: { type: 'string' } })
+  @ApiQuery({ name: 'search', required: false, description: 'Busca textual sem distinção de maiúsculas no número de série do sensor, no nome da máquina ou no nome do ponto — sobre os snapshots do episódio.', schema: { type: 'string', maxLength: 120 } })
   @ApiQuery({ name: 'from', required: false, description: 'Interseção temporal: entram alertas ativos em algum instante de [from, to) — `openedAt < to AND (resolvedAt IS NULL OR resolvedAt >= from)`.', schema: { type: 'string', format: 'date-time' } })
   @ApiQuery({ name: 'to', required: false, description: 'Fim exclusivo da janela de interseção (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
   @ApiQuery({ name: 'page', required: false, schema: { type: 'integer', minimum: 1, maximum: MAX_PAGE, default: 1 } })

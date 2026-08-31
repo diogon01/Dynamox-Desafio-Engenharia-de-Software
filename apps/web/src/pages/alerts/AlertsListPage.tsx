@@ -16,9 +16,11 @@ import TableHead from '@mui/material/TableHead';
 import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import TableSortLabel from '@mui/material/TableSortLabel';
+import TextField from '@mui/material/TextField';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
+import { useEffect, useState } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 
 import {
@@ -72,18 +74,32 @@ export function AlertsListPage(): JSX.Element {
   const type = pick(params.get('type'), ALERT_TYPES);
   const machine = params.get('machine');
   const sensor = params.get('sensor');
+  const search = params.get('search') ?? '';
   const from = params.get('from');
   const to = params.get('to');
   const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
-  const pageSizeParam = Number(params.get('pageSize') ?? '25');
-  const pageSize = PAGE_SIZES.includes(pageSizeParam) ? pageSizeParam : 25;
+  // 50 por página: uma operação real acumula centenas de episódios encerrados.
+  const pageSizeParam = Number(params.get('pageSize') ?? '50');
+  const pageSize = PAGE_SIZES.includes(pageSizeParam) ? pageSizeParam : 50;
   const sortBy = pick(params.get('sortBy'), ALERT_LIST_SORT_COLUMNS) ?? 'openedAt';
   const sortDir = params.get('sortDir') === 'asc' ? 'asc' : 'desc';
 
   const query = useAnalyticsQuery(
-    () => api.alerts({ status, level, type, machine, sensor, from, to, page, pageSize, sortBy, sortDir }),
-    [status, level, type, machine, sensor, from, to, page, pageSize, sortBy, sortDir],
+    () => api.alerts({ status, level, type, machine, sensor, search: search || null, from, to, page, pageSize, sortBy, sortDir }),
+    [status, level, type, machine, sensor, search, from, to, page, pageSize, sortBy, sortDir],
   );
+
+  // Busca digitada: a URL só muda depois da pausa — cada tecla não vira entrada no histórico.
+  const [draftSearch, setDraftSearch] = useState(search);
+  useEffect(() => setDraftSearch(search), [search]);
+  useEffect(() => {
+    if (draftSearch === search) return;
+    const timer = window.setTimeout(
+      () => params.set({ search: draftSearch || null, page: null }, { replace: true }),
+      350,
+    );
+    return () => window.clearTimeout(timer);
+  }, [draftSearch, search, params]);
   /**
    * Opções de recorte por ativo. Uma requisição só: o cadastro de pontos já traz máquina e
    * sensor, e a planta tem dezenas de linhas — não vale um endpoint novo para isto.
@@ -183,6 +199,14 @@ export function AlertsListPage(): JSX.Element {
           </ToggleButtonGroup>
 
           <Stack direction="row" gap={1} flexWrap="wrap" useFlexGap>
+            <TextField
+              size="small"
+              label="Buscar"
+              placeholder="sensor, máquina ou ponto"
+              value={draftSearch}
+              onChange={(event) => setDraftSearch(event.target.value)}
+              sx={{ minWidth: 200 }}
+            />
             <FormControl size="small" sx={{ minWidth: 120 }}>
               <InputLabel id="alerts-level-label">Nível</InputLabel>
               <Select
@@ -271,7 +295,7 @@ export function AlertsListPage(): JSX.Element {
               description={
                 status === 'active'
                   ? 'Nenhuma regra da política está disparada agora. Os episódios resolvidos continuam disponíveis em "Resolvidos".'
-                  : 'Ajuste o status, o nível ou o tipo — ou remova o recorte por máquina e sensor.'
+                  : 'Ajuste o status, o nível, o tipo ou a busca — ou remova o recorte por máquina e sensor.'
               }
             />
           </Box>

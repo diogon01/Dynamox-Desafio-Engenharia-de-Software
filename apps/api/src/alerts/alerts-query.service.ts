@@ -67,6 +67,7 @@ export class AlertsQueryService {
       type: query.type,
       machine: query.machine,
       sensor: query.sensor,
+      search: query.search,
       from: query.from?.toISOString() ?? null,
       to: query.to?.toISOString() ?? null,
       sortBy: query.sortBy,
@@ -153,6 +154,15 @@ export class AlertsQueryService {
     if (query.type) where.type = toPrismaAlertType(query.type);
     if (query.sensor) where.sensorSerialNumber = query.sensor;
     if (query.machine) where.machineId = await this.resolveMachineId(query.machine);
+    if (query.search) {
+      // Busca nos SNAPSHOTS do episódio (não no cadastro): o histórico sobrevive à exclusão.
+      const contains = { contains: query.search, mode: 'insensitive' as const };
+      where.OR = [
+        { sensorSerialNumber: contains },
+        { machineName: contains },
+        { monitoringPointName: contains },
+      ];
+    }
     // Interseção com a janela: esteve ativo em algum instante de [from, to).
     const temporal: Prisma.AlertOccurrenceWhereInput[] = [];
     if (query.to) temporal.push({ openedAt: { lt: query.to } });

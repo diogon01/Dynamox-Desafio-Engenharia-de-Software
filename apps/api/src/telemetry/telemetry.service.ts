@@ -6,7 +6,13 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma, type Axis as PrismaAxis, type PhysicalQuantity as PrismaPhysicalQuantity } from '@prisma/client';
+import {
+  Prisma,
+  type Axis as PrismaAxis,
+  type MachineType as PrismaMachineType,
+  type PhysicalQuantity as PrismaPhysicalQuantity,
+  type SensorModel as PrismaSensorModel,
+} from '@prisma/client';
 
 import {
   computePayloadFingerprint,
@@ -74,6 +80,23 @@ function conflictTargets(error: Prisma.PrismaClientKnownRequestError): string[] 
     return target.map(String);
   }
   return typeof target === 'string' ? [target] : [];
+}
+
+/** Linha crua do resumo de séries (nomes em snake_case, como o Postgres devolve). */
+interface TimeSeriesSummaryRow {
+  id: string;
+  sensor_serial_number: string;
+  sensor_model: PrismaSensorModel;
+  machine_name: string | null;
+  machine_type: PrismaMachineType | null;
+  monitoring_point_name: string | null;
+  physical_quantity: PrismaPhysicalQuantity;
+  axis: PrismaAxis;
+  unit: string;
+  display_name: Record<string, string> | null;
+  sample_count: bigint | null;
+  last_value: number | null;
+  last_timestamp: Date | null;
 }
 
 @Injectable()
@@ -432,41 +455,74 @@ export class TelemetryService {
     };
   }
 
-  async listTimeSeries(): Promise<TimeSeriesSummary[]> {
-    const series = await this.prisma.timeSeries.findMany({
-      include: {
-        sensor: { include: { monitoringPoint: { include: { machine: true } } } },
-        _count: { select: { samples: true } },
-        // Última amostra junto do resumo: sem isso, um painel de frota precisa de uma
-        // chamada de métricas POR SÉRIE só para saber o valor e o instante mais recentes.
-        samples: {
-          orderBy: { timestamp: 'desc' },
-          take: 1,
-          select: { timestamp: true, value: true },
-        },
-      },
-      orderBy: [{ physicalQuantity: 'asc' }, { axis: 'asc' }],
-    });
+  /**
+   * Resumo das séries com a ÚLTIMA leitura de cada uma.
+   *
+   * A última amostra vem por `LATERAL` e não pela relação aninhada do Prisma: `samples:
+   * { take: 1, orderBy: desc }` faz o cliente emitir um `WHERE "timeSeriesId" IN (...)`
+   * sobre a tabela inteira e ordenar fora do índice — com histórico de 10 M amostras isso
+   * medido em ~55 s. O `LATERAL` faz um Index Scan Backward por série (60 loops): ~15 ms.
+   *
+   * `sampleCount` é opcional (`withCounts`) porque é um `count(*)` por série: útil no
+   * explorador, caro e desnecessário no caminho crítico do painel.
+   */
+  async listTimeSeries(options: { withCounts?: boolean } = {}): Promise<TimeSeriesSummary[]> {
+    const withCounts = options.withCounts ?? false;
 
-    return series.map((item) => {
-      const machine = item.sensor.monitoringPoint?.machine ?? null;
+    const rows = await this.prisma.$queryRaw<TimeSeriesSummaryRow[]>(Prisma.sql`
+      SELECT
+        ts.id,
+        s."serialNumber"        AS sensor_serial_number,
+        s.model                 AS sensor_model,
+        m.name                  AS machine_name,
+        m.type                  AS machine_type,
+        mp.name                 AS monitoring_point_name,
+        ts."physicalQuantity"   AS physical_quantity,
+        ts.axis                 AS axis,
+        ts.unit                 AS unit,
+        ts."displayName"        AS display_name,
+        ${withCounts ? Prisma.sql`counted.count` : Prisma.sql`NULL::bigint`} AS sample_count,
+        last.value              AS last_value,
+        last."timestamp"        AS last_timestamp
+      FROM time_series ts
+      JOIN sensors s ON s.id = ts."sensorId"
+      LEFT JOIN monitoring_points mp ON mp.id = s."monitoringPointId"
+      LEFT JOIN machines m ON m.id = mp."machineId"
+      LEFT JOIN LATERAL (
+        SELECT sample."timestamp", sample.value
+        FROM time_series_samples sample
+        WHERE sample."timeSeriesId" = ts.id
+        ORDER BY sample."timestamp" DESC
+        LIMIT 1
+      ) last ON true
+      ${
+        withCounts
+          ? Prisma.sql`LEFT JOIN LATERAL (
+              SELECT count(*)::bigint AS count
+              FROM time_series_samples sample
+              WHERE sample."timeSeriesId" = ts.id
+            ) counted ON true`
+          : Prisma.empty
+      }
+      ORDER BY ts."physicalQuantity" ASC, ts.axis ASC
+    `);
 
-      return {
-        id: item.id,
-        sensorSerialNumber: item.sensor.serialNumber,
-        sensorModel: toDomainSensorModel(item.sensor.model),
-        machineName: machine?.name ?? null,
-        machineType: machine ? toDomainMachineType(machine.type) : null,
-        monitoringPointName: item.sensor.monitoringPoint?.name ?? null,
-        physicalQuantity: toDomainPhysicalQuantity(item.physicalQuantity),
-        axis: toDomainAxis(item.axis),
-        unit: item.unit,
-        displayName: (item.displayName as Record<string, string> | null) ?? null,
-        sampleCount: item._count.samples,
-        lastValue: item.samples[0]?.value ?? null,
-        lastTimestamp: item.samples[0]?.timestamp.toISOString() ?? null,
-      };
-    });
+    return rows.map((row) => ({
+      id: row.id,
+      sensorSerialNumber: row.sensor_serial_number,
+      sensorModel: toDomainSensorModel(row.sensor_model),
+      machineName: row.machine_name,
+      machineType: row.machine_type ? toDomainMachineType(row.machine_type) : null,
+      monitoringPointName: row.monitoring_point_name,
+      physicalQuantity: toDomainPhysicalQuantity(row.physical_quantity),
+      axis: toDomainAxis(row.axis),
+      unit: row.unit,
+      displayName: row.display_name,
+      // `count(*)` chega como bigint; sem a conversão o JSON.stringify da resposta quebra.
+      sampleCount: row.sample_count === null ? null : Number(row.sample_count),
+      lastValue: row.last_value,
+      lastTimestamp: row.last_timestamp?.toISOString() ?? null,
+    }));
   }
 
   /**

@@ -154,7 +154,12 @@ export interface TimeSeriesSummary {
   axis: Axis | null;
   unit: string;
   displayName: Record<string, string> | null;
-  sampleCount: number;
+  /**
+   * Total de amostras da série. `null` quando a listagem foi pedida sem contagem
+   * (`withCounts=false`, o padrão): é um `count(*)` por série, caro no caminho do painel.
+   * Para saber se a série tem dado, use `lastTimestamp`.
+   */
+  sampleCount: number | null;
   /**
    * Última leitura da série. Vem no resumo — e não só em `/metrics` — porque um painel
    * de frota precisa do valor e do instante de TODAS as séries para desenhar a matriz;
@@ -175,4 +180,234 @@ export interface TimeSeriesSamplePage {
   total: number;
   limit: number;
   offset: number;
+}
+
+// ————— Camada analítica: resultados agregados, nunca telemetria bruta —————
+
+/**
+ * Classificação demonstrativa de um ponto monitorado. É a MESMA semântica que o painel
+ * derivava no cliente — limiares didáticos 1,5× (observação) e 2,0× (atenção) sobre a
+ * razão entre a aquisição atual e a de referência — agora calculada no banco.
+ */
+export type ConditionKind =
+  | 'normal'
+  | 'observation'
+  | 'attention'
+  | 'unclassified'
+  | 'no-data'
+  | 'no-sensor';
+
+export type FreshnessKind = 'current' | 'stale' | 'future' | 'unknown';
+
+/**
+ * Condição de um ponto na janela consultada.
+ *
+ * `currentCycleId`/`baselineCycleId` deixam explícito QUAIS aquisições produziram a razão:
+ * a atual é a mais recente da janela, a referência é a primeira da mesma janela — nunca
+ * uma média do período inteiro, que já conteria a própria degradação.
+ */
+export interface FleetConditionPoint {
+  machineName: string;
+  machineType: MachineType | null;
+  monitoringPointId: string;
+  monitoringPointName: string;
+  sensorSerialNumber: string | null;
+  sensorModel: SensorModel | null;
+  condition: ConditionKind;
+  freshness: FreshnessKind;
+  /** RMS radial (Y/Z pareados) da aquisição mais recente da janela. */
+  currentValue: number | null;
+  baselineValue: number | null;
+  deviationRatio: number | null;
+  currentAt: string | null;
+  baselineAt: string | null;
+  currentSampleCount: number | null;
+  currentCycleId: string | null;
+  baselineCycleId: string | null;
+  unit: string;
+}
+
+export interface FleetConditionResponseDto {
+  from: string;
+  to: string;
+  generatedAt: string;
+  points: FleetConditionPoint[];
+}
+
+/** Ponto de uma série já agregado no banco — a unidade que os gráficos consomem. */
+export interface SeriesBucketPoint {
+  bucketStart: string;
+  sampleCount: number;
+  acquisitionCount: number;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+  lastAt: string | null;
+}
+
+export interface SeriesPointsResponseDto {
+  seriesId: string;
+  from: string;
+  to: string;
+  bucket: string;
+  /** Estatísticas da janela inteira, calculadas no banco. */
+  stats: {
+    sampleCount: number;
+    acquisitionCount: number;
+    min: number | null;
+    max: number | null;
+    avg: number | null;
+    firstAt: string | null;
+    lastAt: string | null;
+  };
+  points: SeriesBucketPoint[];
+}
+
+/** Célula do mapa de atividade: um bucket temporal com cobertura da frota. */
+export interface HeatmapBucketDto {
+  bucketStart: string;
+  bucketEnd: string;
+  day: string;
+  hour: number;
+  sampleCount: number;
+  acquisitionCount: number;
+  reportingSensors: number;
+  expectedSensors: number;
+  coveragePercent: number;
+}
+
+export interface HeatmapResponseDto {
+  from: string;
+  to: string;
+  bucket: string;
+  expectedSensors: number;
+  buckets: HeatmapBucketDto[];
+}
+
+/** Linha da janela temporal: o que um sensor fez no intervalo investigado. */
+export interface TimeWindowSensorDto {
+  sensorSerialNumber: string;
+  sensorModel: SensorModel;
+  seriesId: string;
+  machineName: string | null;
+  machineType: MachineType | null;
+  monitoringPointId: string | null;
+  monitoringPointName: string | null;
+  sampleCount: number;
+  acquisitionCount: number;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  lastValue: number | null;
+  lastAt: string | null;
+  unit: string;
+}
+
+export interface TimeWindowResponseDto {
+  from: string;
+  to: string;
+  kpis: {
+    reportingSensors: number;
+    silentSensors: number;
+    expectedSensors: number;
+    acquisitionCount: number;
+    sampleCount: number;
+    maxValue: number | null;
+    maxValueSensor: string | null;
+  };
+  items: TimeWindowSensorDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/** Uma aquisição (ciclo de ingestão) na listagem do sensor. */
+export interface AcquisitionListItemDto {
+  cycleId: string;
+  externalCycleId: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  rpm: number | null;
+  loadPercent: number | null;
+  scenario: string | null;
+  sampleCount: number;
+  anchorSampleCount: number;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  event: string | null;
+  expectedState: string | null;
+  unit: string;
+}
+
+export interface AcquisitionPageDto {
+  serialNumber: string;
+  from: string;
+  to: string;
+  items: AcquisitionListItemDto[];
+  page: number;
+  pageSize: number;
+  /** `null` quando não foi pedido (`includeTotal=false`): a contagem custa uma varredura. */
+  total: number | null;
+  totalPages: number | null;
+  hasNextPage: boolean;
+}
+
+/** Resumo de uma série dentro de uma aquisição. */
+export interface AcquisitionSeriesSummaryDto {
+  seriesId: string;
+  physicalQuantity: PhysicalQuantity;
+  axis: Axis | null;
+  unit: string;
+  sampleCount: number;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  rms: number | null;
+  startedAt: string | null;
+  endedAt: string | null;
+}
+
+export interface AcquisitionDetailDto {
+  cycleId: string;
+  externalCycleId: string | null;
+  sensorSerialNumber: string;
+  sensorModel: SensorModel | null;
+  machineName: string | null;
+  monitoringPointName: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  rpm: number | null;
+  loadPercent: number | null;
+  scenario: string | null;
+  origin: string;
+  tags: string[];
+  ingestedAt: string;
+  sampleCount: number;
+  measurementCount: number;
+  groundTruth: Record<string, unknown> | null;
+  series: AcquisitionSeriesSummaryDto[];
+}
+
+/** Amostra bruta — o nível folha, alcançado só sob pedido explícito. */
+export interface RawSampleDto {
+  id: string;
+  timestamp: string;
+  value: number;
+  physicalQuantity: PhysicalQuantity;
+  axis: Axis | null;
+  unit: string;
+}
+
+export interface RawSamplePageDto {
+  cycleId: string;
+  items: RawSampleDto[];
+  limit: number;
+  /** Cursor keyset da próxima página; `null` quando acabou. */
+  nextCursor: string | null;
+  quantity: string | null;
+  axis: string | null;
 }

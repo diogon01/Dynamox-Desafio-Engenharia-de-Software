@@ -86,6 +86,34 @@ export function parseSamplesQuery(query: Record<string, unknown>): { limit: numb
   };
 }
 
+/** Chaves aceitas em GET /time-series. Desconhecida é erro, como no restante da API. */
+const TIME_SERIES_QUERY_KEYS = ['withCounts'] as const;
+
+function invalidTimeSeriesQuery(message: string): BadRequestException {
+  return new BadRequestException({ code: 'INVALID_TIME_SERIES_QUERY', message });
+}
+
+/**
+ * `withCounts` é opt-in porque `sampleCount` é um `count(*)` por série: o explorador
+ * quer o número, o painel não — e no histórico completo essa contagem domina o custo.
+ */
+export function parseTimeSeriesQuery(query: Record<string, unknown>): { withCounts: boolean } {
+  const unknown = Object.keys(query).filter(
+    (key) => !(TIME_SERIES_QUERY_KEYS as readonly string[]).includes(key),
+  );
+  if (unknown.length > 0) {
+    throw invalidTimeSeriesQuery(
+      `Parâmetro(s) não suportado(s): ${unknown.join(', ')}. Aceitos: ${TIME_SERIES_QUERY_KEYS.join(', ')}.`,
+    );
+  }
+  const raw = query.withCounts;
+  if (raw === undefined) return { withCounts: false };
+  if (raw !== 'true' && raw !== 'false') {
+    throw invalidTimeSeriesQuery('O parâmetro "withCounts" deve ser "true" ou "false".');
+  }
+  return { withCounts: raw === 'true' };
+}
+
 @ApiBearerAuth('bearer')
 @ApiResponse({ status: 401, description: 'Token ausente, inválido ou expirado', type: ErrorResponse })
 @Controller()
@@ -234,10 +262,18 @@ export class TelemetryController {
 
   @Get('time-series')
   @ApiTags('time-series')
-  @ApiOperation({ summary: 'Séries persistidas com máquina, ponto, sensor e contagem' })
+  @ApiOperation({ summary: 'Séries persistidas com máquina, ponto, sensor e última leitura' })
+  @ApiQuery({
+    name: 'withCounts',
+    required: false,
+    description:
+      'Inclui sampleCount (count(*) por série). Padrão false: o painel usa lastTimestamp para saber se há dado.',
+    schema: { type: 'boolean', default: false },
+  })
   @ApiResponse({ status: 200, description: 'Séries existentes.', type: [TimeSeriesSummaryResponse] })
-  listTimeSeries(): Promise<TimeSeriesSummary[]> {
-    return this.telemetry.listTimeSeries();
+  @ApiResponse({ status: 400, description: 'Parâmetro de consulta inválido.', type: ErrorResponse })
+  listTimeSeries(@Query() query: Record<string, unknown>): Promise<TimeSeriesSummary[]> {
+    return this.telemetry.listTimeSeries(parseTimeSeriesQuery(query));
   }
 
   /** TS-03: página de amostras com total — a série inteira é recuperável por offset. */

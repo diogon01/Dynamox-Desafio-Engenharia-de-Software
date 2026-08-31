@@ -380,7 +380,9 @@ describe('TS-06 — ingestão idempotente de ciclos de telemetria', () => {
   });
 
   it('recupera a série persistida, suas amostras e suas métricas', async () => {
-    const list = await authed.get('/api/time-series').expect(200);
+    // withCounts: sampleCount é opcional na listagem (count(*) por série é caro no
+    // caminho do painel) e este teste compara a contagem com a página e com /metrics.
+    const list = await authed.get('/api/time-series?withCounts=true').expect(200);
 
     const series = (list.body as Array<Record<string, unknown>>).find(
       (item) => item.sensorSerialNumber === SENSOR_SERIAL && item.axis === 'y',

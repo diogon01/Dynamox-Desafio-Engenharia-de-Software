@@ -40,6 +40,7 @@ import {
   selectMonitoringPoints,
   sortChanged,
 } from '../features/monitoringPoints/monitoringPointsSlice';
+import { PageHeader } from './PageHeader';
 import { links } from '../features/investigation/links';
 import { useTimeRange } from '../features/investigation/useAnalyticsQuery';
 import { useAppDispatch, useAppSelector } from '../store';
@@ -159,18 +160,16 @@ export function MonitoringPointsPanel(): JSX.Element {
   const pageSize = pageData?.pageSize ?? 5;
 
   return (
-    <Card variant="outlined">
-      <CardContent>
-        <Typography variant="overline" color="primary.main" component="div">
-          Gestão de sensores
-        </Typography>
-        <Typography variant="h1" component="h2" gutterBottom>
-          Pontos de monitoramento
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Cada ponto pertence a uma máquina e recebe no máximo um sensor (TcAg, TcAs ou
-          HF+). Máquinas do tipo Pump não aceitam sensores TcAg ou TcAs.
-        </Typography>
+    <Box sx={{ pb: 3 }}>
+      {/* Mesmo cabeçalho das demais páginas: um produto, não dois sistemas. */}
+      <PageHeader
+        steps={[{ label: 'Visão geral', to: '/' }, { label: 'Pontos e sensores' }]}
+        title="Pontos de monitoramento"
+        subtitle="Registro de toda a planta. Cada ponto pertence a uma máquina e recebe no máximo um sensor (TcAg, TcAs ou HF+); máquinas do tipo Pump não aceitam TcAg nem TcAs."
+      />
+
+      <Card variant="outlined">
+        <CardContent>
 
         {!canMutate ? (
           <Alert severity="info" sx={{ mb: 3 }}>
@@ -438,7 +437,8 @@ export function MonitoringPointsPanel(): JSX.Element {
             />
           </>
         ) : null}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </Box>
   );
 }

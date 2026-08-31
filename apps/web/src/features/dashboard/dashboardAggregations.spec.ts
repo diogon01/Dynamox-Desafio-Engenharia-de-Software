@@ -10,10 +10,8 @@ import type {
 
 import type { MachineDto, MonitoringPointDto } from '../../api/client';
 import {
-  buildAcquisitionActivity,
   buildDashboardView,
   buildPriorityList,
-  buildWeeklyAcquisitionMap,
   classifyFreshness,
   computeSyntheticAssessment,
   filterSamplesByPeriod,
@@ -305,36 +303,6 @@ describe('agregações puras do dashboard operacional', () => {
     expect(view.sparklines[priority[0].key].length).toBeGreaterThanOrEqual(2);
   });
 
-  it('a atividade de 24 h conta amostras e sensores por hora, sem inventar buckets', () => {
-    const state = dashboardState();
-    const activity = buildAcquisitionActivity(state.series.data, state.radialSamplesBySeries, NOW);
-    expect(activity).toHaveLength(24);
-    const total = activity.reduce((sum, bucket) => sum + bucket.samples, 0);
-    // 4 séries × 6 amostras dentro das últimas 24 h.
-    expect(total).toBe(24);
-    const withSensors = activity.filter((bucket) => bucket.sensorsReporting > 0);
-    expect(withSensors.length).toBeGreaterThan(0);
-    expect(Math.max(...withSensors.map((bucket) => bucket.sensorsReporting))).toBe(2);
-  });
-
-  it('o mapa semanal agrega por dia × hora com a fração de sensores reportando', () => {
-    const state = dashboardState();
-    const weekMap = buildWeeklyAcquisitionMap(state.series.data, state.radialSamplesBySeries);
-    expect(weekMap.totalSensors).toBe(2);
-    expect(weekMap.days).toHaveLength(7);
-    // O balde é dia × hora LOCAIS da primeira janela do fixture — o cálculo não pode
-    // depender do fuso da máquina que roda o teste.
-    const firstWindow = new Date('2026-08-29T08:00:00.000Z');
-    const day = firstWindow.getDay();
-    const hour = firstWindow.getHours();
-    expect(weekMap.days[day].hours[hour].sensorsReporting).toBe(2);
-    expect(weekMap.days[day].hours[hour].share).toBe(1);
-    expect(weekMap.days[day].hours[hour].samples).toBe(12);
-    // Dias sem leitura permanecem zerados — nada é interpolado.
-    const otherDay = (day + 3) % 7;
-    expect(weekMap.days[otherDay].hours.every((entry) => entry.samples === 0)).toBe(true);
-    expect(weekMap.peak?.day).toBe(day);
-  });
 });
 
 /**

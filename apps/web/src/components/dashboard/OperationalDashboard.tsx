@@ -26,11 +26,11 @@ import {
 } from '../../features/dashboard/dashboardSlice';
 import { hourWindowPath } from '../../features/time/instant';
 import { useAppDispatch, useAppSelector } from '../../store';
-import { AcquisitionActivity } from './AcquisitionActivity';
 import { AssetConditionColumns } from './AssetConditionColumns';
 import { DashboardHeader } from './DashboardHeader';
 import { DataQualityPanel } from './DataQualityPanel';
 import { HourProfilePanel } from './HourProfilePanel';
+import { SeverityOffendersPanel } from './SeverityOffendersPanel';
 import { FleetConditionMatrix } from './FleetConditionMatrix';
 import { InspectionPriorityTable } from './InspectionPriorityTable';
 import { KpiRow } from './KpiRow';
@@ -256,9 +256,10 @@ export function OperationalDashboard(): JSX.Element {
             />
           </Box>
           <Box sx={slot({ md: 6, xs: 9 })}>
-            <AcquisitionActivity
+            <SeverityOffendersPanel
               heatmap={dashboard.heatmap}
               loading={dashboard.heatmapStatus === 'loading' || dashboard.heatmapStatus === 'idle'}
+              onSelectWindow={investigateWindow}
             />
           </Box>
         </Box>

@@ -132,28 +132,6 @@ export interface FleetHeadline {
   recency: { current: number; installed: number };
 }
 
-export interface HourActivityBucket {
-  hourStartMs: number;
-  label: string;
-  samples: number;
-  sensorsReporting: number;
-}
-
-export interface HeatHour {
-  hour: number;
-  sensorsReporting: number;
-  samples: number;
-  /** Fração de sensores com leitura na célula (0–1). */
-  share: number;
-}
-
-export interface WeekHeatmap {
-  totalSensors: number;
-  days: Array<{ day: number; label: string; hours: HeatHour[] }>;
-  /** Faixa contígua de maior atividade no dia mais ativo, quando derivável. */
-  peak: { day: number; hourStart: number; hourEnd: number } | null;
-}
-
 export interface DashboardView {
   rows: MachineMatrixRow[];
   cells: SensorCellView[];
@@ -163,8 +141,6 @@ export interface DashboardView {
   headline: FleetHeadline;
   /** Top da fila de inspeção: exceções primeiro, depois maiores razões — máx. 5. */
   priority: SensorCellView[];
-  activity24h: HourActivityBucket[];
-  weekMap: WeekHeatmap;
   /**
    * Miniaturas de tendência por célula da fila — buckets já agregados no banco, que chegam
    * junto com a condição. A versão anterior derivava a curva das amostras radiais brutas;
@@ -701,122 +677,6 @@ export function buildAttentionSignals(cells: SensorCellView[]): AttentionSignal[
   );
 }
 
-const WEEKDAY_LABELS = ['DOM', 'SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB'];
-
-/** serial do sensor por id de série, para agrupar amostras carregadas por sensor. */
-function serialBySeriesId(series: TimeSeriesSummary[]): Map<string, string> {
-  return new Map(series.map((item) => [item.id, item.sensorSerialNumber]));
-}
-
-/**
- * Atividade de aquisição nas últimas 24 h: amostras persistidas por hora e quantos
- * sensores reportaram em cada balde. Fonte: as amostras radiais já carregadas para a
- * avaliação de condição — nenhuma requisição extra.
- */
-export function buildAcquisitionActivity(
-  series: TimeSeriesSummary[],
-  samplesBySeries: Record<string, TimeSeriesSampleDto[]>,
-  nowMs = Date.now(),
-): HourActivityBucket[] {
-  const serials = serialBySeriesId(series);
-  const hourMs = 60 * 60 * 1000;
-  const firstHour = Math.floor((nowMs - 23 * hourMs) / hourMs) * hourMs;
-  const buckets: HourActivityBucket[] = Array.from({ length: 24 }, (_, index) => {
-    const hourStartMs = firstHour + index * hourMs;
-    return {
-      hourStartMs,
-      label: `${String(new Date(hourStartMs).getHours()).padStart(2, '0')}h`,
-      samples: 0,
-      sensorsReporting: 0,
-    };
-  });
-  const reporting: Array<Set<string>> = buckets.map(() => new Set());
-
-  for (const [seriesId, samples] of Object.entries(samplesBySeries)) {
-    const serial = serials.get(seriesId);
-    for (const sample of samples) {
-      const at = parseTimestamp(sample.timestamp);
-      if (at === null || at < firstHour || at > nowMs) continue;
-      const index = Math.min(23, Math.floor((at - firstHour) / hourMs));
-      buckets[index].samples += 1;
-      if (serial) reporting[index].add(serial);
-    }
-  }
-  buckets.forEach((bucket, index) => {
-    bucket.sensorsReporting = reporting[index].size;
-  });
-  return buckets;
-}
-
-/**
- * Mapa semanal de aquisição: para cada dia × hora, quantos sensores tiveram leitura e
- * quantas amostras foram persistidas. A intensidade é a FRAÇÃO de sensores reportando —
- * cobertura de aquisição, não "ocupação" de qualquer outra coisa.
- */
-export function buildWeeklyAcquisitionMap(
-  series: TimeSeriesSummary[],
-  samplesBySeries: Record<string, TimeSeriesSampleDto[]>,
-): WeekHeatmap {
-  const serials = serialBySeriesId(series);
-  const totalSensors = new Set(
-    Object.keys(samplesBySeries)
-      .map((id) => serials.get(id))
-      .filter((serial): serial is string => Boolean(serial)),
-  ).size;
-
-  const samples: number[][] = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0));
-  const reporting: Array<Array<Set<string>>> = Array.from({ length: 7 }, () =>
-    Array.from({ length: 24 }, () => new Set<string>()),
-  );
-
-  for (const [seriesId, list] of Object.entries(samplesBySeries)) {
-    const serial = serials.get(seriesId);
-    for (const sample of list) {
-      const at = parseTimestamp(sample.timestamp);
-      if (at === null) continue;
-      const date = new Date(at);
-      const day = date.getDay();
-      const hour = date.getHours();
-      samples[day][hour] += 1;
-      if (serial) reporting[day][hour].add(serial);
-    }
-  }
-
-  const days = WEEKDAY_LABELS.map((label, day) => ({
-    day,
-    label,
-    hours: Array.from({ length: 24 }, (_, hour) => ({
-      hour,
-      sensorsReporting: reporting[day][hour].size,
-      samples: samples[day][hour],
-      share: totalSensors > 0 ? reporting[day][hour].size / totalSensors : 0,
-    })),
-  }));
-
-  // Pico: no dia mais ativo, a faixa contígua de horas com share máximo.
-  let peak: WeekHeatmap['peak'] = null;
-  let best = 0;
-  for (const dayRow of days) {
-    for (const hour of dayRow.hours) {
-      if (hour.share > best) {
-        best = hour.share;
-        peak = { day: dayRow.day, hourStart: hour.hour, hourEnd: hour.hour + 1 };
-      }
-    }
-  }
-  if (peak) {
-    const hours = days[peak.day].hours;
-    while (peak.hourEnd < 24 && hours[peak.hourEnd].share >= best * 0.75 && hours[peak.hourEnd].share > 0) {
-      peak.hourEnd += 1;
-    }
-    while (peak.hourStart > 0 && hours[peak.hourStart - 1].share >= best * 0.75 && hours[peak.hourStart - 1].share > 0) {
-      peak.hourStart -= 1;
-    }
-  }
-
-  return { totalSensors, days, peak };
-}
-
 /**
  * Miniatura de tendência derivada das amostras locais: a média radial (Y/Z) de cada
  * aquisição.
@@ -966,8 +826,6 @@ export function buildDashboardView(
     signals,
     headline,
     priority,
-    activity24h: buildAcquisitionActivity(state.series.data, state.radialSamplesBySeries, nowMs),
-    weekMap: buildWeeklyAcquisitionMap(state.series.data, state.radialSamplesBySeries),
     sparklines,
     kpis: {
       machines: state.machines.data.length,

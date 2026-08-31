@@ -8,25 +8,33 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 
-import type { HeatmapResponseDto } from '@dynamox/domain';
+import { DEFAULT_CONDITION_POLICY, type HeatmapResponseDto } from '@dynamox/domain';
 import { EmptyState } from '@dynamox/ui';
 
-import { formatNumber } from '../../features/dashboard/dashboardFormatters';
-import { formatDayKey, formatHourLabel } from '../../features/time/instant';
+import { formatMeasurement, formatNumber } from '../../features/dashboard/dashboardFormatters';
+import { formatDayKey } from '../../features/time/instant';
+import { severityColor } from './ActivityHeatmap';
 import { DashboardCard } from './DashboardCard';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from './chartTheme';
 
 /**
- * Perfil de 24 h do dia escolhido — o detalhe (mestre/detalhe) do mapa de atividade.
+ * Severidade hora a hora do dia escolhido — o detalhe (mestre/detalhe) do mapa de severidade.
  *
- * Consome os mesmos buckets agregados do mapa: trocar de dia não dispara consulta nova, e
- * clicar numa hora abre a janela correspondente na investigação.
+ * A versão anterior plotava "% de sensores com leitura por hora", que numa frota de cadência
+ * fixa (12 sensores a cada 15 min) é uma régua binária: 100% em operação, 0% em parada — o
+ * dado está certo, o gráfico é que não tinha o que dizer. As barras agora usam a MESMA
+ * métrica do mapa — o pior desvio da frota contra a baseline aprendida do ponto —, então uma
+ * rampa aparece como degraus subindo ao longo do dia e um transiente como uma barra alta
+ * isolada. Consome os mesmos buckets agregados: trocar de dia não dispara consulta nova, e
+ * clicar numa barra abre a janela correspondente na investigação.
  */
 export interface HourProfilePanelProps {
   data: HeatmapResponseDto | null;
@@ -36,6 +44,8 @@ export interface HourProfilePanelProps {
   onSelectDay: (day: string) => void;
   onSelectWindow: (bucketStart: string) => void;
 }
+
+const { observationRatio, attentionRatio } = DEFAULT_CONDITION_POLICY;
 
 export function HourProfilePanel({
   data,
@@ -49,38 +59,33 @@ export function HourProfilePanel({
 
   const days = [...new Set((data?.buckets ?? []).map((bucket) => bucket.day))].sort().reverse();
   const day = selectedDay && days.includes(selectedDay) ? selectedDay : (days[0] ?? null);
-  const buckets = (data?.buckets ?? []).filter((bucket) => bucket.day === day);
-  const byHour = new Map(buckets.map((bucket) => [bucket.hour, bucket]));
+  const byHour = new Map(
+    (data?.buckets ?? []).filter((bucket) => bucket.day === day).map((bucket) => [bucket.hour, bucket]),
+  );
 
   const chart = Array.from({ length: 24 }, (_, hour) => {
     const bucket = byHour.get(hour);
     return {
       label: String(hour).padStart(2, '0'),
-      hour,
-      coverage: bucket?.coveragePercent ?? 0,
-      acquisitions: bucket?.acquisitionCount ?? 0,
+      ratio: bucket?.maxDeviationRatio ?? null,
+      value: bucket?.maxDeviationValue ?? null,
+      sensor: bucket?.maxDeviationSensor ?? null,
       bucketStart: bucket?.bucketStart ?? null,
     };
   });
-  const hasData = chart.some((entry) => entry.acquisitions > 0);
-
-  // Faixa de maior atividade do dia, quando derivável dos próprios buckets.
-  let peakLabel: string | null = null;
-  if (hasData) {
-    const best = Math.max(...chart.map((entry) => entry.coverage));
-    const first = chart.findIndex((entry) => entry.coverage >= best * 0.75 && entry.coverage > 0);
-    let last = first;
-    while (last + 1 < 24 && chart[last + 1].coverage >= best * 0.75) last += 1;
-    peakLabel = `${formatHourLabel(first)}–${formatHourLabel(last + 1)}`;
-  }
+  const hasData = chart.some((entry) => entry.ratio !== null);
+  const worst = chart.reduce<(typeof chart)[number] | null>(
+    (max, entry) => (entry.ratio !== null && (max === null || entry.ratio > (max.ratio ?? 0)) ? entry : max),
+    null,
+  );
 
   return (
     <DashboardCard
-      title="Horários de pico (24 h)"
+      title="Severidade do dia (24 h)"
       titleId="hour-profile-title"
       size="chart"
-      subtitle="% de sensores com leitura por hora, no dia selecionado."
-      info="Mesmos buckets do mapa de atividade: trocar de dia não faz nova consulta."
+      subtitle="Pior desvio da frota em cada hora do dia selecionado — o corte horário do mapa."
+      info="Mesmos buckets do mapa de severidade: trocar de dia não faz nova consulta. As linhas tracejadas são as faixas da política (observação e atenção); hora sem aquisição, ou sem baseline estabelecida, fica sem barra."
       action={
         days.length > 0 ? (
           <ToggleButtonGroup
@@ -92,7 +97,7 @@ export function HourProfilePanel({
             }}
             sx={{ '& .MuiToggleButton-root': { flex: 1, px: 0.5, py: 0.35, minHeight: 26, fontSize: 10.5 } }}
           >
-            {days.slice(0, 5).map((value) => (
+            {days.slice(0, 4).map((value) => (
               <ToggleButton key={value} value={value} aria-label={formatDayKey(value)}>
                 {formatDayKey(value)}
               </ToggleButton>
@@ -104,14 +109,25 @@ export function HourProfilePanel({
       {loading ? <Skeleton variant="rounded" height={150} /> : null}
 
       {!loading && !hasData ? (
-        <EmptyState title="Sem leituras neste dia" description="Escolha outro dia no mapa de atividade." />
+        <EmptyState
+          title="Sem desvio calculável neste dia"
+          description="Escolha outro dia no seletor, ou aguarde as baselines serem estabelecidas."
+        />
       ) : null}
 
       {!loading && hasData ? (
         <>
-          <Box sx={{ width: '100%', flexGrow: 1, minHeight: 118 }}>
+          <Box
+            role="img"
+            aria-label={
+              worst && day
+                ? `Severidade por hora de ${formatDayKey(day)} — pior às ${worst.label}h: ${formatNumber(worst.ratio, 2)}× em ${worst.sensor ?? '—'}`
+                : undefined
+            }
+            sx={{ width: '100%', flexGrow: 1, minHeight: 118 }}
+          >
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chart} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+              <BarChart data={chart} margin={{ top: 4, right: 4, bottom: 0, left: -16 }}>
                 <CartesianGrid vertical={false} stroke={chartGridStroke(muiTheme)} />
                 <XAxis
                   dataKey="label"
@@ -124,34 +140,44 @@ export function HourProfilePanel({
                   tick={axisTickStyle(muiTheme)}
                   tickLine={false}
                   axisLine={false}
-                  domain={[0, 100]}
-                  tickFormatter={(value: number) => `${value}%`}
+                  width={46}
+                  domain={[0, (dataMax: number) => Math.max(attentionRatio * 1.15, dataMax * 1.08)]}
+                  tickFormatter={(value: number) => `${formatNumber(value, 1)}×`}
                 />
                 <Tooltip
                   {...tooltip}
                   cursor={{ fill: chartGridStroke(muiTheme) }}
-                  formatter={(value: number, _name, entry) => [
-                    `${formatNumber(value, 0)}% · ${(entry?.payload as { acquisitions: number }).acquisitions} aquisição(ões)`,
-                    'Cobertura',
-                  ]}
-                  labelFormatter={(label) => `${label}h`}
+                  formatter={(value: number, _name, entry) => {
+                    const payload = entry?.payload as { value: number | null; sensor: string | null };
+                    return [
+                      `${formatNumber(value, 2)}× (${formatMeasurement(payload.value, 'g')}) em ${payload.sensor ?? '—'}`,
+                      'Pior desvio',
+                    ];
+                  }}
+                  labelFormatter={(label) => `${label}h — clique para investigar`}
                 />
+                {/* As faixas da política, para a barra ser lida contra o que dispara alerta. */}
+                <ReferenceLine y={observationRatio} stroke={muiTheme.palette.condition.observation} strokeDasharray="4 3" />
+                <ReferenceLine y={attentionRatio} stroke={muiTheme.palette.condition.attention} strokeDasharray="4 3" />
                 <Bar
-                  dataKey="coverage"
-                  fill={muiTheme.palette.primary.main}
+                  dataKey="ratio"
                   isAnimationActive={false}
                   maxBarSize={16}
                   cursor="pointer"
                   onClick={(entry: { bucketStart: string | null }) => {
                     if (entry.bucketStart) onSelectWindow(entry.bucketStart);
                   }}
-                />
+                >
+                  {chart.map((entry) => (
+                    <Cell key={entry.label} fill={severityColor(entry.ratio, muiTheme.palette)} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </Box>
-          {peakLabel ? (
+          {worst ? (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              • Maior concentração entre {peakLabel} no dia selecionado.
+              • Pior hora do dia: {worst.label}h — {formatNumber(worst.ratio, 2)}× em {worst.sensor ?? '—'}.
             </Typography>
           ) : null}
         </>

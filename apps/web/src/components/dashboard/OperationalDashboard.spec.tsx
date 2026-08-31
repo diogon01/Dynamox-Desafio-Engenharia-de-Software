@@ -621,7 +621,7 @@ describe('OperationalDashboard', () => {
   it('o mapa de severidade e o perfil 24 h são mestre/detalhe, e a célula abre a janela', async () => {
     renderDashboard();
     const mapa = await screen.findByRole('region', { name: /Severidade por hora/i });
-    const perfil = screen.getByRole('region', { name: /Horários de pico/i });
+    const perfil = screen.getByRole('region', { name: /Severidade do dia/i });
 
     // A célula anuncia MAGNITUDE e de quem ela é — não "quantos sensores reportaram".
     const celula = within(mapa).getByRole('button', { name: /Investigar .* 14h: pior desvio 1,6× em SIM-HF-002/i });
@@ -633,8 +633,8 @@ describe('OperationalDashboard', () => {
       getComputedStyle(within(mapa).getByRole('button', { name: new RegExp(`Investigar .* ${hour}h:`) })).backgroundColor,
     );
     expect(new Set(cores).size).toBe(3);
-    // O perfil detalha o mesmo dia sem nova consulta.
-    expect(within(perfil).getAllByRole('button').length).toBeGreaterThan(0);
+    // O perfil detalha o mesmo dia com a MESMA métrica do mapa — e nomeia a pior hora.
+    expect(within(perfil).getByText(/Pior hora do dia: 15h — 3,49× em SIM-HF-002/)).toBeDefined();
 
     await userEvent.click(celula);
     // O clique navega para a janela investigada, em vez de rolar a própria home.
@@ -642,6 +642,22 @@ describe('OperationalDashboard', () => {
       expect(screen.getByTestId('rota').textContent).toMatch(/\/monitoring\/windows\/\d{4}-\d{2}-\d{2}\/14/),
     );
     expect(screen.getByTestId('rota').textContent).toMatch(/from=.+&to=/);
+  });
+
+  it('quem puxa a severidade agrupa os líderes de cada hora por sensor', async () => {
+    renderDashboard();
+    const painel = await screen.findByRole('region', { name: /Quem puxa a severidade/i });
+    // SIM-HF-002 lidera 14 h e 15 h (pico 3,49×); SIM-HF-001 lidera 13 h (1,02×).
+    const linha = within(painel).getByRole('button', { name: /Investigar o pico de SIM-HF-002/i });
+    expect(within(linha).getByText('3,49×')).toBeDefined();
+    expect(within(linha).getByText(/2 h/)).toBeDefined();
+    expect(within(painel).getByRole('button', { name: /Investigar o pico de SIM-HF-001: 1,02×/i })).toBeDefined();
+
+    // O clique abre a janela do PICO do sensor — não uma janela genérica.
+    await userEvent.click(linha);
+    await waitFor(() =>
+      expect(screen.getByTestId('rota').textContent).toMatch(/\/monitoring\/windows\/\d{4}-\d{2}-\d{2}\/15/),
+    );
   });
 
   it('quando o período não alcança o dado, oferece o período disponível', async () => {

@@ -40,7 +40,7 @@ export interface ActivityHeatmapProps {
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const { observationRatio, attentionRatio } = DEFAULT_CONDITION_POLICY;
 /** Acima disto a cor satura: o que importa é "muito acima", não a casa decimal. */
-const COLOR_CEILING = 3.5;
+export const COLOR_CEILING = 3.5;
 
 /**
  * Razão → cor, nas faixas da política. Dentro de cada faixa a intensidade cresce, para que

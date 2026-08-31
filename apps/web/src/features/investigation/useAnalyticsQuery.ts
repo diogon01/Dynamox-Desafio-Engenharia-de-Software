@@ -83,9 +83,3 @@ export function useTimeRange(fallback?: { from: string; to: string } | null): {
     return { from, to, search };
   }, [search, fallbackFrom, fallbackTo]);
 }
-
-/** Preserva o contexto temporal ao navegar entre níveis da investigação. */
-export function withRange(path: string, range: { from: string; to: string }, extra: Record<string, string> = {}): string {
-  const query = new URLSearchParams({ from: range.from, to: range.to, ...extra });
-  return `${path}?${query.toString()}`;
-}

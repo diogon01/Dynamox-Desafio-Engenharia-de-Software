@@ -45,7 +45,7 @@ import {
   formatDateTime,
 } from '../../features/time/instant';
 import { links } from '../../features/investigation/links';
-import { useAnalyticsQuery, useTimeRange, withRange } from '../../features/investigation/useAnalyticsQuery';
+import { useAnalyticsQuery, useTimeRange } from '../../features/investigation/useAnalyticsQuery';
 
 const RANGE_PRESETS = [
   { id: '24h', label: '24 h', days: 1, bucket: '15m' },
@@ -341,7 +341,7 @@ export function SensorPage(): JSX.Element {
                     <TableRow
                       key={item.cycleId}
                       hover
-                      onClick={() => navigate(withRange(`/acquisitions/${item.cycleId}`, range))}
+                      onClick={() => navigate(links.acquisition(item.cycleId, range))}
                       sx={{ cursor: 'pointer' }}
                     >
                       <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>

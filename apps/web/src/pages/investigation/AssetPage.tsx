@@ -1,4 +1,5 @@
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Link from '@mui/material/Link';
@@ -147,7 +148,12 @@ export function AssetPage(): JSX.Element {
       {query.status === 'failed' && query.httpStatus === 404 ? (
         <EmptyState
           title="Ativo não encontrado"
-          description={`Nenhuma máquina cadastrada corresponde a "${machineKey}". Verifique o endereço ou volte à visão geral.`}
+          description={`Nenhuma máquina cadastrada corresponde a "${machineKey}". Verifique o endereço.`}
+          action={
+            <Button component={RouterLink} to="/" variant="outlined" size="small">
+              Voltar à visão geral
+            </Button>
+          }
         />
       ) : null}
 
@@ -292,21 +298,34 @@ export function AssetPage(): JSX.Element {
                   ))}
                 </Box>
 
-                <Stack component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }} spacing={0.75}>
+                <Stack component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }} spacing={1}>
                   {asset.points.map((point) => (
-                    <Stack
+                    <Box
                       component="li"
                       key={point.monitoringPointId}
-                      direction="row"
-                      justifyContent="space-between"
-                      alignItems="center"
-                      gap={1}
+                      sx={{ borderTop: 1, borderColor: 'divider', pt: 1 }}
                     >
-                      <Typography variant="body2" noWrap sx={{ minWidth: 0 }}>
-                        {point.monitoringPointName}
-                      </Typography>
-                      <StatusTag kind={point.condition} />
-                    </Stack>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 0 }} noWrap>
+                          {point.monitoringPointName}
+                        </Typography>
+                        <StatusTag kind={point.condition} />
+                      </Stack>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1}>
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          {point.sensorSerialNumber ?? 'sem sensor'} ·{' '}
+                          {point.currentValue === null
+                            ? 'sem leitura'
+                            : formatMeasurement(point.currentValue, point.unit)}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{ fontWeight: 700, color: statusColor(point.condition, muiTheme.palette) }}
+                        >
+                          {point.deviationRatio === null ? '—' : `${formatNumber(point.deviationRatio, 2)}×`}
+                        </Typography>
+                      </Stack>
+                    </Box>
                   ))}
                 </Stack>
 

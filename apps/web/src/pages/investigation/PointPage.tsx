@@ -135,7 +135,12 @@ export function PointPage(): JSX.Element {
       {notFound ? (
         <EmptyState
           title="Ponto não encontrado"
-          description={`"${pointKey}" não corresponde a nenhum ponto de "${machineKey}". Verifique o endereço ou volte ao ativo.`}
+          description={`"${pointKey}" não corresponde a nenhum ponto de "${machineKey}".`}
+          action={
+            <Button component={RouterLink} to={links.asset(machineKey, range)} variant="outlined" size="small">
+              Voltar ao ativo
+            </Button>
+          }
         />
       ) : null}
 
@@ -324,10 +329,12 @@ export function PointPage(): JSX.Element {
                   >
                     <TableHead>
                       <TableRow>
-                        <TableCell>Grandeza</TableCell>
-                        <TableCell>Unidade</TableCell>
-                        <TableCell align="right">Última leitura</TableCell>
-                        <TableCell>Instante</TableCell>
+                        <TableCell sx={{ width: '32%' }}>Grandeza</TableCell>
+                        <TableCell sx={{ width: '12%' }}>Unidade</TableCell>
+                        <TableCell align="right" sx={{ width: '22%' }}>
+                          Última leitura
+                        </TableCell>
+                        <TableCell sx={{ width: '34%' }}>Instante</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>

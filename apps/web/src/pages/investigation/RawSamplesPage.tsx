@@ -26,7 +26,8 @@ import {
 import {
   formatDateTime,
 } from '../../features/time/instant';
-import { useAnalyticsQuery, useTimeRange, withRange } from '../../features/investigation/useAnalyticsQuery';
+import { links } from '../../features/investigation/links';
+import { useAnalyticsQuery, useTimeRange } from '../../features/investigation/useAnalyticsQuery';
 
 const QUANTITIES = [
   { value: '', label: 'Todas' },
@@ -92,7 +93,7 @@ export function RawSamplesPage(): JSX.Element {
       <InvestigationBreadcrumbs
         steps={[
           { label: 'Visão geral', to: '/' },
-          { label: 'Aquisição', to: withRange(`/acquisitions/${cycleId}`, range) },
+          { label: 'Aquisição', to: links.acquisition(cycleId, range) },
           { label: 'Dados brutos' },
         ]}
       />

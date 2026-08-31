@@ -13,6 +13,7 @@ import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 
+import { machineTag } from '@dynamox/domain';
 import { ErrorState, LoadingState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
@@ -26,7 +27,8 @@ import {
 import {
   formatDateTime,
 } from '../../features/time/instant';
-import { useAnalyticsQuery, useTimeRange, withRange } from '../../features/investigation/useAnalyticsQuery';
+import { links } from '../../features/investigation/links';
+import { useAnalyticsQuery, useTimeRange } from '../../features/investigation/useAnalyticsQuery';
 
 /**
  * NÍVEL "AQUISIÇÃO": o último nível antes do dado bruto.
@@ -45,8 +47,19 @@ export function AcquisitionPage(): JSX.Element {
       <InvestigationBreadcrumbs
         steps={[
           { label: 'Visão geral', to: '/' },
+          ...(data?.machineName
+            ? [{ label: machineTag(data.machineName), to: links.asset(data.machineName, range) }]
+            : []),
+          ...(data?.machineName && data.monitoringPointName
+            ? [
+                {
+                  label: data.monitoringPointName,
+                  to: links.point(data.machineName, data.monitoringPointName, range),
+                },
+              ]
+            : []),
           ...(data?.sensorSerialNumber
-            ? [{ label: data.sensorSerialNumber, to: withRange(`/sensors/${data.sensorSerialNumber}`, range) }]
+            ? [{ label: data.sensorSerialNumber, to: links.sensor(data.sensorSerialNumber, range) }]
             : []),
           { label: data?.startedAt ? formatDateTime(data.startedAt) : 'Aquisição' },
         ]}
@@ -80,7 +93,7 @@ export function AcquisitionPage(): JSX.Element {
 
             <Button
               component={RouterLink}
-              to={withRange(`/acquisitions/${cycleId}/samples`, range)}
+              to={links.samples(cycleId, range)}
               variant="contained"
               endIcon={<ArrowForwardIcon />}
               sx={{ alignSelf: { md: 'flex-start' }, flexShrink: 0 }}

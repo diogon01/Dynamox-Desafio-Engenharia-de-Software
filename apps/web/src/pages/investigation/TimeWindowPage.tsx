@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
+import Link from '@mui/material/Link';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
@@ -11,8 +12,9 @@ import TablePagination from '@mui/material/TablePagination';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { useCallback } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
+import { machineTag } from '@dynamox/domain';
 import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
@@ -31,7 +33,8 @@ import {
   hourOfDay,
   windowFromPath,
 } from '../../features/time/instant';
-import { useAnalyticsQuery, useTimeRange, withRange } from '../../features/investigation/useAnalyticsQuery';
+import { links } from '../../features/investigation/links';
+import { useAnalyticsQuery, useTimeRange } from '../../features/investigation/useAnalyticsQuery';
 
 /**
  * NÍVEL "HORA" da investigação: o que aconteceu numa janela específica.
@@ -145,16 +148,41 @@ export function TimeWindowPage(): JSX.Element {
                         key={item.sensorSerialNumber}
                         hover
                         onClick={() =>
-                          navigate(
-                            withRange(`/sensors/${item.sensorSerialNumber}`, range, { bucket: '15m' }),
-                          )
+                          navigate(links.sensor(item.sensorSerialNumber, range, '15m'))
                         }
                         sx={{ cursor: 'pointer' }}
                       >
                         <TableCell sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
-                          {item.machineName?.split(' — ')[0] ?? '—'}
+                          {item.machineName ? (
+                            <Link
+                              component={RouterLink}
+                              to={links.asset(item.machineName, range)}
+                              onClick={(event) => event.stopPropagation()}
+                              underline="hover"
+                              color="inherit"
+                              title={item.machineName}
+                            >
+                              {machineTag(item.machineName)}
+                            </Link>
+                          ) : (
+                            '—'
+                          )}
                         </TableCell>
-                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{item.monitoringPointName ?? '—'}</TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                          {item.machineName && item.monitoringPointName ? (
+                            <Link
+                              component={RouterLink}
+                              to={links.point(item.machineName, item.monitoringPointName, range)}
+                              onClick={(event) => event.stopPropagation()}
+                              underline="hover"
+                              color="inherit"
+                            >
+                              {item.monitoringPointName}
+                            </Link>
+                          ) : (
+                            (item.monitoringPointName ?? '—')
+                          )}
+                        </TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
                           {item.sensorSerialNumber}
                         </TableCell>

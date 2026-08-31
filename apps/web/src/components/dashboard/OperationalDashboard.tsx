@@ -22,6 +22,7 @@ import {
   fetchOperationalDashboard,
   periodChanged,
 } from '../../features/dashboard/dashboardSlice';
+import { hourWindowPath } from '../../features/time/instant';
 import { useAppDispatch, useAppSelector } from '../../store';
 import { AcquisitionActivity } from './AcquisitionActivity';
 import { AssetConditionColumns } from './AssetConditionColumns';
@@ -120,14 +121,7 @@ export function OperationalDashboard(): JSX.Element {
    * novo é carregado aqui — quem consulta é a página de destino, já recortada.
    */
   const investigateWindow = useCallback(
-    (bucketStart: string) => {
-      const start = new Date(bucketStart);
-      const end = new Date(start.getTime() + 60 * 60 * 1000);
-      const date = start.toISOString().slice(0, 10);
-      const hour = String(start.getUTCHours()).padStart(2, '0');
-      const query = new URLSearchParams({ from: start.toISOString(), to: end.toISOString() });
-      navigate(`/monitoring/windows/${date}/${hour}?${query.toString()}`);
-    },
+    (bucketStart: string) => navigate(hourWindowPath(bucketStart)),
     [navigate],
   );
 

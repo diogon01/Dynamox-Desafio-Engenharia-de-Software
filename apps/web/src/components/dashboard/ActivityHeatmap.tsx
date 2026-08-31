@@ -9,6 +9,7 @@ import type { HeatmapResponseDto } from '@dynamox/domain';
 import { EmptyState, ErrorState } from '@dynamox/ui';
 
 import { formatNumber } from '../../features/dashboard/dashboardFormatters';
+import { formatDayKey, formatHourLabel, formatWeekdayKey } from '../../features/time/instant';
 import { DashboardCard } from './DashboardCard';
 
 /**
@@ -28,16 +29,6 @@ export interface ActivityHeatmapProps {
 }
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
-
-function dayLabel(day: string): string {
-  const [, month, date] = day.split('-');
-  return `${date}/${month}`;
-}
-
-function weekdayLabel(day: string): string {
-  const names = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
-  return names[new Date(`${day}T00:00:00.000Z`).getUTCDay()];
-}
 
 export function ActivityHeatmap({
   data,
@@ -101,7 +92,7 @@ export function ActivityHeatmap({
                   color="text.secondary"
                   sx={{ fontSize: 10, textAlign: 'center', lineHeight: 1 }}
                 >
-                  {hour % 2 === 0 ? `${String(hour).padStart(2, '0')}h` : ''}
+                  {hour % 2 === 0 ? formatHourLabel(hour) : ''}
                 </Typography>
               ))}
             </Box>
@@ -123,7 +114,7 @@ export function ActivityHeatmap({
                   variant="caption"
                   sx={{ fontSize: 10, fontWeight: 700, color: 'text.secondary', display: 'flex', alignItems: 'center' }}
                 >
-                  {dayLabel(day)} {weekdayLabel(day)}
+                  {formatDayKey(day)} {formatWeekdayKey(day)}
                 </Typography>
                 {HOURS.map((hour) => {
                   const bucket = byDay.get(day)?.get(hour);
@@ -135,8 +126,8 @@ export function ActivityHeatmap({
                       enterDelay={120}
                       title={
                         bucket
-                          ? `${dayLabel(day)} ${String(hour).padStart(2, '0')}h — ${bucket.reportingSensors}/${bucket.expectedSensors} sensores · ${bucket.acquisitionCount} aquisição(ões) · ${formatNumber(bucket.sampleCount, 0)} amostras. Clique para investigar.`
-                          : `${dayLabel(day)} ${String(hour).padStart(2, '0')}h — sem leituras`
+                          ? `${formatDayKey(day)} ${formatHourLabel(hour)} — ${bucket.reportingSensors}/${bucket.expectedSensors} sensores · ${bucket.acquisitionCount} aquisição(ões) · ${formatNumber(bucket.sampleCount, 0)} amostras. Clique para investigar.`
+                          : `${formatDayKey(day)} ${formatHourLabel(hour)} — sem leituras`
                       }
                     >
                       <Box
@@ -144,7 +135,7 @@ export function ActivityHeatmap({
                         type="button"
                         disabled={!bucket}
                         onClick={() => bucket && onSelectWindow(bucket.bucketStart)}
-                        aria-label={`Investigar ${dayLabel(day)} ${hour}h: ${bucket?.reportingSensors ?? 0} de ${data?.expectedSensors ?? 0} sensores`}
+                        aria-label={`Investigar ${formatDayKey(day)} ${hour}h: ${bucket?.reportingSensors ?? 0} de ${data?.expectedSensors ?? 0} sensores`}
                         sx={{
                           all: 'unset',
                           cursor: bucket ? 'pointer' : 'default',

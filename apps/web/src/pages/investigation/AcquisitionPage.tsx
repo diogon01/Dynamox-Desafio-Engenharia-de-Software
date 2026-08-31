@@ -19,11 +19,13 @@ import { api } from '../../api/client';
 import { InvestigationBreadcrumbs } from '../../components/investigation/InvestigationBreadcrumbs';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
 import {
-  formatDateTime,
   formatMeasurement,
   formatNumber,
   seriesMetricLabel,
 } from '../../features/dashboard/dashboardFormatters';
+import {
+  formatDateTime,
+} from '../../features/time/instant';
 import { useAnalyticsQuery, useTimeRange, withRange } from '../../features/investigation/useAnalyticsQuery';
 
 /**

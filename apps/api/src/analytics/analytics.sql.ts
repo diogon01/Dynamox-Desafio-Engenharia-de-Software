@@ -226,9 +226,12 @@ export function heatmapSql(
   bucket: HeatmapBucket,
 ): Prisma.Sql {
   const ids = Prisma.join(seriesIds.map((id) => Prisma.sql`${id}`));
+  // UTC EXPLÍCITO: `date_trunc`/`extract` sobre timestamptz seguem o fuso da SESSÃO. O
+  // produto inteiro fala UTC (banco, API, URL e tela), então a consulta declara o fuso em
+  // vez de depender da configuração do servidor.
   const hourExpression =
     bucket === 'hour'
-      ? Prisma.sql`extract(hour from p."timestamp")::int`
+      ? Prisma.sql`extract(hour from p."timestamp" AT TIME ZONE 'UTC')::int`
       : Prisma.sql`0::int`;
 
   return Prisma.sql`
@@ -240,7 +243,7 @@ export function heatmapSql(
       count(*)::bigint                    AS sensors
     FROM (
       SELECT
-        date_trunc('day', p."timestamp") AS day,
+        date_trunc('day', p."timestamp" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS day,
         ${hourExpression}                AS hour,
         p."timeSeriesId"                 AS series_id,
         count(*)                         AS samples,

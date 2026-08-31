@@ -19,11 +19,13 @@ import type {
   SensorCellView,
 } from '../../features/dashboard/dashboardAggregations';
 import {
-  formatDateTime,
   formatMeasurement,
   formatNumber,
-  formatRelativeTime,
 } from '../../features/dashboard/dashboardFormatters';
+import {
+  formatDateTime,
+  formatRelativeTime,
+} from '../../features/time/instant';
 import { DashboardCard } from './DashboardCard';
 import { statusColor } from './StatusTag';
 

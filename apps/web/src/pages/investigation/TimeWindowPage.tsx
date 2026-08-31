@@ -19,10 +19,18 @@ import { api } from '../../api/client';
 import { InvestigationBreadcrumbs } from '../../components/investigation/InvestigationBreadcrumbs';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
 import {
-  formatDateTime,
   formatMeasurement,
   formatNumber,
 } from '../../features/dashboard/dashboardFormatters';
+import {
+  TIME_ZONE_LABEL,
+  formatDate,
+  formatDateTime,
+  formatHourLabel,
+  formatRange,
+  hourOfDay,
+  windowFromPath,
+} from '../../features/time/instant';
 import { useAnalyticsQuery, useTimeRange, withRange } from '../../features/investigation/useAnalyticsQuery';
 
 /**
@@ -34,7 +42,8 @@ import { useAnalyticsQuery, useTimeRange, withRange } from '../../features/inves
 export function TimeWindowPage(): JSX.Element {
   const { date = '', hour = '' } = useParams();
   const [search, setSearch] = useSearchParams();
-  const range = useTimeRange();
+  // O caminho já descreve a janela: sem `from`/`to` na query, ele é a fonte do recorte.
+  const range = useTimeRange(windowFromPath(date, hour));
   const navigate = useNavigate();
 
   const page = Number(search.get('page') ?? '1');
@@ -54,8 +63,11 @@ export function TimeWindowPage(): JSX.Element {
     [search, setSearch],
   );
 
-  const hourLabel = `${String(hour).padStart(2, '0')}h`;
-  const dayLabel = date.split('-').reverse().join('/');
+  // Rótulos derivados do INSTANTE consultado, não dos segmentos do caminho: é o que
+  // mantém título, chips e tabela falando do mesmo momento.
+  const startHour = hourOfDay(range.from);
+  const hourLabel = startHour === null ? `${hour}h` : formatHourLabel(startHour);
+  const dayLabel = formatDate(range.from);
   const data = query.data;
 
   return (
@@ -75,8 +87,8 @@ export function TimeWindowPage(): JSX.Element {
         Janela de uma hora. A consulta cobre apenas este intervalo — o restante do histórico não é lido.
       </Typography>
       <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1, mb: 2 }}>
-        <Chip size="small" variant="outlined" label={`De ${formatDateTime(range.from)}`} />
-        <Chip size="small" variant="outlined" label={`até ${formatDateTime(range.to)}`} />
+        <Chip size="small" variant="outlined" label={formatRange(range.from, range.to)} />
+        <Chip size="small" variant="outlined" label={TIME_ZONE_LABEL} />
       </Stack>
 
       {query.status === 'loading' || query.status === 'idle' ? (

@@ -8,7 +8,9 @@ import { alpha } from '@mui/material/styles';
 import { EmptyState } from '@dynamox/ui';
 
 import type { DashboardView } from '../../features/dashboard/dashboardAggregations';
-import { formatShortDateTime } from '../../features/dashboard/dashboardFormatters';
+import {
+  formatShortDateTime,
+} from '../../features/time/instant';
 import { DashboardCard } from './DashboardCard';
 import { StatusTag } from './StatusTag';
 

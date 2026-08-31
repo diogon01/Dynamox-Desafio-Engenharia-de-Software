@@ -18,6 +18,7 @@ import type { HeatmapResponseDto } from '@dynamox/domain';
 import { EmptyState } from '@dynamox/ui';
 
 import { formatNumber } from '../../features/dashboard/dashboardFormatters';
+import { formatDayKey, formatHourLabel } from '../../features/time/instant';
 import { DashboardCard } from './DashboardCard';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from './chartTheme';
 
@@ -70,10 +71,8 @@ export function HourProfilePanel({
     const first = chart.findIndex((entry) => entry.coverage >= best * 0.75 && entry.coverage > 0);
     let last = first;
     while (last + 1 < 24 && chart[last + 1].coverage >= best * 0.75) last += 1;
-    peakLabel = `${String(first).padStart(2, '0')}h–${String(last + 1).padStart(2, '0')}h`;
+    peakLabel = `${formatHourLabel(first)}–${formatHourLabel(last + 1)}`;
   }
-
-  const dayLabel = (value: string) => value.slice(8, 10) + '/' + value.slice(5, 7);
 
   return (
     <DashboardCard
@@ -94,8 +93,8 @@ export function HourProfilePanel({
             sx={{ '& .MuiToggleButton-root': { flex: 1, px: 0.5, py: 0.35, minHeight: 26, fontSize: 10.5 } }}
           >
             {days.slice(0, 5).map((value) => (
-              <ToggleButton key={value} value={value} aria-label={dayLabel(value)}>
-                {dayLabel(value)}
+              <ToggleButton key={value} value={value} aria-label={formatDayKey(value)}>
+                {formatDayKey(value)}
               </ToggleButton>
             ))}
           </ToggleButtonGroup>

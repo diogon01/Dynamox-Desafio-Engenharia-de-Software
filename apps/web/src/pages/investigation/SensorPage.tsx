@@ -36,11 +36,13 @@ import { StatusTag } from '../../components/dashboard/StatusTag';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
 import {
   formatAxisValue,
-  formatChartTick,
-  formatDateTime,
   formatMeasurement,
   formatNumber,
 } from '../../features/dashboard/dashboardFormatters';
+import {
+  formatChartTick,
+  formatDateTime,
+} from '../../features/time/instant';
 import { useAnalyticsQuery, useTimeRange, withRange } from '../../features/investigation/useAnalyticsQuery';
 
 const RANGE_PRESETS = [

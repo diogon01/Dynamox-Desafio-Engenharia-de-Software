@@ -53,15 +53,29 @@ export function useAnalyticsQuery<T>(
   return { status, data, error, reload };
 }
 
-/** Janela temporal lida da URL; sem `from/to` explícitos, os últimos 7 dias. */
-export function useTimeRange(): { from: string; to: string; search: URLSearchParams } {
+/**
+ * Janela temporal lida da URL — instantes ISO em UTC, sempre.
+ *
+ * `fallback` permite que uma rota derive o recorte do próprio caminho (a janela horária faz
+ * isso), de modo que um link sem query ainda abra o intervalo correto. Sem nenhum dos dois,
+ * o padrão são os últimos 7 dias.
+ */
+export function useTimeRange(fallback?: { from: string; to: string } | null): {
+  from: string;
+  to: string;
+  search: URLSearchParams;
+} {
   const [search] = useSearchParams();
+  const fallbackFrom = fallback?.from ?? null;
+  const fallbackTo = fallback?.to ?? null;
   return useMemo(() => {
-    const to = search.get('to') ?? new Date().toISOString();
+    const to = search.get('to') ?? fallbackTo ?? new Date().toISOString();
     const from =
-      search.get('from') ?? new Date(Date.parse(to) - 7 * 24 * 60 * 60 * 1000).toISOString();
+      search.get('from') ??
+      fallbackFrom ??
+      new Date(Date.parse(to) - 7 * 24 * 60 * 60 * 1000).toISOString();
     return { from, to, search };
-  }, [search]);
+  }, [search, fallbackFrom, fallbackTo]);
 }
 
 /** Preserva o contexto temporal ao navegar entre níveis da investigação. */

@@ -15,6 +15,7 @@ import { EmptyState } from '@dynamox/ui';
 
 import type { HeatmapResponseDto } from '@dynamox/domain';
 import { formatNumber } from '../../features/dashboard/dashboardFormatters';
+import { formatHourLabel } from '../../features/time/instant';
 import { DashboardCard } from './DashboardCard';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from './chartTheme';
 
@@ -38,7 +39,7 @@ export function AcquisitionActivity({
     .sort((a, b) => Date.parse(a.bucketStart) - Date.parse(b.bucketStart))
     .slice(-24);
   const data = buckets.map((bucket) => ({
-    label: `${String(bucket.hour).padStart(2, '0')}h`,
+    label: formatHourLabel(bucket.hour),
     samples: bucket.sampleCount,
     sensors: bucket.reportingSensors,
     acquisitions: bucket.acquisitionCount,

@@ -24,11 +24,13 @@ import type {
   SensorCellView,
 } from '../../features/dashboard/dashboardAggregations';
 import {
-  formatDateTime,
   formatMeasurement,
   formatNumber,
-  formatRelativeTime,
 } from '../../features/dashboard/dashboardFormatters';
+import {
+  formatDateTime,
+  formatRelativeTime,
+} from '../../features/time/instant';
 
 const CONDITION_META: Record<
   ConditionKind,

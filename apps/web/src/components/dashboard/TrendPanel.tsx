@@ -25,13 +25,15 @@ import {
 } from '../../features/dashboard/dashboardAggregations';
 import {
   formatAxisValue,
-  formatDateTime,
-  formatChartTick,
   formatMeasurement,
   formatNumber,
-  formatRange,
   seriesMetricLabel,
 } from '../../features/dashboard/dashboardFormatters';
+import {
+  formatChartTick,
+  formatDateTime,
+  formatRange,
+} from '../../features/time/instant';
 import type { DashboardPeriod } from '../../features/dashboard/dashboardSlice';
 import type { RequestStatus } from '../../store/requestStatus';
 import { DashboardCard } from './DashboardCard';

@@ -8,7 +8,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 
 import type { DashboardPeriod } from '../../features/dashboard/dashboardSlice';
-import { formatDateTime } from '../../features/dashboard/dashboardFormatters';
+import { TIME_ZONE_LABEL, formatDateTime } from '../../features/time/instant';
 
 const PERIOD_LABELS: Record<DashboardPeriod, string> = {
   '24h': '24 h',
@@ -53,12 +53,13 @@ export function DashboardHeader({
           </Typography>
           <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.25 }}>
             Priorização de inspeção, tendência e saúde dos sensores com dados persistidos pela API.
+            Todos os horários em {TIME_ZONE_LABEL}.
           </Typography>
           <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
             {latestReading ? (
               <Chip
                 icon={<ScheduleOutlinedIcon />}
-                label={`Última leitura: ${formatDateTime(latestReading)}`}
+                label={`Última leitura: ${formatDateTime(latestReading)} ${TIME_ZONE_LABEL}`}
                 size="small"
                 variant="outlined"
               />

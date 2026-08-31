@@ -30,11 +30,13 @@ import {
 } from '../../features/dashboard/dashboardAggregations';
 import {
   formatAxisValue,
-  formatDateTime,
-  formatChartTick,
   formatNumber,
   seriesMetricLabel,
 } from '../../features/dashboard/dashboardFormatters';
+import {
+  formatChartTick,
+  formatDateTime,
+} from '../../features/time/instant';
 import type { RequestStatus } from '../../store/requestStatus';
 import { SeriesHierarchyFilters } from './SeriesHierarchyFilters';
 

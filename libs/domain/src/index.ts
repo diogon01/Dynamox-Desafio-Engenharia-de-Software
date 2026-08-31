@@ -1,3 +1,5 @@
+import type { ConditionCounts, ConditionKind, FreshnessKind } from './condition';
+
 /**
  * Perfis de acesso do desafio. Deliberadamente mínimos: o enunciado usa credenciais
  * fixas, então não há administração de usuários — apenas a distinção entre quem pode
@@ -258,100 +260,8 @@ export interface TimeSeriesSamplePage {
 
 // ————— Camada analítica: resultados agregados, nunca telemetria bruta —————
 
-/**
- * Classificação demonstrativa de um ponto monitorado. É a MESMA semântica que o painel
- * derivava no cliente — limiares didáticos 1,5× (observação) e 2,0× (atenção) sobre a
- * razão entre a aquisição atual e a de referência — agora calculada no banco.
- */
-export type ConditionKind =
-  | 'normal'
-  | 'observation'
-  | 'attention'
-  | 'unclassified'
-  | 'no-data'
-  | 'no-sensor';
-
-export type FreshnessKind = 'current' | 'stale' | 'future' | 'unknown';
-
-/** Vocabulário fechado das condições — o que o filtro aceita, nem mais nem menos. */
-export const CONDITION_KINDS: readonly ConditionKind[] = [
-  'attention',
-  'observation',
-  'normal',
-  'unclassified',
-  'no-data',
-  'no-sensor',
-];
-
-export function isConditionKind(value: unknown): value is ConditionKind {
-  return typeof value === 'string' && (CONDITION_KINDS as readonly string[]).includes(value);
-}
-
-/**
- * Gravidade relativa de uma condição. Serve para eleger a condição de um AGREGADO (uma
- * máquina é a sua pior leitura, nunca a média das leituras) e para ordenar filas de
- * inspeção. Ausência de dado fica abaixo de "normal" de propósito: é um problema de
- * cobertura, não de condição, e não deve competir por atenção com um desvio real.
- */
-export const CONDITION_SEVERITY: Record<ConditionKind, number> = {
-  attention: 5,
-  observation: 4,
-  normal: 3,
-  unclassified: 2,
-  'no-data': 1,
-  'no-sensor': 0,
-};
-
-/** Condição de um agregado: a pior entre as partes. Vazio não vira "normal" por omissão. */
-export function worstCondition(conditions: readonly ConditionKind[]): ConditionKind | null {
-  return conditions.reduce<ConditionKind | null>(
-    (worst, kind) =>
-      worst === null || CONDITION_SEVERITY[kind] > CONDITION_SEVERITY[worst] ? kind : worst,
-    null,
-  );
-}
-
-/**
- * Contagem por condição do recorte consultado.
- *
- * Vem junto da própria resposta para que o seletor de condição mostre quantos itens cada
- * estado tem sem uma segunda ida ao servidor — e para que a interface só ofereça os
- * estados que realmente ocorrem na janela, em vez de um seletor com opções mortas.
- *
- * As chaves são camelCase porque `no-data` não é um identificador válido; a tradução para
- * o vocabulário do domínio fica em `conditionCountKey`.
- */
-export interface ConditionCounts {
-  total: number;
-  attention: number;
-  observation: number;
-  normal: number;
-  unclassified: number;
-  noData: number;
-  noSensor: number;
-}
-
-export const EMPTY_CONDITION_COUNTS: ConditionCounts = {
-  total: 0,
-  attention: 0,
-  observation: 0,
-  normal: 0,
-  unclassified: 0,
-  noData: 0,
-  noSensor: 0,
-};
-
-export function conditionCountKey(kind: ConditionKind): keyof Omit<ConditionCounts, 'total'> {
-  if (kind === 'no-data') return 'noData';
-  if (kind === 'no-sensor') return 'noSensor';
-  return kind;
-}
-
-export function countConditions(conditions: readonly ConditionKind[]): ConditionCounts {
-  const counts: ConditionCounts = { ...EMPTY_CONDITION_COUNTS, total: conditions.length };
-  for (const kind of conditions) counts[conditionCountKey(kind)] += 1;
-  return counts;
-}
+// A política de condição (vocabulário, limiares, avaliação pura) mora em `condition.ts`.
+export * from './condition';
 
 /**
  * Condição de um ponto na janela consultada.

@@ -19,12 +19,22 @@ import type {
   TimeWindowResponseDto,
   FleetConditionPoint,
   FleetConditionResponseDto,
-  FreshnessKind,
   PointSummaryDto,
   SeriesPointsResponseDto,
   TrendPointDto,
 } from '@dynamox/domain';
-import { countConditions, machineSlug, naturalKey, pointSlug, worstCondition, CONDITION_SEVERITY } from '@dynamox/domain';
+import {
+  CONDITION_SEVERITY,
+  DEFAULT_CONDITION_POLICY,
+  classifyCondition,
+  classifyFreshness,
+  countConditions,
+  deviationRatio,
+  machineSlug,
+  naturalKey,
+  pointSlug,
+  worstCondition,
+} from '@dynamox/domain';
 import { toDomainAxis, toDomainPhysicalQuantity } from '../telemetry/telemetry.mappers';
 
 import { toDomainMachineType } from '../common/machine-type.mapper';
@@ -48,11 +58,16 @@ import {
   type SeriesBucket,
 } from './analytics.sql';
 
-/** Limiares didáticos — os MESMOS que o painel aplicava no cliente. */
-export const ATTENTION_RATIO = 2;
-export const OBSERVATION_RATIO = 1.5;
-export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
-export const FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+/**
+ * A regra de condição mora em `@dynamox/domain` (`condition.ts`) — uma implementação só para
+ * API e web. Os nomes abaixo continuam exportados como aliases da política v1 para que os
+ * chamadores e os testes de caracterização não precisem conhecer a estrutura da política.
+ */
+export const ATTENTION_RATIO = DEFAULT_CONDITION_POLICY.attentionRatio;
+export const OBSERVATION_RATIO = DEFAULT_CONDITION_POLICY.observationRatio;
+export const STALE_AFTER_MS = DEFAULT_CONDITION_POLICY.staleAfterMs;
+export const FUTURE_TOLERANCE_MS = DEFAULT_CONDITION_POLICY.futureToleranceMs;
+export { classifyCondition, classifyFreshness, deviationRatio };
 
 interface TimeWindowRow {
   serial: string;
@@ -184,33 +199,6 @@ interface FleetConditionRow {
   current_cycle_id: string | null;
   baseline_cycle_id: string | null;
   last_seen_at: Date | null;
-}
-
-export function classifyFreshness(at: Date | null, nowMs: number): FreshnessKind {
-  if (!at) return 'unknown';
-  const age = nowMs - at.getTime();
-  if (age < -FUTURE_TOLERANCE_MS) return 'future';
-  if (age > STALE_AFTER_MS) return 'stale';
-  return 'current';
-}
-
-/** Razão entre a aquisição atual e a de referência; `null` quando falta uma das duas. */
-export function deviationRatio(current: number | null, baseline: number | null): number | null {
-  if (current === null || baseline === null || baseline <= 0) return null;
-  return current / baseline;
-}
-
-export function classifyCondition(
-  hasSensor: boolean,
-  hasReading: boolean,
-  ratio: number | null,
-): ConditionKind {
-  if (!hasSensor) return 'no-sensor';
-  if (!hasReading) return 'no-data';
-  if (ratio === null || !Number.isFinite(ratio)) return 'unclassified';
-  if (ratio >= ATTENTION_RATIO) return 'attention';
-  if (ratio >= OBSERVATION_RATIO) return 'observation';
-  return 'normal';
 }
 
 @Injectable()

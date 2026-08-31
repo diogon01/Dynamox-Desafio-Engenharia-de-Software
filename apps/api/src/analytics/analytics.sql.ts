@@ -7,13 +7,17 @@
  * `Number()` no serviço (BigInt vazado quebraria o JSON da resposta).
  */
 import { Prisma } from '@prisma/client';
+import { DEFAULT_CONDITION_POLICY } from '@dynamox/domain';
 
-/** Recência máxima considerada na avaliação de condição (igual ao limiar de "desatualizado"). */
-export const CONDITION_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-/** Amostras mínimas para uma aquisição valer como janela (MIN_BASELINE_SAMPLES do painel). */
-const MIN_WINDOW_SAMPLES = 3;
-/** Aquisições recentes inspecionadas por sensor ao procurar janelas sincronizadas. */
-const RECENT_CYCLES_PER_SENSOR = 4;
+/**
+ * Parâmetros da janela de avaliação — os da política de condição v1, para que a consulta e
+ * a classificação nunca discordem sobre "quantas amostras fazem uma aquisição" ou "quão
+ * longe olhar".
+ */
+export const CONDITION_LOOKBACK_MS = DEFAULT_CONDITION_POLICY.lookbackMs;
+const MIN_WINDOW_SAMPLES = DEFAULT_CONDITION_POLICY.minWindowSamples;
+const RECENT_CYCLES_PER_SENSOR = DEFAULT_CONDITION_POLICY.recentCyclesPerSensor;
+const FLEET_AGREEMENT = DEFAULT_CONDITION_POLICY.fleetAgreement;
 
 /**
  * Condição da frota — a MESMA semântica que o painel derivava no cliente, agora no banco.
@@ -70,7 +74,7 @@ export function fleetConditionSql(from: Date, to: Date): Prisma.Sql {
       SELECT started_at
       FROM recent
       GROUP BY started_at
-      HAVING count(DISTINCT serial) >= 2
+      HAVING count(DISTINCT serial) >= ${FLEET_AGREEMENT}
     ),
     -- Por sensor, as duas últimas aquisições sincronizadas: a mais recente classifica, a
     -- anterior é a referência.

@@ -152,7 +152,13 @@ export function TrendPanel({
           {/* Legenda antes do gráfico: as linhas de referência ficam sem rótulo sobreposto. */}
           <Stack direction="row" flexWrap="wrap" useFlexGap gap={1.5} sx={{ mb: 0.75 }}>
             {[
-              { label: 'Valor atual', color: muiTheme.palette.primary.main, dashed: false },
+              {
+                // A legenda nomeia a série que está no eixo — "valor atual" descrevia
+                // qualquer coisa e não dizia de que grandeza se trata.
+                label: seriesMetricLabel(selected.physicalQuantity, selected.axis),
+                color: muiTheme.palette.primary.main,
+                dashed: false,
+              },
               baseline !== null
                 ? {
                     label: `Baseline (média): ${formatMeasurement(baseline, selected.unit)}`,

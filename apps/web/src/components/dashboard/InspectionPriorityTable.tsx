@@ -1,7 +1,5 @@
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import Link from '@mui/material/Link';
 import Box from '@mui/material/Box';
-import IconButton from '@mui/material/IconButton';
 import Skeleton from '@mui/material/Skeleton';
 import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
@@ -11,7 +9,7 @@ import TableContainer from '@mui/material/TableContainer';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
-import { Link as RouterLink, useNavigate } from 'react-router-dom';
+import { Link as RouterLink } from 'react-router-dom';
 import { alpha } from '@mui/material/styles';
 
 import { machineTag } from '@dynamox/domain';
@@ -48,7 +46,6 @@ export function InspectionPriorityTable({
   range,
   onInvestigate,
 }: InspectionPriorityTableProps): JSX.Element {
-  const navigate = useNavigate();
   const evaluated = view.cells.filter((cell) => cell.sensorSerial).length;
   const rows = view.priority;
 
@@ -95,7 +92,7 @@ export function InspectionPriorityTable({
             // Densidade industrial: menos padding lateral para a tabela caber em 6 colunas.
             sx={{
               '& .MuiTableCell-root': { px: 0.85, py: 0.5, lineHeight: 1.25, borderColor: 'divider' },
-              '& .MuiIconButton-root svg': { fontSize: 12 },
+              '& td': { fontVariantNumeric: 'tabular-nums' },
             }}
           >
             <TableHead>
@@ -105,13 +102,14 @@ export function InspectionPriorityTable({
                 <TableCell>Ponto · Sensor</TableCell>
                 <TableCell>Severidade</TableCell>
                 <TableCell align="right" sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                  Valor atual
+                  RMS radial
                 </TableCell>
                 <TableCell sx={{ whiteSpace: 'normal', lineHeight: 1.25, minWidth: 96 }}>
-                  Desvio vs. baseline
+                  Desvio radial
                 </TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Tendência</TableCell>
-                <TableCell sx={{ width: 44 }} aria-label="Ação" />
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                  Tendência (Y)
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -211,21 +209,6 @@ export function InspectionPriorityTable({
                         trend={view.sparklines[cell.key] ?? []}
                         condition={cell.condition}
                       />
-                    </TableCell>
-                    <TableCell padding="none" align="center">
-                      {/* A linha troca o contexto NESTA página; a seta desce um nível. */}
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        disabled={!cell.sensorSerial}
-                        aria-label={`Abrir o sensor ${cell.sensorSerial ?? ''} de ${cell.machineName}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (cell.sensorSerial) navigate(links.sensor(cell.sensorSerial, range));
-                        }}
-                      >
-                        <ArrowForwardIcon fontSize="small" />
-                      </IconButton>
                     </TableCell>
                   </TableRow>
                 );

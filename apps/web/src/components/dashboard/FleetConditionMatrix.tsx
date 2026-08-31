@@ -21,44 +21,34 @@ import type {
   DashboardView,
   SensorCellView,
 } from '../../features/dashboard/dashboardAggregations';
-import {
-  formatMeasurement,
-  formatNumber,
-} from '../../features/dashboard/dashboardFormatters';
-import {
-  formatDateTime,
-  formatRelativeTime,
-} from '../../features/time/instant';
+import { formatNumber } from '../../features/dashboard/dashboardFormatters';
+import { formatRelativeTime } from '../../features/time/instant';
 import { links, type AnalyticsRange } from '../../features/investigation/links';
 import { DashboardCard } from './DashboardCard';
 import { conditionColor } from '../condition/ConditionTag';
 
+/**
+ * Conteúdo do tooltip da célula: identidade, condição e a evidência que a sustenta.
+ *
+ * Três linhas, não dez. Um tooltip que precisa ser lido devagar não serve a uma matriz
+ * que existe justamente para ser varrida de relance — o detalhe completo está a um clique,
+ * na página do ponto.
+ */
 function CellTooltip({ cell, nowMs }: { cell: SensorCellView; nowMs: number }): JSX.Element {
   return (
-    <Box sx={{ p: 0.25, maxWidth: 300 }}>
+    <Box sx={{ p: 0.25, maxWidth: 280 }}>
       <Typography variant="subtitle2">
-        {cell.machineName} · {cell.pointName}
+        {machineTag(cell.machineName)} · {cell.pointName}
       </Typography>
       <Typography variant="caption" display="block">
-        Sensor: {cell.sensorSerial ?? 'não instalado'} · {cell.sensorModel ?? '—'}
+        {cell.conditionLabel}
+        {cell.evidence?.deviationRatio != null
+          ? ` · ${formatNumber(cell.evidence.deviationRatio, 2)}× (RMS radial Y/Z)`
+          : ''}
+        {cell.sensorSerial ? ` · ${cell.sensorSerial}` : ' · sem sensor'}
       </Typography>
-      <Typography variant="caption" display="block">
-        {cell.evidence
-          ? `${cell.evidence.label}: ${formatMeasurement(cell.evidence.value, cell.evidence.unit)}`
-          : 'Sem leitura'}
-      </Typography>
-      {cell.evidence?.deviationRatio != null ? (
-        <Typography variant="caption" display="block">
-          Índice: {formatNumber(cell.evidence.deviationRatio, 2)}× · baseline{' '}
-          {formatMeasurement(cell.evidence.baseline, cell.evidence.unit)}
-        </Typography>
-      ) : null}
-      <Typography variant="caption" display="block">
-        Última leitura: {formatDateTime(cell.lastTimestamp)} (
-        {formatRelativeTime(cell.lastTimestamp, nowMs)})
-      </Typography>
-      <Typography variant="caption" display="block">
-        Condição: {cell.conditionLabel} · {cell.freshnessLabel}
+      <Typography variant="caption" display="block" sx={{ opacity: 0.85 }}>
+        Última leitura {formatRelativeTime(cell.lastTimestamp, nowMs)} · abre o ponto
       </Typography>
     </Box>
   );

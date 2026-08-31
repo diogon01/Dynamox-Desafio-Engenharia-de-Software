@@ -355,7 +355,8 @@ describe('OperationalDashboard', () => {
     expect(await screen.findByLabelText(/^Ativos em atenção: 1\b/)).toBeDefined();
     // Magnitude: o maior desvio atual, com a grandeza que o sustenta.
     const desvio = screen.getByLabelText(/^Maior desvio: 3×/);
-    expect(within(desvio).getByText(/Aceleração radial \(Y\/Z\)/i)).toBeDefined();
+    // O KPI nomeia a grandeza que sustenta a razão — não um "valor" genérico.
+    expect(within(desvio).getByText(/RMS radial Y\/Z/i)).toBeDefined();
     // Cobertura: instrumentados e reportando sobre o total de pontos.
     expect(screen.getByLabelText(/^Cobertura monitorada: 66,7%/)).toBeDefined();
     // Recência: leituras de 2 dias atrás estão fora da janela de 24 h.
@@ -439,8 +440,10 @@ describe('OperationalDashboard', () => {
       /^\/sensors\/SIM-HF-002\?from=/,
     );
 
-    // A ação da linha desce um nível de verdade, levando o recorte junto.
-    await userEvent.click(within(linha).getByRole('button', { name: /Abrir o sensor SIM-HF-002/i }));
+    // Um destino, um controle: a fila não repete uma seta "ver" ao lado de um serial que
+    // já é o link para o mesmo lugar.
+    expect(within(linha).queryByRole('button', { name: /Abrir o sensor/i })).toBeNull();
+    await userEvent.click(within(linha).getByRole('link', { name: 'SIM-HF-002' }));
     await waitFor(() =>
       expect(screen.getByTestId('rota').textContent).toMatch(/^\/sensors\/SIM-HF-002\?from=.+&to=/),
     );

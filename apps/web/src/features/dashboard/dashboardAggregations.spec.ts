@@ -400,7 +400,7 @@ describe('painéis derivados do dashboard v2', () => {
     expect(occurrences[0].statusLabel).toBeDefined();
     const attention = occurrences.find((row) => row.sensorSerial === 'SIM-HF-002');
     expect(attention?.statusLabel).toBe('Atenção');
-    expect(attention?.message).toContain('baseline');
+    expect(attention?.message).toContain('referência');
   });
 
   it('a atividade de 24 h conta amostras e sensores por hora, sem inventar buckets', () => {

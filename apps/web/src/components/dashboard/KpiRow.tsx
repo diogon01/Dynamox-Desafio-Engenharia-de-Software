@@ -71,8 +71,8 @@ export function KpiRow({
       label: 'Maior desvio',
       value: deviation ? `${formatNumber(deviation.ratio, 2)}×` : '—',
       context: deviation?.cell.evidence
-        ? `${deviation.cell.evidence.label} · ${formatMeasurement(deviation.cell.evidence.value, deviation.cell.evidence.unit)} vs baseline`
-        : 'nenhum baseline demonstrativo calculado',
+        ? `RMS radial Y/Z · ${formatMeasurement(deviation.cell.evidence.value, deviation.cell.evidence.unit)}`
+        : 'sem referência comparável na janela',
       icon: <MonitorHeartOutlinedIcon />,
       tone: 'primary',
       active: Boolean(deviation && deviation.ratio >= 2),
@@ -82,7 +82,7 @@ export function KpiRow({
       key: 'coverage',
       label: 'Cobertura monitorada',
       value: formatPercent(headline.coverage.reporting, headline.coverage.points),
-      context: `${headline.coverage.reporting}/${headline.coverage.points} pontos instrumentados e reportando`,
+      context: `${headline.coverage.reporting} de ${headline.coverage.points} pontos reportando`,
       icon: <ShieldOutlinedIcon />,
       tone: 'success',
       active: false,
@@ -91,7 +91,7 @@ export function KpiRow({
       key: 'recency',
       label: 'Leituras atuais',
       value: formatPercent(headline.recency.current, headline.recency.installed),
-      context: 'leituras dentro da janela de 24 h',
+      context: 'leituras dentro das últimas 24 h',
       icon: <AccessTimeOutlinedIcon />,
       tone: 'warning',
       active: headline.recency.installed > 0 && headline.recency.current < headline.recency.installed,

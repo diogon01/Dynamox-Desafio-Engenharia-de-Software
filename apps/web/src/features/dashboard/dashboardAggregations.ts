@@ -712,7 +712,7 @@ export function buildOccurrences(cells: SensorCellView[], limit = 6): Occurrence
     let statusLabel = CONDITION_STATUS_LABELS[cell.condition];
     let message: string;
     if (cell.condition === 'attention') {
-      message = `Desvio ${formatRatioText(cell.assessment?.deviationRatio)} acima do baseline demonstrativo`;
+      message = `Desvio ${formatRatioText(cell.assessment?.deviationRatio)} acima da referência`;
     } else if (cell.condition === 'observation') {
       message = `Tendência de aumento detectada (${formatRatioText(cell.assessment?.deviationRatio)})`;
     } else if (cell.condition === 'no-data') {

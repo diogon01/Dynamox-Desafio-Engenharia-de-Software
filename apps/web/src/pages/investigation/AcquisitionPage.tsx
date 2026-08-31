@@ -48,7 +48,7 @@ export function AcquisitionPage(): JSX.Element {
         steps={[
           { label: 'Visão geral', to: '/' },
           ...(data?.machineName
-            ? [{ label: machineTag(data.machineName), to: links.asset(data.machineName, range) }]
+            ? [{ label: machineTag(data.machineName), to: links.machine(data.machineName, range) }]
             : []),
           ...(data?.machineName && data.monitoringPointName
             ? [

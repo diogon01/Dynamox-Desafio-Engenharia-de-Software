@@ -4,6 +4,7 @@ import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Chip from '@mui/material/Chip';
+import Link from '@mui/material/Link';
 import CircularProgress from '@mui/material/CircularProgress';
 import MenuItem from '@mui/material/MenuItem';
 import Stack from '@mui/material/Stack';
@@ -18,6 +19,7 @@ import TableSortLabel from '@mui/material/TableSortLabel';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useEffect, useState, type FormEvent } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 
 import {
   SENSOR_MODELS,
@@ -38,6 +40,8 @@ import {
   selectMonitoringPoints,
   sortChanged,
 } from '../features/monitoringPoints/monitoringPointsSlice';
+import { links } from '../features/investigation/links';
+import { useTimeRange } from '../features/investigation/useAnalyticsQuery';
 import { useAppDispatch, useAppSelector } from '../store';
 import { MonitoringPointFilters } from './MonitoringPointFilters';
 
@@ -56,6 +60,8 @@ export function MonitoringPointsPanel(): JSX.Element {
   const machines = useAppSelector(selectMachines);
   // Backend é a barreira real (403); a UI apenas não oferece o que o perfil não pode fazer.
   const canMutate = useAppSelector(selectCanMutate);
+  // Recorte temporal padrão do produto — o registro leva à análise com contexto.
+  const range = useTimeRange();
   const {
     pageData,
     page,
@@ -352,7 +358,18 @@ export function MonitoringPointsPanel(): JSX.Element {
                 <TableBody>
                   {items.map((point) => (
                     <TableRow key={point.id} hover>
-                      <TableCell>{point.machine.name}</TableCell>
+                      {/* O registro e a árvore analítica falam do mesmo ponto: a listagem
+                          leva à página canônica em vez de ser um beco sem saída. */}
+                      <TableCell>
+                        <Link
+                          component={RouterLink}
+                          to={links.machine(point.machine.name, range)}
+                          underline="hover"
+                          color="inherit"
+                        >
+                          {point.machine.name}
+                        </Link>
+                      </TableCell>
                       <TableCell>
                         <Chip
                           label={point.machine.type}
@@ -361,11 +378,34 @@ export function MonitoringPointsPanel(): JSX.Element {
                           variant="outlined"
                         />
                       </TableCell>
-                      <TableCell>{point.name}</TableCell>
                       <TableCell>
-                        {point.sensor
-                          ? `${point.sensor.model} (${point.sensor.serialNumber})`
-                          : '—'}
+                        <Link
+                          component={RouterLink}
+                          to={links.point(point.machine.name, point.name, range)}
+                          underline="hover"
+                          color="inherit"
+                          sx={{ fontWeight: 600 }}
+                        >
+                          {point.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        {point.sensor ? (
+                          <>
+                            {point.sensor.model} (
+                            <Link
+                              component={RouterLink}
+                              to={links.sensor(point.sensor.serialNumber, range)}
+                              underline="hover"
+                              color="inherit"
+                            >
+                              {point.sensor.serialNumber}
+                            </Link>
+                            )
+                          </>
+                        ) : (
+                          '—'
+                        )}
                       </TableCell>
                       <TableCell align="right">
                         {point.sensor || !canMutate ? null : (

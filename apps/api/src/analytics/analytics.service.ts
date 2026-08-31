@@ -8,8 +8,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import type {
   AcquisitionDetailDto,
   AcquisitionPageDto,
-  AssetPointSummaryDto,
-  AssetSummaryDto,
+  MachinePointSummaryDto,
+  MachineSummaryDto,
   ConditionKind,
   HeatmapResponseDto,
   RawSamplePageDto,
@@ -632,13 +632,13 @@ export class AnalyticsService {
    * conforme a página. As agregações independentes por sensor (janela e tendência), essas
    * sim, são recortadas: dois sensores em vez de doze.
    */
-  async assetSummary(
+  async machineSummary(
     machine: { id: string; name: string; type: 'PUMP' | 'FAN' },
     range: TimeRange,
     nowMs = Date.now(),
-  ): Promise<AssetSummaryDto> {
+  ): Promise<MachineSummaryDto> {
     return this.measured(
-      'analytics/asset-summary',
+      'analytics/machine-summary',
       async () => {
         const conditionRows = (
           await this.prisma.$queryRaw<FleetConditionRow[]>(fleetConditionSql(range.from, range.to))
@@ -660,7 +660,7 @@ export class AnalyticsService {
         ]);
         const windowByPoint = new Map(windowRows.map((row) => [row.point_id, row]));
 
-        const points: AssetPointSummaryDto[] = conditionRows.map((row) => {
+        const points: MachinePointSummaryDto[] = conditionRows.map((row) => {
           const window = windowByPoint.get(row.monitoring_point_id);
           const ratio = deviationRatio(row.current_rms, row.baseline_rms);
           return {
@@ -688,7 +688,7 @@ export class AnalyticsService {
         });
 
         const reporting = points.filter((point) => point.sampleCount > 0);
-        const worst = points.reduce<AssetPointSummaryDto | null>(
+        const worst = points.reduce<MachinePointSummaryDto | null>(
           (best, point) =>
             point.deviationRatio !== null && (best?.deviationRatio ?? -Infinity) < point.deviationRatio
               ? point

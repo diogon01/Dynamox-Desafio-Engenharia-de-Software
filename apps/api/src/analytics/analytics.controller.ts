@@ -9,7 +9,7 @@ import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@ne
 import type {
   AcquisitionDetailDto,
   AcquisitionPageDto,
-  AssetSummaryDto,
+  MachineSummaryDto,
   FleetConditionResponseDto,
   PointSummaryDto,
   HeatmapResponseDto,
@@ -22,7 +22,7 @@ import { matchesPointKey, resolveByNaturalKey } from '@dynamox/domain';
 import {
   AcquisitionDetailResponse,
   AcquisitionPageResponse,
-  AssetSummaryResponse,
+  MachineSummaryResponse,
   ErrorResponse,
   PointSummaryResponse,
   FleetConditionResponse,
@@ -86,29 +86,29 @@ export class AnalyticsController {
     });
   }
 
-  @Get('assets/:machineKey')
-  @ApiOperation({ summary: 'Resumo analítico de um ativo e dos seus pontos na janela' })
+  @Get('machines/:machineKey')
+  @ApiOperation({ summary: 'Resumo analítico de uma máquina e dos seus pontos na janela' })
   @ApiQuery({ name: 'from', required: false, description: 'Início da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
   @ApiQuery({ name: 'to', required: false, description: 'Fim exclusivo da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
-  @ApiResponse({ status: 200, description: 'Ativo, indicadores e pontos monitorados.', type: AssetSummaryResponse })
+  @ApiResponse({ status: 200, description: 'Máquina, indicadores e pontos monitorados.', type: MachineSummaryResponse })
   @ApiResponse({ status: 400, description: 'Janela inválida ou identificador ambíguo.', type: ErrorResponse })
-  @ApiResponse({ status: 404, description: 'Ativo inexistente.', type: ErrorResponse })
-  async assetSummary(
+  @ApiResponse({ status: 404, description: 'Máquina inexistente.', type: ErrorResponse })
+  async machineSummary(
     @Param('machineKey') machineKey: string,
     @Query() query: Record<string, unknown>,
-  ): Promise<AssetSummaryDto> {
+  ): Promise<MachineSummaryDto> {
     assertKnownKeys(query, ASSET_QUERY_KEYS);
     const machine = await this.resolveMachine(machineKey);
-    return this.analytics.assetSummary(machine, parseTimeRange(query));
+    return this.analytics.machineSummary(machine, parseTimeRange(query));
   }
 
-  @Get('assets/:machineKey/points/:pointKey')
+  @Get('machines/:machineKey/points/:pointKey')
   @ApiOperation({ summary: 'Resumo analítico de um ponto de monitoramento na janela' })
   @ApiQuery({ name: 'from', required: false, description: 'Início da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
   @ApiQuery({ name: 'to', required: false, description: 'Fim exclusivo da janela (ISO 8601 UTC).', schema: { type: 'string', format: 'date-time' } })
   @ApiResponse({ status: 200, description: 'Ponto, condição, janela e séries disponíveis.', type: PointSummaryResponse })
   @ApiResponse({ status: 400, description: 'Janela inválida ou identificador ambíguo.', type: ErrorResponse })
-  @ApiResponse({ status: 404, description: 'Ativo ou ponto inexistente.', type: ErrorResponse })
+  @ApiResponse({ status: 404, description: 'Máquina ou ponto inexistente.', type: ErrorResponse })
   async pointSummary(
     @Param('machineKey') machineKey: string,
     @Param('pointKey') pointKey: string,
@@ -302,7 +302,7 @@ export class AnalyticsController {
     if (resolved.kind === 'not-found') {
       throw new NotFoundException({
         code: 'MACHINE_NOT_FOUND',
-        message: `Ativo "${machineKey}" não encontrado.`,
+        message: `Máquina "${machineKey}" não encontrada.`,
       });
     }
     return resolved.item;

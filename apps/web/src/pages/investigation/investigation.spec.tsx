@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../test/renderWithProviders';
 import { AcquisitionPage } from './AcquisitionPage';
-import { AssetPage } from './AssetPage';
-import { PointPage } from './PointPage';
+import { MachinePage } from '../resources/MachinePage';
+import { MonitoringPointPage } from '../resources/MonitoringPointPage';
 import { RawSamplesPage } from './RawSamplesPage';
 import { SensorPage } from './SensorPage';
 import { TimeWindowPage } from './TimeWindowPage';
@@ -139,7 +139,7 @@ function stubApi(overrides: Record<string, unknown> = {}) {
     const url = String(input);
     calls.push(url);
 
-    if (url.includes('/analytics/assets/')) {
+    if (url.includes('/analytics/machines/')) {
       if (url.includes('/desconhecido')) {
         return new Response(
           JSON.stringify({ code: 'MACHINE_NOT_FOUND', message: 'Ativo "desconhecido" não encontrado.' }),
@@ -370,8 +370,8 @@ function renderAt(route: string) {
   return renderWithProviders(
     <Routes>
       <Route path="/monitoring/windows/:date/:hour" element={<TimeWindowPage />} />
-      <Route path="/assets/:machineKey" element={<AssetPage />} />
-      <Route path="/assets/:machineKey/points/:pointKey" element={<PointPage />} />
+      <Route path="/machines/:machineKey" element={<MachinePage />} />
+      <Route path="/machines/:machineKey/points/:pointKey" element={<MonitoringPointPage />} />
       <Route path="/sensors/:serialNumber" element={<SensorPage />} />
       <Route path="/acquisitions/:cycleId" element={<AcquisitionPage />} />
       <Route path="/acquisitions/:cycleId/samples" element={<RawSamplesPage />} />
@@ -495,7 +495,7 @@ describe('drill-down analítico', () => {
 
   it('o ativo agrega os pontos e leva ao ponto escolhido', async () => {
     const { calls } = stubApi();
-    renderAt(`/assets/P-101?from=${FROM}&to=${TO}`);
+    renderAt(`/machines/P-101?from=${FROM}&to=${TO}`);
 
     expect(await screen.findByRole('heading', { level: 1, name: 'P-101' })).toBeDefined();
     // Indicadores do ativo, não da frota.
@@ -503,7 +503,7 @@ describe('drill-down analítico', () => {
     expect(screen.getAllByText('3,49×').length).toBeGreaterThan(0);
 
     // UMA consulta agregada resolve a página inteira — e nenhuma amostra bruta.
-    expect(calls.filter((url) => url.includes('/analytics/assets/'))).toHaveLength(1);
+    expect(calls.filter((url) => url.includes('/analytics/machines/'))).toHaveLength(1);
     expect(calls.filter((url) => url.includes('/samples'))).toHaveLength(0);
 
     const tabela = screen.getByRole('table', { name: /Pontos e sensores/i });
@@ -520,20 +520,20 @@ describe('drill-down analítico', () => {
 
   it('o ponto é contexto e entrega o próximo nível, preservando o recorte', async () => {
     const { calls } = stubApi();
-    renderAt(`/assets/P-101/points/mancal-lado-oposto-ao-acoplamento?from=${FROM}&to=${TO}`);
+    renderAt(`/machines/P-101/points/mancal-lado-oposto-ao-acoplamento?from=${FROM}&to=${TO}`);
 
     expect(
       await screen.findByRole('heading', { level: 1, name: /Mancal lado oposto ao acoplamento/i }),
     ).toBeDefined();
     // A janela consultada é a da URL, não um padrão do componente.
-    const consulta = calls.find((url) => url.includes('/analytics/assets/'))!;
+    const consulta = calls.find((url) => url.includes('/analytics/machines/'))!;
     expect(consulta).toContain(`from=${encodeURIComponent(FROM)}`);
     expect(consulta).toContain(`to=${encodeURIComponent(TO)}`);
 
     // Subir um nível mantém o recorte.
     const trilha = screen.getByRole('navigation', { name: /Trilha da investigação/i });
     expect(within(trilha).getByRole('link', { name: 'P-101' }).getAttribute('href')).toMatch(
-      /^\/assets\/P-101\?from=.+&to=/,
+      /^\/machines\/P-101\?from=.+&to=/,
     );
     // Descer também: o ponto entrega o sensor, que é onde mora a história completa.
     expect(screen.getByRole('link', { name: /Abrir sensor/i }).getAttribute('href')).toMatch(
@@ -550,19 +550,19 @@ describe('drill-down analítico', () => {
     const trilha = await screen.findByRole('navigation', { name: /Trilha da investigação/i });
     await waitFor(() =>
       expect(within(trilha).getByRole('link', { name: 'P-101' }).getAttribute('href')).toMatch(
-        /^\/assets\/P-101\?from=/,
+        /^\/machines\/P-101\?from=/,
       ),
     );
     expect(
       within(trilha)
         .getByRole('link', { name: /Mancal lado oposto ao acoplamento/i })
         .getAttribute('href'),
-    ).toMatch(/^\/assets\/P-101\/points\/mancal-lado-oposto-ao-acoplamento\?from=/);
+    ).toMatch(/^\/machines\/P-101\/points\/mancal-lado-oposto-ao-acoplamento\?from=/);
   });
 
   it('identificador inexistente vira "não encontrado", nunca redirecionamento silencioso', async () => {
     stubApi();
-    renderAt(`/assets/desconhecido?from=${FROM}&to=${TO}`);
+    renderAt(`/machines/desconhecido?from=${FROM}&to=${TO}`);
 
     expect(await screen.findByText(/Ativo não encontrado/i)).toBeDefined();
     expect(screen.getByText(/Nenhuma máquina cadastrada corresponde a "desconhecido"/i)).toBeDefined();

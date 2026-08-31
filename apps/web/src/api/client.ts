@@ -1,7 +1,7 @@
 import type {
   AcquisitionDetailDto,
   AcquisitionPageDto,
-  AssetSummaryDto,
+  MachineSummaryDto,
   FleetConditionResponseDto,
   PointSummaryDto,
   HeatmapResponseDto,
@@ -348,16 +348,16 @@ export const api = {
       `/analytics/fleet-condition?${rangeQuery(range, options.includeTrend ? { includeTrend: 'true' } : {})}`,
     ),
 
-  /** Resumo analítico do ativo: cabeçalho, indicadores e uma linha por ponto. */
-  assetSummary: (machineKey: string, range: AnalyticsRange) =>
-    requestJson<AssetSummaryDto>(
-      `/analytics/assets/${encodeURIComponent(machineKey)}?${rangeQuery(range)}`,
+  /** Resumo analítico da máquina: cabeçalho, indicadores e uma linha por ponto. */
+  machineSummary: (machineKey: string, range: AnalyticsRange) =>
+    requestJson<MachineSummaryDto>(
+      `/analytics/machines/${encodeURIComponent(machineKey)}?${rangeQuery(range)}`,
     ),
 
   /** Resumo analítico do ponto — o contexto entre o ativo e o sensor. */
   pointSummary: (machineKey: string, pointKey: string, range: AnalyticsRange) =>
     requestJson<PointSummaryDto>(
-      `/analytics/assets/${encodeURIComponent(machineKey)}/points/${encodeURIComponent(pointKey)}?${rangeQuery(range)}`,
+      `/analytics/machines/${encodeURIComponent(machineKey)}/points/${encodeURIComponent(pointKey)}?${rangeQuery(range)}`,
     ),
 
   /** Mapa de atividade por data × hora, agregado no banco. */

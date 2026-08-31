@@ -890,7 +890,7 @@ export class RawSamplePageResponse {
   axis!: string | null;
 }
 
-export class AssetPointSummaryResponse {
+export class MachinePointSummaryResponse {
   @ApiProperty({ format: 'uuid', description: 'Identificador do ponto de monitoramento.' })
   monitoringPointId!: string;
 
@@ -954,7 +954,7 @@ export class AssetPointSummaryResponse {
   trend!: TrendPointResponse[];
 }
 
-export class AssetKpisResponse {
+export class MachineKpisResponse {
   @ApiProperty({ description: 'Pontos de monitoramento do ativo.', example: 2 })
   points!: number;
 
@@ -977,7 +977,7 @@ export class AssetKpisResponse {
   maxDeviationPoint!: string | null;
 }
 
-export class AssetSummaryResponse {
+export class MachineSummaryResponse {
   @ApiProperty({ format: 'uuid', description: 'Identificador da máquina.' })
   machineId!: string;
 
@@ -996,14 +996,14 @@ export class AssetSummaryResponse {
   @ApiProperty({ format: 'date-time', description: 'Fim exclusivo da janela.', example: ISO })
   to!: string;
 
-  @ApiProperty({ type: AssetKpisResponse, description: 'Indicadores do ativo na janela.' })
-  kpis!: AssetKpisResponse;
+  @ApiProperty({ type: MachineKpisResponse, description: 'Indicadores do ativo na janela.' })
+  kpis!: MachineKpisResponse;
 
   @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Última leitura do ativo.', example: ISO })
   lastAt!: string | null;
 
-  @ApiProperty({ type: [AssetPointSummaryResponse], description: 'Um item por ponto do ativo.' })
-  points!: AssetPointSummaryResponse[];
+  @ApiProperty({ type: [MachinePointSummaryResponse], description: 'Um item por ponto do ativo.' })
+  points!: MachinePointSummaryResponse[];
 }
 
 export class PointSeriesResponse {

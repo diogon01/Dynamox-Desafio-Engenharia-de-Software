@@ -88,7 +88,8 @@ function stubApi(options: {
 }
 
 function renderPanel() {
-  return renderWithProviders(<MonitoringPointsPanel />);
+  // A listagem agora leva às páginas canônicas de máquina, ponto e sensor: precisa de rota.
+  return renderWithProviders(<MonitoringPointsPanel />, { route: '/monitoring-points' });
 }
 
 afterEach(() => {
@@ -117,7 +118,11 @@ describe('MonitoringPointsPanel', () => {
     expect(within(table).getAllByText('P-101').length).toBeGreaterThan(0);
     expect(within(table).getAllByText('Pump').length).toBeGreaterThan(0);
     expect(within(table).getByText('Mancal LA')).toBeDefined();
-    expect(within(table).getByText(/HF\+ \(SIM-HF-001\)/)).toBeDefined();
+    // Modelo e serial na mesma célula; o serial é o atalho para a página do sensor.
+    expect(within(table).getByText(/HF\+/)).toBeDefined();
+    expect(within(table).getByRole('link', { name: 'SIM-HF-001' }).getAttribute('href')).toMatch(
+      /^\/sensors\/SIM-HF-001\?from=/,
+    );
     // Ponto sem sensor mostra o traço.
     expect(within(table).getByText('—')).toBeDefined();
   });
@@ -277,7 +282,7 @@ describe('MonitoringPointsPanel', () => {
     await waitFor(() =>
       expect(screen.queryByText(/Associar sensor ao ponto/i)).toBeNull(),
     );
-    expect(screen.getByText(/HF\+ \(SIM-HF-001\)/)).toBeDefined();
+    expect(screen.getByRole('link', { name: 'SIM-HF-001' })).toBeDefined();
   });
 
   it('10. erro 409 da associação chega ao usuário sem virar erro genérico', async () => {
@@ -375,7 +380,7 @@ describe('MonitoringPointsPanel — recorte no servidor e perfil', () => {
 
   it('VIEWER consulta e filtra, mas não recebe ações de escrita', async () => {
     stubApi({ points: pageDto([POINT_PUMP], 1) });
-    renderWithProviders(<MonitoringPointsPanel />, { role: 'VIEWER' });
+    renderWithProviders(<MonitoringPointsPanel />, { role: 'VIEWER', route: '/monitoring-points' });
 
     expect(await screen.findByRole('table')).toBeDefined();
     // O recorte continua disponível para quem só consulta...

@@ -4,15 +4,16 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
 
-import { InvestigationBreadcrumbs, type BreadcrumbStep } from './InvestigationBreadcrumbs';
+import { InvestigationBreadcrumbs, type BreadcrumbStep } from './investigation/InvestigationBreadcrumbs';
 
 /**
- * Cabeçalho das páginas de investigação: trilha, identidade e contexto — nada de card.
+ * Cabeçalho de página: trilha, identidade, contexto e ações — nada de card.
  *
  * Um só nível de título por página. A barra da aplicação já é o cabeçalho do produto; aqui
- * fica quem é o recurso, em que estado ele está e qual recorte temporal está sendo lido.
+ * fica quem é o recurso, em que estado ele está e o que dá para fazer com ele. Investigação
+ * e cadastro usam o MESMO cabeçalho de propósito: são a mesma aplicação, não dois sistemas.
  */
-export interface InvestigationPageHeaderProps {
+export interface PageHeaderProps {
   steps: BreadcrumbStep[];
   title: string;
   /** Complemento curto do título: tipo do ativo, ponto e sensor, modelo. */
@@ -23,13 +24,13 @@ export interface InvestigationPageHeaderProps {
   actions?: ReactNode;
 }
 
-export function InvestigationPageHeader({
+export function PageHeader({
   steps,
   title,
   subtitle,
   chips,
   actions,
-}: InvestigationPageHeaderProps): JSX.Element {
+}: PageHeaderProps): JSX.Element {
   return (
     <Box sx={{ pt: 2, pb: 1.5 }}>
       <InvestigationBreadcrumbs steps={steps} />

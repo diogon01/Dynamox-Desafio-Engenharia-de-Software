@@ -156,7 +156,7 @@ export function TimeWindowPage(): JSX.Element {
                           {item.machineName ? (
                             <Link
                               component={RouterLink}
-                              to={links.asset(item.machineName, range)}
+                              to={links.machine(item.machineName, range)}
                               onClick={(event) => event.stopPropagation()}
                               underline="hover"
                               color="inherit"

@@ -153,7 +153,7 @@ export function SensorPage(): JSX.Element {
           // Ativo e ponto só entram quando a condição já os identificou: um degrau da
           // trilha nunca pode apontar para uma rota que ainda não sabemos montar.
           ...(point?.machineName
-            ? [{ label: machineTag(point.machineName), to: links.asset(point.machineName, range) }]
+            ? [{ label: machineTag(point.machineName), to: links.machine(point.machineName, range) }]
             : []),
           ...(point?.machineName && point.monitoringPointName
             ? [

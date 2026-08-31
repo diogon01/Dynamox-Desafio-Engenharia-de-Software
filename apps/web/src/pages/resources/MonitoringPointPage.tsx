@@ -13,6 +13,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { useTheme } from '@mui/material/styles';
+import { useState } from 'react';
 import { Link as RouterLink, useParams, useSearchParams } from 'react-router-dom';
 import {
   CartesianGrid,
@@ -31,7 +32,7 @@ import { DashboardCard } from '../../components/dashboard/DashboardCard';
 import { StatusTag, statusColor } from '../../components/dashboard/StatusTag';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
 import { DeviationBar } from '../../components/investigation/DeviationBar';
-import { InvestigationPageHeader } from '../../components/investigation/InvestigationPageHeader';
+import { PageHeader } from '../../components/PageHeader';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
 import { RangePresets, type RangePreset } from '../../components/investigation/RangePresets';
 import { trendDirection } from '../../components/investigation/TrendSparkline';
@@ -43,6 +44,9 @@ import {
 } from '../../features/dashboard/dashboardFormatters';
 import { links } from '../../features/investigation/links';
 import { useAnalyticsQuery, useTimeRange } from '../../features/investigation/useAnalyticsQuery';
+import { selectCanMutate } from '../../features/auth/authSlice';
+import { useAppSelector } from '../../store';
+import { AssignSensorDialog } from './AssignSensorDialog';
 import {
   TIME_ZONE_LABEL,
   formatChartTick,
@@ -52,18 +56,20 @@ import {
 } from '../../features/time/instant';
 
 /**
- * NÍVEL "PONTO": o contexto entre o ativo e o sensor.
+ * PÁGINA CANÔNICA DO PONTO — o contexto entre a máquina e o sensor.
  *
  * Deliberadamente mais raso que a página do sensor. Responde "este ponto está bem, está
  * reportando, e o que ele mede?" — e entrega o próximo passo. Quem quer trinta dias de
  * história, aquisições paginadas e dados brutos desce um nível: o botão está aqui.
  */
-export function PointPage(): JSX.Element {
+export function MonitoringPointPage(): JSX.Element {
   const { machineKey = '', pointKey = '' } = useParams();
   const [, setSearch] = useSearchParams();
   const range = useTimeRange();
   const muiTheme = useTheme();
   const tooltip = chartTooltipStyles(muiTheme);
+  const canMutate = useAppSelector(selectCanMutate);
+  const [assigning, setAssigning] = useState(false);
 
   const query = useAnalyticsQuery(
     () => api.pointSummary(machineKey, pointKey, { from: range.from, to: range.to }),
@@ -87,12 +93,12 @@ export function PointPage(): JSX.Element {
 
   return (
     <Box sx={{ pb: 3 }}>
-      <InvestigationPageHeader
+      <PageHeader
         steps={[
           { label: 'Visão geral', to: '/' },
           {
             label: point?.machineName ?? machineKey,
-            to: links.asset(point?.machineName ?? machineKey, range),
+            to: links.machine(point?.machineName ?? machineKey, range),
           },
           { label: point?.monitoringPointName ?? pointKey },
         ]}
@@ -124,6 +130,16 @@ export function PointPage(): JSX.Element {
                 Abrir sensor
               </Button>
             ) : null}
+            {point && !point.sensorSerialNumber && canMutate ? (
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => setAssigning(true)}
+                sx={{ whiteSpace: 'nowrap' }}
+              >
+                Associar sensor
+              </Button>
+            ) : null}
           </Stack>
         }
       />
@@ -137,7 +153,7 @@ export function PointPage(): JSX.Element {
           title="Ponto não encontrado"
           description={`"${pointKey}" não corresponde a nenhum ponto de "${machineKey}".`}
           action={
-            <Button component={RouterLink} to={links.asset(machineKey, range)} variant="outlined" size="small">
+            <Button component={RouterLink} to={links.machine(machineKey, range)} variant="outlined" size="small">
               Voltar ao ativo
             </Button>
           }
@@ -361,6 +377,20 @@ export function PointPage(): JSX.Element {
             </Card>
           </Box>
         </Box>
+      ) : null}
+
+      {point ? (
+        <AssignSensorDialog
+          open={assigning}
+          pointId={point.monitoringPointId}
+          pointName={point.monitoringPointName}
+          machineType={point.machineType}
+          onClose={() => setAssigning(false)}
+          onAssigned={() => {
+            setAssigning(false);
+            query.reload();
+          }}
+        />
       ) : null}
     </Box>
   );

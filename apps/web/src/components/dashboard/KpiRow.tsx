@@ -64,7 +64,7 @@ export function KpiRow({
       icon: <WarningAmberOutlinedIcon />,
       tone: 'warning',
       active: headline.attention.count > 0,
-      to: top ? links.asset(top.machineName, range) : undefined,
+      to: top ? links.machine(top.machineName, range) : undefined,
     },
     {
       key: 'deviation',

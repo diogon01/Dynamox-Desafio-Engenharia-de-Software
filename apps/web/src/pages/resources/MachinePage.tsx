@@ -1,3 +1,6 @@
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import AddIcon from '@mui/icons-material/Add';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Card from '@mui/material/Card';
@@ -12,6 +15,7 @@ import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import Typography from '@mui/material/Typography';
 import { alpha, useTheme } from '@mui/material/styles';
+import { useState } from 'react';
 import { Link as RouterLink, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   CartesianGrid,
@@ -24,7 +28,8 @@ import {
   YAxis,
 } from 'recharts';
 
-import type { AssetPointSummaryDto } from '@dynamox/domain';
+import type { MachinePointSummaryDto } from '@dynamox/domain';
+import { machineSlug } from '@dynamox/domain';
 import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
@@ -32,7 +37,7 @@ import { DashboardCard } from '../../components/dashboard/DashboardCard';
 import { StatusTag, statusColor } from '../../components/dashboard/StatusTag';
 import { axisTickStyle, chartGridStroke, chartTooltipStyles } from '../../components/dashboard/chartTheme';
 import { DeviationBar } from '../../components/investigation/DeviationBar';
-import { InvestigationPageHeader } from '../../components/investigation/InvestigationPageHeader';
+import { PageHeader } from '../../components/PageHeader';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
 import { RangePresets, type RangePreset } from '../../components/investigation/RangePresets';
 import { TrendSparkline, trendDirection } from '../../components/investigation/TrendSparkline';
@@ -41,8 +46,11 @@ import {
   formatMeasurement,
   formatNumber,
 } from '../../features/dashboard/dashboardFormatters';
+import { selectCanMutate } from '../../features/auth/authSlice';
 import { links } from '../../features/investigation/links';
 import { useAnalyticsQuery, useTimeRange } from '../../features/investigation/useAnalyticsQuery';
+import { useAppSelector } from '../../store';
+import { DeleteMachineDialog } from './DeleteMachineDialog';
 import {
   TIME_ZONE_LABEL,
   formatChartTick,
@@ -52,25 +60,29 @@ import {
 } from '../../features/time/instant';
 
 /**
- * NÍVEL "ATIVO": a máquina inteira num recorte temporal.
+ * PÁGINA CANÔNICA DA MÁQUINA — operação e cadastro no mesmo lugar.
  *
- * É uma página ANALÍTICA — não o cadastro. Responde três perguntas em ordem: como está a
- * máquina (indicadores), o que aconteceu no período (tendência dos pontos) e por onde
- * continuar (a tabela de pontos, que leva ao ponto e ao sensor).
+ * Havia o risco de existirem duas páginas para a mesma entidade: uma analítica em /assets
+ * e outra de cadastro em /machines. Uma máquina é uma coisa só; a rota também. Aqui ficam
+ * a identidade e as ações de cadastro (editar, excluir, novo ponto) junto do que a pessoa
+ * realmente vem ver: como a máquina está e o que aconteceu no período.
  *
- * Toda a resposta vem de UMA consulta agregada no banco: nenhuma amostra bruta atravessa
- * esta tela.
+ * Ordem de leitura: indicadores → tendência dos pontos → tabela que leva ao ponto e ao
+ * sensor. Toda a resposta operacional vem de UMA consulta agregada: nenhuma amostra bruta
+ * atravessa esta tela.
  */
-export function AssetPage(): JSX.Element {
+export function MachinePage(): JSX.Element {
   const { machineKey = '' } = useParams();
   const [, setSearch] = useSearchParams();
   const range = useTimeRange();
   const navigate = useNavigate();
   const muiTheme = useTheme();
   const tooltip = chartTooltipStyles(muiTheme);
+  const canMutate = useAppSelector(selectCanMutate);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const query = useAnalyticsQuery(
-    () => api.assetSummary(machineKey, { from: range.from, to: range.to }),
+    () => api.machineSummary(machineKey, { from: range.from, to: range.to }),
     [machineKey, range.from, range.to],
   );
   const asset = query.data;
@@ -106,14 +118,14 @@ export function AssetPage(): JSX.Element {
     return counts;
   }, {});
 
-  const openPoint = (point: AssetPointSummaryDto) => {
+  const openPoint = (point: MachinePointSummaryDto) => {
     if (!asset) return;
     navigate(links.point(asset.machineName, point.monitoringPointName, range));
   };
 
   return (
     <Box sx={{ pb: 3 }}>
-      <InvestigationPageHeader
+      <PageHeader
         steps={[{ label: 'Visão geral', to: '/' }, { label: asset?.machineName ?? machineKey }]}
         title={asset?.machineName ?? machineKey}
         subtitle={
@@ -138,7 +150,33 @@ export function AssetPage(): JSX.Element {
             ) : null}
           </>
         }
-        actions={<RangePresets from={range.from} to={range.to} onSelect={applyPreset} />}
+        actions={
+          <Stack direction="row" gap={1} alignItems="flex-start" flexWrap="wrap" useFlexGap>
+            <RangePresets from={range.from} to={range.to} onSelect={applyPreset} />
+            {canMutate && asset ? (
+              <>
+                <Button
+                  component={RouterLink}
+                  to={`/machines/${encodeURIComponent(machineSlug(asset.machineName))}/edit`}
+                  size="small"
+                  variant="outlined"
+                  startIcon={<EditOutlinedIcon />}
+                >
+                  Editar
+                </Button>
+                <Button
+                  size="small"
+                  color="error"
+                  variant="outlined"
+                  startIcon={<DeleteOutlineIcon />}
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  Excluir
+                </Button>
+              </>
+            ) : null}
+          </Stack>
+        }
       />
 
       {query.status === 'loading' || query.status === 'idle' ? (
@@ -164,7 +202,26 @@ export function AssetPage(): JSX.Element {
         />
       ) : null}
 
-      {query.status === 'succeeded' && asset ? (
+      {query.status === 'succeeded' && asset && asset.points.length === 0 ? (
+        <EmptyState
+          title="Máquina sem pontos de monitoramento"
+          description="Cadastre o primeiro ponto para que esta máquina passe a ser monitorada."
+          action={
+            canMutate ? (
+              <Button
+                component={RouterLink}
+                to={`/machines/${encodeURIComponent(machineSlug(asset.machineName))}/points/new`}
+                variant="contained"
+                startIcon={<AddIcon />}
+              >
+                Novo ponto
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : null}
+
+      {query.status === 'succeeded' && asset && asset.points.length > 0 ? (
         <Box
           sx={(theme) => ({
             display: 'grid',
@@ -343,14 +400,34 @@ export function AssetPage(): JSX.Element {
 
           <Box sx={{ gridColumn: 'span 12' }}>
             <Card variant="outlined">
-              <Box sx={(theme) => ({ px: `${theme.dashboard.cardPadding}px`, pt: 1.5, pb: 0.5 })}>
-                <Typography variant="h2" component="h2">
-                  Pontos e sensores
-                </Typography>
-                <Typography variant="caption" color="text.secondary" component="div">
-                  Clique na linha para abrir o ponto; no serial, para ir direto ao sensor.
-                </Typography>
-              </Box>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="flex-start"
+                gap={1}
+                sx={(theme) => ({ px: `${theme.dashboard.cardPadding}px`, pt: 1.5, pb: 0.5 })}
+              >
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="h2" component="h2">
+                    Pontos e sensores
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" component="div">
+                    Clique na linha para abrir o ponto; no serial, para ir direto ao sensor.
+                  </Typography>
+                </Box>
+                {canMutate ? (
+                  <Button
+                    component={RouterLink}
+                    to={`/machines/${encodeURIComponent(machineSlug(asset.machineName))}/points/new`}
+                    size="small"
+                    variant="outlined"
+                    startIcon={<AddIcon />}
+                    sx={{ flexShrink: 0, whiteSpace: 'nowrap' }}
+                  >
+                    Novo ponto
+                  </Button>
+                ) : null}
+              </Stack>
               <TableContainer sx={{ overflowX: 'auto' }}>
                 <Table
                   size="small"
@@ -447,6 +524,23 @@ export function AssetPage(): JSX.Element {
             </Card>
           </Box>
         </Box>
+      ) : null}
+
+      {asset ? (
+        <DeleteMachineDialog
+          machine={
+            confirmingDelete
+              ? { id: asset.machineId, name: asset.machineName, type: asset.machineType, createdAt: '', updatedAt: '' }
+              : null
+          }
+          pointCount={asset.kpis.points}
+          sensorCount={asset.kpis.sensors}
+          onClose={() => setConfirmingDelete(false)}
+          onDeleted={() => {
+            setConfirmingDelete(false);
+            navigate('/machines');
+          }}
+        />
       ) : null}
     </Box>
   );

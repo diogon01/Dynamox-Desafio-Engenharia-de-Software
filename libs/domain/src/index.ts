@@ -497,10 +497,10 @@ export interface RawSamplePageDto {
   axis: string | null;
 }
 
-// ————— Ativo e ponto: o mesmo recorte da frota, restrito a uma máquina —————
+// ————— Máquina e ponto: o mesmo recorte da frota, restrito a uma máquina —————
 
-/** Linha de ponto na página do ativo: identidade, condição e o que aconteceu na janela. */
-export interface AssetPointSummaryDto {
+/** Linha de ponto na página da máquina: identidade, condição e o que aconteceu na janela. */
+export interface MachinePointSummaryDto {
   monitoringPointId: string;
   monitoringPointName: string;
   /** Segmento de URL do ponto dentro do ativo. */
@@ -523,7 +523,7 @@ export interface AssetPointSummaryDto {
   trend: TrendPointDto[];
 }
 
-export interface AssetSummaryDto {
+export interface MachineSummaryDto {
   machineId: string;
   machineName: string;
   machineType: MachineType;
@@ -543,7 +543,7 @@ export interface AssetSummaryDto {
     maxDeviationPoint: string | null;
   };
   lastAt: string | null;
-  points: AssetPointSummaryDto[];
+  points: MachinePointSummaryDto[];
 }
 
 /** Série disponível num ponto — o inventário de grandezas, sem trazer amostra. */

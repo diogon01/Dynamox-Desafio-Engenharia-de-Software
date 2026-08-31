@@ -196,7 +196,7 @@ describe('Analytics (e2e)', () => {
 
   it('resume o ativo pelo identificador legível, reaproveitando a classificação da frota', async () => {
     const response = await authed(
-      `/api/analytics/assets/${PREFIX}P-900?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+      `/api/analytics/machines/${PREFIX}P-900?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
     ).expect(200);
 
     expect(response.body.machineName).toBe(`${PREFIX}P-900`);
@@ -224,17 +224,17 @@ describe('Analytics (e2e)', () => {
 
     // Identificador é case-insensitive; inexistente é 404, nunca 200 vazio.
     await authed(
-      `/api/analytics/assets/${PREFIX.toLowerCase()}p-900?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+      `/api/analytics/machines/${PREFIX.toLowerCase()}p-900?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
     ).expect(200);
     const ausente = await authed(
-      `/api/analytics/assets/nao-existe?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+      `/api/analytics/machines/nao-existe?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
     ).expect(404);
     expect(ausente.body.code).toBe('MACHINE_NOT_FOUND');
   });
 
   it('resume o ponto com condição, janela e séries — sem amostra bruta', async () => {
     const response = await authed(
-      `/api/analytics/assets/${PREFIX}P-900/points/anl-ponto-0?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+      `/api/analytics/machines/${PREFIX}P-900/points/anl-ponto-0?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
     ).expect(200);
 
     expect(response.body.monitoringPointName).toBe(`${PREFIX}Ponto 0`);
@@ -249,9 +249,9 @@ describe('Analytics (e2e)', () => {
     expect(JSON.stringify(response.body)).not.toContain('"items"');
 
     await authed(
-      `/api/analytics/assets/${PREFIX}P-900/points/inexistente?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
+      `/api/analytics/machines/${PREFIX}P-900/points/inexistente?from=${WINDOW_FROM}&to=${WINDOW_TO}`,
     ).expect(404);
-    await authed(`/api/analytics/assets/${PREFIX}P-900/points/anl-ponto-0`).expect(400);
+    await authed(`/api/analytics/machines/${PREFIX}P-900/points/anl-ponto-0`).expect(400);
   });
 
   it('a tendência curta só vem quando pedida, e é agregada', async () => {

@@ -430,10 +430,10 @@ describe('OperationalDashboard', () => {
     // Cada identificador da linha aponta para o seu próprio nível da investigação.
     const linha = within(fila).getAllByRole('row')[1];
     expect(within(linha).getByRole('link', { name: 'P-102' }).getAttribute('href')).toMatch(
-      /^\/assets\/P-102\?from=.+&to=/,
+      /^\/machines\/P-102\?from=.+&to=/,
     );
     expect(within(linha).getByRole('link', { name: 'NDE' }).getAttribute('href')).toMatch(
-      /^\/assets\/P-102\/points\/mancal-lado-oposto-ao-acoplamento\?from=/,
+      /^\/machines\/P-102\/points\/mancal-lado-oposto-ao-acoplamento\?from=/,
     );
     expect(within(linha).getByRole('link', { name: 'SIM-HF-002' }).getAttribute('href')).toMatch(
       /^\/sensors\/SIM-HF-002\?from=/,
@@ -470,7 +470,7 @@ describe('OperationalDashboard', () => {
     await userEvent.click(cell);
     await waitFor(() =>
       expect(screen.getByTestId('rota').textContent).toMatch(
-        /^\/assets\/P-102\/points\/mancal-lado-oposto-ao-acoplamento\?from=.+&to=/,
+        /^\/machines\/P-102\/points\/mancal-lado-oposto-ao-acoplamento\?from=.+&to=/,
       ),
     );
   });

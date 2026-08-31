@@ -139,7 +139,7 @@ export function InspectionPriorityTable({
                       {/* Nome curto na tabela densa; o completo vive no title e no tooltip. */}
                       <Link
                         component={RouterLink}
-                        to={links.asset(cell.machineName, range)}
+                        to={links.machine(cell.machineName, range)}
                         title={cell.machineName}
                         onClick={(event) => event.stopPropagation()}
                         underline="hover"

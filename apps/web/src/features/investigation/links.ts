@@ -29,15 +29,21 @@ function withQuery(
 }
 
 export const links = {
-  /** Página analítica do ativo. O segmento é a etiqueta da máquina ("P-101"). */
-  asset(machineName: string, range: AnalyticsRange): string {
-    return withQuery(`/assets/${encodeURIComponent(machineSlug(machineName))}`, range);
+  /**
+   * Página canônica da máquina. O segmento é a etiqueta ("P-101"), não o UUID.
+   *
+   * Operação e cadastro moram na MESMA rota: duas páginas para a mesma entidade é como um
+   * produto acaba com dois nomes para a mesma coisa. `/assets/...` continua funcionando
+   * por compatibilidade, redirecionando para cá.
+   */
+  machine(machineName: string, range: AnalyticsRange): string {
+    return withQuery(`/machines/${encodeURIComponent(machineSlug(machineName))}`, range);
   },
 
-  /** Página analítica do ponto, dentro do ativo. */
+  /** Página canônica do ponto, dentro da máquina a que ele pertence. */
   point(machineName: string, pointName: string, range: AnalyticsRange): string {
     return withQuery(
-      `/assets/${encodeURIComponent(machineSlug(machineName))}/points/${encodeURIComponent(pointSlug(pointName))}`,
+      `/machines/${encodeURIComponent(machineSlug(machineName))}/points/${encodeURIComponent(pointSlug(pointName))}`,
       range,
     );
   },

@@ -133,7 +133,7 @@ export function FleetConditionMatrix({
                     <TableCell key={row.machine.id} align="center" sx={{ px: 0.25 }}>
                       <Link
                         component={RouterLink}
-                        to={links.asset(row.machine.name, range)}
+                        to={links.machine(row.machine.name, range)}
                         underline="hover"
                         color="inherit"
                         title={`Abrir ${row.machine.name}`}

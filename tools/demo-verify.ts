@@ -27,6 +27,9 @@ function record(name: string, ok: boolean, detail: string, fatal = true): void {
   checks.push({ name, ok, detail, fatal });
 }
 
+/** Primeira amostra de telemetria: antes disto só existe o histórico operacional seedado. */
+const HISTORY_START = new Date('2026-06-01T00:00:00.000Z');
+
 const API_PORT = process.env.API_PORT ?? '3000';
 const API = `http://localhost:${API_PORT}/api`;
 
@@ -91,10 +94,11 @@ async function checkEngine(): Promise<void> {
   );
 }
 
-/** Um episódio da família, para o sensor, em qualquer estado. */
+/** Um episódio da família, para o sensor, em qualquer estado — SÓ no período do histórico
+ * (o lote seedado de mar–mai não é decisão do motor e não entra nos cenários). */
 async function episodesOf(serial: string, type: 'VIBRATION_THRESHOLD' | 'TEMPERATURE_THRESHOLD' | 'SENSOR_SILENT') {
   return prisma.alertOccurrence.findMany({
-    where: { sensorSerialNumber: serial, type },
+    where: { sensorSerialNumber: serial, type, openedAt: { gte: HISTORY_START } },
     orderBy: { openedAt: 'asc' },
   });
 }
@@ -133,16 +137,37 @@ async function checkScenarios(): Promise<void> {
     silent.length > 0 ? `${silent.length} episódio(s), o primeiro em ${silent[0].openedAt.toISOString()}` : 'nenhum episódio',
   );
 
-  const fleet = await prisma.alertOccurrence.count({ where: { type: 'FLEET_SILENT' } });
+  const fleet = await prisma.alertOccurrence.count({ where: { type: 'FLEET_SILENT', openedAt: { gte: HISTORY_START } } });
   record('cenário: perda ampla de telemetria detectada nas paradas', fleet > 0, `${fleet} episódio(s) de frota`);
 
   const healthy = await prisma.alertOccurrence.count({
     where: {
+      // Só o período do histórico: a operação anterior seedada não é decisão do motor.
+      openedAt: { gte: HISTORY_START },
       type: { in: ['VIBRATION_THRESHOLD', 'TEMPERATURE_THRESHOLD'] },
       sensorSerialNumber: { in: ['SIM-HF-001', 'SIM-HF-003', 'SIM-HF-004', 'SIM-HF-006', 'SIM-HF-008', 'SIM-TCAG-001', 'SIM-TCAG-002', 'SIM-TCAS-002'] },
     },
   });
   record('cenário: sensores sadios sem alerta de condição', healthy === 0, healthy === 0 ? 'nenhum' : `${healthy} alerta(s) inesperado(s)`);
+}
+
+/** O lote do `alerts:seed-history`: popular a listagem sem contaminar o que é do motor. */
+async function checkOperationalHistory(): Promise<void> {
+  const [prior, activePrior] = await Promise.all([
+    prisma.alertOccurrence.count({ where: { openedAt: { lt: HISTORY_START } } }),
+    prisma.alertOccurrence.count({ where: { openedAt: { lt: HISTORY_START }, state: 'ACTIVE' } }),
+  ]);
+  record(
+    'listagem: operação anterior populada (≥ 100 episódios)',
+    prior >= 100,
+    prior >= 100 ? `${prior} episódios encerrados antes de 01/06` : `${prior} — rode "npm run alerts:seed-history"`,
+    false,
+  );
+  record(
+    'listagem: nenhum episódio seedado continua ativo',
+    activePrior === 0,
+    activePrior === 0 ? 'todos encerrados — os ativos são sempre do motor' : `${activePrior} ativo(s) antes do histórico`,
+  );
 }
 
 async function checkApi(): Promise<void> {
@@ -194,6 +219,7 @@ async function main(): Promise<void> {
     await checkRules();
     await checkEngine();
     await checkScenarios();
+    await checkOperationalHistory();
     if (withApi) await checkApi();
   } finally {
     await prisma.$disconnect();

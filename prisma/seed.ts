@@ -6,6 +6,8 @@
 import { randomBytes, scryptSync } from 'node:crypto';
 
 import { PrismaClient } from '@prisma/client';
+
+import { seedOperationalHistory } from './operational-history';
 import { demoAnchorMs, deterministicResourceId } from '@dynamox/contracts';
 
 const prisma = new PrismaClient();
@@ -191,6 +193,14 @@ async function main(): Promise<void> {
     );
   }
   console.log(`  série temporal.....: ${timeSeries.id} — ${sampleCount} amostras`);
+
+  // Histórico operacional de alertas (mar–mai): só quando a planta completa já existe.
+  // No seed mínimo (este arquivo recém-executado num banco vazio) ele apenas se anuncia;
+  // o demo:prepare o executa de novo após o cadastro completo e o backfill do motor.
+  const history = await seedOperationalHistory(prisma);
+  if (history.skipped) {
+    console.log(`  alertas anteriores.: pulado — ${history.skipped}`);
+  }
 }
 
 main()

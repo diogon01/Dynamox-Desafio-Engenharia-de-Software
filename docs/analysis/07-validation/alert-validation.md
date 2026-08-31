@@ -1,7 +1,7 @@
 # Validação do motor de alertas contra a verdade-terreno sintética
 
-Gerado em 2026-08-31 14:36 UTC pelo `npm run alerts:validate` — regras `telemetry-presence` v1, `temperature-delta` v1, `vibration-radial` v1.
-Universo rotulado: **33.552 ciclos `dataset:history`** de 12 sensores; ocorrências no banco: **12** (3 ativas).
+Gerado em 2026-08-31 21:10 UTC pelo `npm run alerts:validate` — regras `telemetry-presence` v1, `temperature-delta` v1, `vibration-radial` v1.
+Universo rotulado: **33.552 ciclos `dataset:history`** de 12 sensores; ocorrências do período rotulado: **12** (3 ativas).
 
 O motor nunca lê o rótulo; este relatório o lê para medir o motor.
 

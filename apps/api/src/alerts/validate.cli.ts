@@ -106,7 +106,12 @@ async function main(): Promise<void> {
       expectedState: row.expected_state,
     }));
 
-    const occurrences = await prisma.alertOccurrence.findMany({ orderBy: { openedAt: 'asc' } });
+    // Só o período rotulado: o histórico operacional seedado (< 01/06) não é decisão do motor.
+    const firstLabeledMs = Math.min(...cycles.map((c) => c.slotStartMs));
+    const occurrences = await prisma.alertOccurrence.findMany({
+      where: { openedAt: { gte: new Date(firstLabeledMs - HOUR_MS) } },
+      orderBy: { openedAt: 'asc' },
+    });
     const events = await prisma.alertEvent.findMany({ orderBy: { occurredAt: 'asc' } });
     const rules = await prisma.alertRule.findMany({ orderBy: { key: 'asc' } });
     const states = await prisma.alertRuleState.findMany({
@@ -190,7 +195,7 @@ async function main(): Promise<void> {
     push();
     push(`Gerado em ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC pelo \`npm run alerts:validate\` — regras ${ruleLine}.`);
     push(`Universo rotulado: **${totalLabeled.toLocaleString('pt-BR')} ciclos \`dataset:history\`** de ${serials.length} sensores; ` +
-      `ocorrências no banco: **${occurrences.length}** (${occurrences.filter((o) => o.state === 'ACTIVE').length} ativas).`);
+      `ocorrências do período rotulado: **${occurrences.length}** (${occurrences.filter((o) => o.state === 'ACTIVE').length} ativas).`);
     push();
     push('O motor nunca lê o rótulo; este relatório o lê para medir o motor.');
     push('');

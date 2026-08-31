@@ -42,6 +42,7 @@
     "alerts:backfill": "tsx apps/api/src/alerts/backfill.cli.ts",
     "prealerts:validate": "npx nx run-many -t build --projects @dynamox/domain",
     "alerts:validate": "tsx apps/api/src/alerts/validate.cli.ts",
+    "alerts:seed-history": "tsx prisma/operational-history.ts",
     "demo:prepare": "tsx tools/demo-prepare.ts",
     "demo:verify": "tsx tools/demo-verify.ts"
   },

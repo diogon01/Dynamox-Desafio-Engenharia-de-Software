@@ -415,6 +415,7 @@ com relógio replayado, idempotente:
 ```bash
 npm run alerts:backfill -- --dry-run          # ciclos por dia, nada aplicado
 npm run alerts:backfill                       # ~3 min para 30 dias; reexecutar → 0 avaliações novas
+npm run alerts:seed-history                   # operação anterior (mar–mai): ~195 episódios ENCERRADOS para a listagem; idempotente, nunca toca o período rotulado
 npm run alerts:backfill -- --reset --yes      # zera SÓ as tabelas do motor e refaz (amostras/ciclos intactos)
 npm run alerts:validate                       # matriz TP/FP/TN/FN contra a verdade-terreno → docs/analysis/07-validation/alert-validation.md
 ```

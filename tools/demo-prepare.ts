@@ -152,6 +152,9 @@ async function main(): Promise<void> {
   announce('Motor de alertas sobre todo o histórico, com relógio replayado (idempotente)');
   npm('alerts:backfill');
 
+  announce('Histórico operacional anterior (mar–mai) — popular a listagem de alertas');
+  npm('alerts:seed-history');
+
   if (!options.skipValidate) {
     announce('Validação contra a verdade-terreno do gerador');
     npm('alerts:validate');

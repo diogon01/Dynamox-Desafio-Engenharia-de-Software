@@ -80,6 +80,17 @@ const FLEET: AlertOccurrenceDto = {
 
 const DETAIL: AlertDetailDto = {
   ...VIBRATION,
+  baseline: {
+    status: 'established',
+    value: 0.0156,
+    learningCycles: 192,
+    learnedFrom: '2026-07-31T00:02:00.000Z',
+    learnedTo: '2026-08-01T23:47:00.000Z',
+    establishedAt: '2026-08-01T23:47:00.000Z',
+    minBinCount: 8,
+    maxBinCount: 8,
+    sensorSerialNumber: 'SIM-HF-002',
+  },
   rule: {
     id: 'r-vib',
     key: 'vibration-radial',
@@ -132,9 +143,62 @@ function okJson(payload: unknown): Response {
   return new Response(JSON.stringify(payload), { status: 200 });
 }
 
+/** Inventário que alimenta os seletores de máquina e sensor da listagem. */
+const POINTS = [
+  {
+    id: 'p1',
+    name: 'Mancal lado oposto ao acoplamento',
+    machine: { id: 'm1', name: 'P-101', type: 'Pump' },
+    sensor: { id: 's1', serialNumber: 'SIM-HF-002', model: 'HF+' },
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+  },
+  {
+    id: 'p2',
+    name: 'Mancal lado acoplamento',
+    machine: { id: 'm2', name: 'VE-202 — Exaustor de caldeira', type: 'Fan' },
+    sensor: { id: 's2', serialNumber: 'SIM-HF-007', model: 'HF+' },
+    createdAt: '2026-08-01T00:00:00.000Z',
+    updatedAt: '2026-08-01T00:00:00.000Z',
+  },
+];
+
 function stubApi(handlers: { onAck?: (body: unknown) => Response } = {}) {
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (url.includes('/monitoring-points')) {
+      return okJson({ items: POINTS, total: POINTS.length, page: 1, pageSize: 50, totalPages: 1, sortBy: 'machineName', sortDir: 'asc' });
+    }
+    if (url.includes('/analytics/fleet-condition')) {
+      return okJson({
+        from: '2026-08-24T00:00:00.000Z',
+        to: '2026-08-31T00:00:00.000Z',
+        generatedAt: '2026-08-31T00:00:00.000Z',
+        counts: { total: 1, attention: 1, observation: 0, normal: 0, unclassified: 0, noData: 0, noSensor: 0 },
+        points: [
+          {
+            machineName: 'P-101',
+            machineType: 'Pump',
+            monitoringPointId: 'p1',
+            monitoringPointName: 'Mancal lado oposto ao acoplamento',
+            sensorSerialNumber: 'SIM-HF-002',
+            sensorModel: 'HF+',
+            condition: 'attention',
+            freshness: 'current',
+            currentValue: 0.0572,
+            baselineValue: 0.0164,
+            deviationRatio: 3.49,
+            currentAt: '2026-08-30T23:00:59.000Z',
+            baselineAt: '2026-08-30T22:00:00.000Z',
+            currentSampleCount: 60,
+            currentCycleId: 'c1',
+            baselineCycleId: 'c0',
+            unit: 'g',
+            trend: [],
+          },
+        ],
+      });
+    }
     if (url.includes('/alerts/') && url.endsWith('/acknowledge')) {
       const body = init?.body ? JSON.parse(String(init.body)) : {};
       return handlers.onAck ? handlers.onAck(body) : okJson({ ...DETAIL, status: 'acknowledged', acknowledgedAt: '2026-08-31T10:00:00.000Z', acknowledgedBy: 'teste@dynamox.local', acknowledgedLevel: 'A2', acknowledgeNote: body.note ?? null, events: [...DETAIL.events, { id: 'e3', type: 'acknowledged', fromState: 'active', toState: 'active', fromLevel: 'A2', toLevel: 'A2', occurredAt: '2026-08-31T10:00:00.000Z', cycleId: null, value: null, measure: null, threshold: null, actor: 'teste@dynamox.local', note: body.note ?? null }] });
@@ -183,7 +247,7 @@ describe('Alertas — listagem', () => {
     renderAlerts('/alerts');
     const table = await screen.findByRole('table', { name: /Alertas/i });
     expect(within(table).getByText(/Vibração/)).toBeDefined();
-    expect(within(table).queryByText(/Planta muda/)).toBeNull();
+    expect(within(table).queryByText(/Frota sem telemetria/)).toBeNull();
     const urls = fetcher.mock.calls.map(([input]) => String(input));
     expect(urls.some((url) => /\/alerts\?.*status=active/.test(url))).toBe(true);
     // O seletor mostra quantos há em cada estado, vindo de `counts` — não da página.
@@ -197,10 +261,23 @@ describe('Alertas — listagem', () => {
     await screen.findByRole('table', { name: /Alertas/i });
     await userEvent.click(screen.getByRole('button', { name: /^Resolvidos/ }));
     await waitFor(() => expect(screen.getByTestId('rota').textContent).toBe('/alerts?status=resolved'));
-    expect(await screen.findByText(/Planta muda/)).toBeDefined();
-    expect(screen.getByText(/Planta · 12 pontos/)).toBeDefined();
+    expect(await screen.findByText(/Frota sem telemetria/)).toBeDefined();
+    expect(screen.getByText(/Frota · 12 pontos/)).toBeDefined();
     const urls = fetcher.mock.calls.map(([input]) => String(input));
     expect(urls.at(-1)).toMatch(/status=resolved/);
+  });
+
+  it('oferece recorte por máquina e por sensor, alimentado pelo cadastro', async () => {
+    stubApi();
+    renderAlerts('/alerts');
+    await screen.findByRole('table', { name: /Alertas/i });
+    const machine = screen.getByLabelText('Máquina');
+    await userEvent.click(machine);
+    const option = await screen.findByRole('option', { name: 'P-101' });
+    await userEvent.click(option);
+    // O status padrão é implícito: só o que a pessoa escolheu entra na URL.
+    await waitFor(() => expect(screen.getByTestId('rota').textContent).toBe('/alerts?machine=P-101'));
+    expect(screen.getByLabelText('Sensor')).toBeDefined();
   });
 
   it('abrir uma linha leva ao detalhe do episódio', async () => {
@@ -230,6 +307,13 @@ describe('Alertas — detalhe e reconhecimento', () => {
     expect(within(timeline).getAllByRole('listitem')).toHaveLength(2);
     expect(within(timeline).getByText(/Escalado · A2/)).toBeDefined();
     expect(screen.getByRole('link', { name: /Abrir aquisição do disparo/i }).getAttribute('href')).toMatch(/^\/acquisitions\/c-open\?from=/);
+    // Baseline aprendida e o período que a produziu — é o que responde "1,5× de quê".
+    expect(screen.getByText('192 ciclos')).toBeDefined();
+    expect(screen.getAllByText(/31\/07\/2026 → 01\/08\/2026/).length).toBeGreaterThan(0);
+    // As DUAS referências lado a lado: sem isso, 3,77× e 3,49× parecem contradição.
+    expect(screen.getByText('Razão do alerta')).toBeDefined();
+    expect(screen.getByText('Condição atual do ponto')).toBeDefined();
+    expect(await screen.findByText('3,49×')).toBeDefined();
     // Alerta ≠ condição, dito na própria tela.
     expect(screen.getByText(/um alerta pode estar aberto com a condição "normal"/i)).toBeDefined();
   });

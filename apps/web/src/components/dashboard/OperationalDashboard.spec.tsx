@@ -458,8 +458,9 @@ describe('OperationalDashboard', () => {
     expect(screen.getByLabelText(/^Cobertura monitorada: 66,7%/)).toBeDefined();
     // Alertas: episódios persistidos pelo motor — conceito distinto da condição ao lado.
     const alertas = await screen.findByLabelText(/^Alertas abertos: 1\b/);
-    expect(within(alertas).getByText(/1 em A2 · 0 em A1/)).toBeDefined();
-    expect(alertas.getAttribute('href')).toBe('/alerts?status=active');
+    expect(within(alertas).getByText(/1 em A2 · 0 em A1 ativos/)).toBeDefined();
+    // "Aberto" na home é o mesmo "Aberto" da listagem: ativo e não reconhecido.
+    expect(alertas.getAttribute('href')).toBe('/alerts?status=open');
   });
 
   it('a carga não busca métricas por série nem amostra bruta: tudo vem agregado', async () => {
@@ -586,7 +587,7 @@ describe('OperationalDashboard', () => {
     const painel = await screen.findByRole('region', { name: /Alertas recentes/i });
     // Um A2 ativo em SIM-HF-002 e uma parada da planta já resolvida — ambos com status próprio.
     expect(await within(painel).findByText(/Vibração · P-102 · Mancal lado oposto ao acoplamento · SIM-HF-002/i)).toBeDefined();
-    expect(within(painel).getByText(/Planta muda · Planta · 12 pontos/i)).toBeDefined();
+    expect(within(painel).getByText(/Frota sem telemetria · Frota · 12 pontos/i)).toBeDefined();
     expect(within(painel).getAllByText(/Resolvido/)).toHaveLength(1);
     expect(within(painel).queryByText(/não há alarmes persistidos/i)).toBeNull();
     expect(within(painel).getByRole('link', { name: /Ver todos/i }).getAttribute('href')).toBe('/alerts?status=active');

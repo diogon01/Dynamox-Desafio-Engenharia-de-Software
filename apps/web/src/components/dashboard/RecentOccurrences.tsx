@@ -81,7 +81,7 @@ export function RecentOccurrences({
           {rows.map((alert) => {
             const identity =
               alert.scope === 'fleet'
-                ? `Planta · ${alert.affectedCount ?? 0} pontos`
+                ? `Frota · ${alert.affectedCount ?? 0} pontos`
                 : [alert.machineName ? machineTag(alert.machineName) : null, alert.monitoringPointName, alert.sensorSerialNumber]
                     .filter(Boolean)
                     .join(' · ');

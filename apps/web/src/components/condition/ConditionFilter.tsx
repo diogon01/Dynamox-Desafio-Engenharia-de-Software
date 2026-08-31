@@ -46,6 +46,13 @@ export interface ConditionFilterProps {
   size?: 'small' | 'medium';
 }
 
+/**
+ * Sentinela do "sem filtro". `value={null}` num ToggleButton é o mesmo que "prop ausente"
+ * para o MUI (e rende um aviso de propType), então a ausência de recorte tem um valor
+ * próprio aqui e vira `null` na fronteira do componente.
+ */
+const ALL = '__all__' as const;
+
 export function ConditionFilter({
   counts,
   value,
@@ -62,12 +69,12 @@ export function ConditionFilter({
     <ToggleButtonGroup
       exclusive
       size={size}
-      value={value}
+      value={value ?? ALL}
       aria-label={label}
-      onChange={(_event, next: ConditionKind | null) => onChange(next)}
+      onChange={(_event, next: ConditionKind | typeof ALL | null) => onChange(next === null || next === ALL ? null : next)}
       sx={{ flexWrap: 'wrap' }}
     >
-      <ToggleButton value={null as unknown as string} aria-label={`Todos — ${safe.total}`} sx={{ px: 1.5 }}>
+      <ToggleButton value={ALL} aria-label={`Todos — ${safe.total}`} sx={{ px: 1.5 }}>
         Todos
         <Count>{safe.total}</Count>
       </ToggleButton>

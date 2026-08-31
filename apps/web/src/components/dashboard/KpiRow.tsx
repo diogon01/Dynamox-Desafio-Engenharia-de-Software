@@ -61,6 +61,9 @@ export function KpiRow({
   const deviation = headline.maxDeviation;
   const counts = alerts?.counts ?? null;
   const activeAlerts = counts ? counts.activeA1 + counts.activeA2 : 0;
+  // "Aberto" = ativo e ainda NÃO reconhecido — o que exige alguém agora, e exatamente o que
+  // a aba "Abertos" da listagem mostra. Reconhecidos continuam ativos e aparecem no contexto.
+  const openAlerts = counts?.open ?? 0;
 
   const kpis: KpiSpec[] = [
     {
@@ -100,16 +103,18 @@ export function KpiRow({
     {
       key: 'alerts',
       label: 'Alertas abertos',
-      value: counts ? String(activeAlerts) : '—',
+      value: counts ? String(openAlerts) : '—',
       context: counts
-        ? activeAlerts > 0
-          ? `${counts.activeA2} em A2 · ${counts.activeA1} em A1${counts.acknowledged > 0 ? ` · ${counts.acknowledged} reconhecido(s)` : ''}`
-          : `nenhuma regra disparada · ${counts.resolved} resolvido(s)`
+        ? openAlerts > 0
+          ? `${counts.activeA2} em A2 · ${counts.activeA1} em A1 ativos${counts.acknowledged > 0 ? ` · ${counts.acknowledged} já reconhecido(s)` : ''}`
+          : activeAlerts > 0
+            ? `${activeAlerts} ativo(s), todos reconhecidos`
+            : `nenhuma regra disparada · ${counts.resolved} resolvido(s)`
         : 'episódios persistidos pelo motor',
       icon: <NotificationsActiveOutlinedIcon />,
       tone: counts && counts.activeA2 > 0 ? 'error' : counts && counts.activeA1 > 0 ? 'warning' : 'success',
-      active: activeAlerts > 0,
-      to: links.alerts({ status: 'active' }),
+      active: openAlerts > 0,
+      to: links.alerts({ status: openAlerts > 0 ? 'open' : 'active' }),
     },
   ];
 

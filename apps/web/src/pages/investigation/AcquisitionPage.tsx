@@ -165,8 +165,9 @@ export function AcquisitionPage(): JSX.Element {
                   Verdade-terreno declarada
                 </Typography>
                 <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 1 }}>
-                  Registrada pelo gerador sintético no momento da ingestão — é a referência para avaliar
-                  uma futura regra de alerta, não um alarme emitido.
+                  Registrada pelo gerador sintético no momento da ingestão. É lida apenas pela validação
+                  (<code>npm run alerts:validate</code>), que mede o motor contra ela — o motor de alertas
+                  nunca a consulta.
                 </Typography>
                 <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap>
                   {Object.entries(data.groundTruth)

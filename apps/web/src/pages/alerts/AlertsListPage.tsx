@@ -35,7 +35,8 @@ import { EmptyState, ErrorState } from '@dynamox/ui';
 import { api } from '../../api/client';
 import { PageHeader } from '../../components/PageHeader';
 import { AlertLevelTag, AlertStatusTag } from '../../components/alerts/AlertLevelTag';
-import { ALERT_TYPE_LABELS, ALERT_TYPE_SHORT, alertIdentity, alertSummary, formatMeasure } from '../../features/alerts/alertLabels';
+import { ALERT_TYPE_LABELS, ALERT_TYPE_SHORT, alertIdentity, alertSummary, formatMagnitude } from '../../features/alerts/alertLabels';
+import { links } from '../../features/investigation/links';
 import { useAnalyticsQuery } from '../../features/investigation/useAnalyticsQuery';
 import { useQueryParams } from '../../features/navigation/useQueryParams';
 import { TIME_ZONE_LABEL, formatShortDateTime } from '../../features/time/instant';
@@ -83,6 +84,13 @@ export function AlertsListPage(): JSX.Element {
     () => api.alerts({ status, level, type, machine, sensor, from, to, page, pageSize, sortBy, sortDir }),
     [status, level, type, machine, sensor, from, to, page, pageSize, sortBy, sortDir],
   );
+  /**
+   * Opções de recorte por ativo. Uma requisição só: o cadastro de pontos já traz máquina e
+   * sensor, e a planta tem dezenas de linhas — não vale um endpoint novo para isto.
+   */
+  const inventory = useAnalyticsQuery(() => api.allMonitoringPoints(), []);
+  const machines = [...new Set((inventory.data ?? []).map((point) => point.machine.name))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const sensors = [...new Set((inventory.data ?? []).flatMap((point) => (point.sensor ? [point.sensor.serialNumber] : [])))].sort();
   const data = query.data;
   const loading = query.status === 'loading' || query.status === 'idle';
 
@@ -110,8 +118,6 @@ export function AlertsListPage(): JSX.Element {
   };
 
   const scopeChips = [
-    machine ? <Chip key="machine" size="small" label={`Máquina: ${machine}`} onDelete={() => setFilter({ machine: null })} /> : null,
-    sensor ? <Chip key="sensor" size="small" label={`Sensor: ${sensor}`} onDelete={() => setFilter({ sensor: null })} /> : null,
     from || to ? (
       <Chip
         key="window"
@@ -128,11 +134,11 @@ export function AlertsListPage(): JSX.Element {
         steps={[{ label: 'Visão geral', to: '/' }, { label: 'Alertas' }]}
         title="Alertas"
         subtitle={
-          <>
+          <Box component="span" sx={{ display: 'block', maxWidth: 820 }}>
             Episódios abertos pelo motor quando uma regra da política v1 dispara — A1 é alerta, A2 é crítico. Alerta é
             diferente da condição do painel: aqui a referência é a baseline aprendida de cada ponto, e cada linha tem
             abertura, escalada, reconhecimento e resolução próprios.
-          </>
+          </Box>
         }
         chips={
           <>
@@ -193,7 +199,7 @@ export function AlertsListPage(): JSX.Element {
                 ))}
               </Select>
             </FormControl>
-            <FormControl size="small" sx={{ minWidth: 220 }}>
+            <FormControl size="small" sx={{ minWidth: 210 }}>
               <InputLabel id="alerts-type-label">Tipo</InputLabel>
               <Select
                 labelId="alerts-type-label"
@@ -205,6 +211,38 @@ export function AlertsListPage(): JSX.Element {
                 {ALERT_TYPES.map((item) => (
                   <MenuItem key={item} value={item}>
                     {ALERT_TYPE_LABELS[item]}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel id="alerts-machine-label">Máquina</InputLabel>
+              <Select
+                labelId="alerts-machine-label"
+                label="Máquina"
+                value={machine && (machines.length === 0 || machines.includes(machine)) ? machine : ''}
+                onChange={(event) => setFilter({ machine: event.target.value === '' ? null : String(event.target.value) })}
+              >
+                <MenuItem value="">Todas</MenuItem>
+                {machines.map((item) => (
+                  <MenuItem key={item} value={item}>
+                    {item}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel id="alerts-sensor-label">Sensor</InputLabel>
+              <Select
+                labelId="alerts-sensor-label"
+                label="Sensor"
+                value={sensor && (sensors.length === 0 || sensors.includes(sensor)) ? sensor : ''}
+                onChange={(event) => setFilter({ sensor: event.target.value === '' ? null : String(event.target.value) })}
+              >
+                <MenuItem value="">Todos</MenuItem>
+                {sensors.map((item) => (
+                  <MenuItem key={item} value={item}>
+                    {item}
                   </MenuItem>
                 ))}
               </Select>
@@ -269,6 +307,9 @@ export function AlertsListPage(): JSX.Element {
                     </TableCell>
                     <TableCell align="right">Medida</TableCell>
                     <TableCell align="right">Pico</TableCell>
+                    <TableCell align="right" sx={{ width: 72 }}>
+                      Ação
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -278,17 +319,8 @@ export function AlertsListPage(): JSX.Element {
                       <TableRow
                         key={alert.id}
                         hover
-                        tabIndex={0}
-                        role="link"
-                        aria-label={`Abrir alerta ${alert.level} ${ALERT_TYPE_SHORT[alert.type]} em ${identity}`}
-                        onClick={() => navigate(`/alerts/${alert.id}`)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            navigate(`/alerts/${alert.id}`);
-                          }
-                        }}
-                        sx={{ cursor: 'pointer', '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: -2 } }}
+                        onClick={() => navigate(links.alert(alert.id))}
+                        sx={{ cursor: 'pointer' }}
                       >
                         <TableCell>
                           <AlertStatusTag status={alert.status} />
@@ -331,10 +363,22 @@ export function AlertsListPage(): JSX.Element {
                           ) : null}
                         </TableCell>
                         <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                          {formatMeasure(alert.last.measure, alert.thresholdMode)}
+                          {formatMagnitude(alert.last, alert.thresholdMode)}
                         </TableCell>
                         <TableCell align="right" sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                          {formatMeasure(alert.peak.measure, alert.thresholdMode)}
+                          {formatMagnitude(alert.peak, alert.thresholdMode)}
+                        </TableCell>
+                        <TableCell align="right">
+                          {/* Link real: a linha inteira é clicável, mas quem navega por teclado precisa de um destino. */}
+                          <Link
+                            component={RouterLink}
+                            to={links.alert(alert.id)}
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label={`Abrir alerta ${alert.level} ${ALERT_TYPE_SHORT[alert.type]} em ${identity}`}
+                            sx={{ fontWeight: 650, whiteSpace: 'nowrap' }}
+                          >
+                            Abrir
+                          </Link>
                         </TableCell>
                       </TableRow>
                     );

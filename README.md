@@ -298,6 +298,7 @@ persistido e proveniência ROS opcional da aquisição confirmatória.
 ```bash
 npm run plant -- bootstrap && npm run plant -- baseline && npm run plant -- condition
 npm run plant -- deliberate     # ranking + aquisição confirmatória + recomendação
+npm run twin:history -- --dry-run   # histórico sintético de 30 dias (opcional; ver docs/SETUP.md)
 ```
 
 Requisitos: os mesmos do fluxo normal (`db:up` + `dev:api` + seed). **ROS é opcional**

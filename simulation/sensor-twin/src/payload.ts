@@ -84,6 +84,46 @@ export function acquisitionIntentId(
   return `sim.${identity.sensorSerial}.${config.scenario}.s${config.seed}.${compactStart}`;
 }
 
+/**
+ * Extras ADITIVOS do ciclo — só entram nos objetos que o contrato declara abertos
+ * (`metadata`, `configuration`, `tags`). Servem para proveniência adicional (ex.: a
+ * verdade-terreno do histórico sintético). Nunca substituem uma chave canônica: quem
+ * tentar recebe erro antes de o payload existir. Entram no fingerprint como qualquer
+ * outro conteúdo — por isso precisam ser determinísticos.
+ */
+export interface CycleExtras {
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  configuration?: Record<string, unknown>;
+}
+
+const RESERVED_METADATA_KEYS = ['origin', 'generator', 'profile', 'cycleId', 'seed', 'synthetic'];
+const RESERVED_CONFIGURATION_KEYS = [
+  'monitoringLocationMap',
+  'rpm',
+  'loadPercent',
+  'scenario',
+  'seed',
+  'durationSeconds',
+  'publishRateHz',
+];
+
+export function assertExtrasAreAdditive(extras: CycleExtras): void {
+  const clashes: string[] = [];
+  for (const key of Object.keys(extras.metadata ?? {})) {
+    if (RESERVED_METADATA_KEYS.includes(key)) clashes.push(`metadata.${key}`);
+  }
+  for (const key of Object.keys(extras.configuration ?? {})) {
+    if (RESERVED_CONFIGURATION_KEYS.includes(key)) clashes.push(`configuration.${key}`);
+  }
+  for (const tag of extras.tags ?? []) {
+    if (typeof tag !== 'string' || tag.length === 0) clashes.push('tags: item vazio');
+  }
+  if (clashes.length > 0) {
+    throw new Error(`Extras do ciclo tentaram sobrescrever chaves canônicas: ${clashes.join(', ')}.`);
+  }
+}
+
 const DISPLAY_NAMES = {
   x: { pt: 'Aceleração RMS — eixo X', en: 'Acceleration RMS — X axis' },
   y: { pt: 'Aceleração RMS — eixo Y', en: 'Acceleration RMS — Y axis' },
@@ -100,9 +140,19 @@ export function buildCyclePayload(
   windows: CycleWindows,
   identity: SensorTwinIdentity,
   cycleId: string,
+  extras: CycleExtras = {},
 ): TelemetryCyclePayload {
+  assertExtrasAreAdditive(extras);
   const { config } = windows;
   const { resourceId } = identity;
+  const canonicalTags = [
+    'simulated',
+    `asset:${slugify(identity.machineName)}`,
+    `model:${MODEL_SLUGS[identity.sensorModel]}`,
+    `scenario:${config.scenario}`,
+  ];
+  // Canônicas primeiro, extras depois, sem repetição — a ordem é estável por construção.
+  const tags = [...new Set([...canonicalTags, ...(extras.tags ?? [])])];
 
   const accelerationMeasurement = (axis: 'x' | 'y' | 'z'): TelemetryMeasurement => ({
     resourceId,
@@ -143,6 +193,7 @@ export function buildCyclePayload(
         },
       ],
       metadata: {
+        ...(extras.metadata ?? {}),
         origin: 'simulation',
         generator: {
           name: TWIN_IDENTITY.generatorName,
@@ -153,14 +204,10 @@ export function buildCyclePayload(
         seed: config.seed,
         synthetic: true,
       },
-      tags: [
-        'simulated',
-        `asset:${slugify(identity.machineName)}`,
-        `model:${MODEL_SLUGS[identity.sensorModel]}`,
-        `scenario:${config.scenario}`,
-      ],
+      tags,
     },
     configuration: {
+      ...(extras.configuration ?? {}),
       monitoringLocationMap: [
         {
           mapLabel: `${identity.machineName} / ${identity.monitoringPointName}`,
@@ -205,13 +252,14 @@ export function buildCycle(
   scenario: unknown,
   overrides: Partial<Omit<ScenarioConfig, 'scenario'>> = {},
   identity: SensorTwinIdentity = DEFAULT_IDENTITY,
+  extras: CycleExtras = {},
 ): BuiltCycle {
   const config = getScenarioConfig(scenario, overrides);
   const windows = windowStream(generateStream(config));
 
   const intentId = acquisitionIntentId(config, identity);
   // 1ª passada: cycleId = intenção → fingerprint de versão do conteúdo.
-  const draft = buildCyclePayload(windows, identity, intentId);
+  const draft = buildCyclePayload(windows, identity, intentId, extras);
   const fp8 = computePayloadFingerprint(draft).slice(0, 8);
 
   const idempotencyKey = `${intentId}.${fp8}`;
@@ -220,7 +268,7 @@ export function buildCycle(
   }
 
   // 2ª passada: cycleId = chave final (cópia rastreável, como o schema documenta).
-  const payload = buildCyclePayload(windows, identity, idempotencyKey);
+  const payload = buildCyclePayload(windows, identity, idempotencyKey, extras);
 
   return {
     config,

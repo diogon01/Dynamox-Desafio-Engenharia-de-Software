@@ -8,7 +8,8 @@ import { join } from 'node:path';
 describe('determinismo por construção', () => {
   it('nenhum arquivo de src/ usa Math.random', () => {
     const sourceDir = join(__dirname);
-    const offenders = readdirSync(sourceDir)
+    // Recursivo: subdiretórios (ex.: history/) obedecem à mesma regra.
+    const offenders = readdirSync(sourceDir, { recursive: true, encoding: 'utf8' })
       .filter((name) => name.endsWith('.ts'))
       .filter((name) => readFileSync(join(sourceDir, name), 'utf8').includes('Math.random'));
 

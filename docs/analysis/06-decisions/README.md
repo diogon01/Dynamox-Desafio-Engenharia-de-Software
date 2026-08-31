@@ -31,3 +31,4 @@ semântica de condição do dashboard, discutida em
 | [0007](./adr-0007-server-side-query-contracts.md) | Paginação, ordenação, busca e filtros no servidor | Aceito |
 | [0008](./adr-0008-synthetic-isolation.md) | Isolamento do ambiente sintético imposto por código | Aceito |
 | [0009](./adr-0009-rest-source-of-truth.md) | REST como fonte de verdade; realtime adiado | Aceito (adiado) |
+| [0010](./adr-0010-history-through-contract.md) | Histórico sintético pelo mesmo contrato de ingestão, no banco da aplicação | Aceito |

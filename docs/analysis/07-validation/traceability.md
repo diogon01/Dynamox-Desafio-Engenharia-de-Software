@@ -20,6 +20,7 @@ Comandos citados na coluna *Evidência* estão documentados em
 | Contrato público analisado e versionado | `contracts/dynamox/` | `apps/api/test/contract.spec.ts` | `npm run contracts:validate`; `sha256sum` do snapshot | snapshot ≠ API viva |
 | Análise sensor × API | [`../04-contracts/`](../04-contracts/) | — | `npm run analysis:inventory` | análise de origem; `NormalizedMetric` não foi construído |
 | Monorepo Nx com libs compartilhadas | `nx.json`, `apps/*`, `libs/*` | alvos `test` de cada projeto | `npm run build && npm run lint && npm run typecheck` | — |
+| Histórico sintético de 30 dias pelo contrato | `simulation/sensor-twin/src/history/`, `tools/purge-history.ts` | `src/history/*.spec.ts`, `test/history.integration.spec.ts` | `npm run twin:history -- --dry-run`; reexecução → `duplicate` | dados e limiares didáticos; expõe bottlenecks do app (ver `testing-strategy.md`) |
 | PostgreSQL + Prisma | `docker-compose.yml`, `prisma/` | e2e contra banco real | `npm run db:up && npm run prisma:deploy` | exige Docker local |
 | Schema, migrações e seed idempotente | `prisma/schema.prisma`, `prisma/migrations/`, `prisma/seed.ts` | e2e | `npm run seed` duas vezes | — |
 | Lint, formatação e Conventional Commits | `eslint.config.mjs`, histórico | — | `npm run lint` (zero warnings) | — |

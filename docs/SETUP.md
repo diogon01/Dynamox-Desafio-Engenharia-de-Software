@@ -76,6 +76,7 @@ npm run twin:integration      # BON-06: 17 testes contra a API/banco reais (fora
 npm run twin:ros              # BON-06.F8: 5 testes de proveniência ROS (exige ROS Noetic; opcional)
 npm run test:unit -w @dynamox/api   # somente unitários isolados (sem banco, < 2 s)
 npm run perf:latency          # TS-07: latência < 350 ms (exige a API no ar)
+npm run twin:history -- --dry-run   # histórico sintético: plano e instantes reservados, sem escrever
 ```
 
 ## Consulta da listagem de pontos
@@ -325,6 +326,37 @@ Nenhuma. O P0 convencional está completo: README de entrega na raiz (`docs: add
 reproducible challenge delivery guide`), testes unitários isolados de backend, medição
 reproduzível de latência (`npm run perf:latency`) e validação integral em clone limpo.
 O que resta é da entrega em si (revisão final, PR e e-mail) e os bônus.
+
+## Histórico sintético de 30 dias (opcional)
+
+Popula um mês de telemetria para os 12 sensores da planta **pelo mesmo `POST
+/telemetry-cycles`** (Ajv, idempotência e 409/422 reais), no banco normal da aplicação —
+uma aquisição de 60 janelas a cada 15 min por sensor, com regime operacional, eventos e
+verdade-terreno em `metadata.history`. Especificação em
+[`analysis/05-simulation/history-dataset.md`](analysis/05-simulation/history-dataset.md);
+decisão em [ADR-0010](analysis/06-decisions/adr-0010-history-through-contract.md).
+
+Pré-requisitos: API no ar e planta criada (`npm run plant -- bootstrap && npm run plant -- baseline && npm run plant -- condition`).
+
+```bash
+npm run twin:history -- --dry-run          # plano, contagens, lacunas, instantes reservados, bench
+npm run twin:history -- --sensors SIM-HF-003 --limit 50    # smoke: 50 ciclos 201; repetir → 50 × 200
+npm run twin:history -- --report simulation/sensor-twin/artifacts/history-report.json
+npm run twin:history                       # reexecutar: 0 criados, tudo duplicate (idempotente)
+npm run history:purge -- --dry-run         # quanto sairia; --yes remove só o dataset
+npm run db:reset                           # banco do zero (volume, migrações, seed)
+```
+
+Ordem de grandeza (12 núcleos): ~33 mil ciclos, ~10 milhões de amostras, ~3,5 GB no
+Postgres, poucos minutos de carga (geração em `worker_threads`, POSTs com concorrência
+limitada). Flags: `--days`, `--every`, `--sensors`, `--workers`, `--concurrency`,
+`--since`, `--limit`, `--epoch`, `--to`, `--no-detect`. A grade é absoluta e o fim é
+`DEMO_DATA_ANCHOR − 4 h`: reexecutar dias depois acrescenta só os slots novos.
+
+Rode `npm run twin:integration` **antes** da carga (ou após um purge): com o mês presente, o
+supervisor do twin e o dashboard degradam — de propósito. Os gargalos expostos e a direção
+da próxima fase estão em
+[`analysis/07-validation/testing-strategy.md`](analysis/07-validation/testing-strategy.md#bottlenecks-expostos-pelo-histórico-e-direção-da-próxima-fase).
 
 ## Estado do bônus BON-06 (concluído; ver `docs/analysis/07-validation/traceability.md`)
 

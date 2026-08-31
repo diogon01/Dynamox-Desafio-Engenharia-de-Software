@@ -7,6 +7,10 @@
  *   ingest --scenario normal|imbalance [--seed N]
  *     gera, autentica na API local e envia; depois PROVA a persistência lendo de volta
  *     as séries e amostras pelos endpoints reais.
+ *
+ *   plant history [--dry-run] [--days 30] [--every 15] [--sensors A,B] [--report path]
+ *     popula o histórico sintético (grade absoluta, narrativa com verdade-terreno) pelo
+ *     mesmo POST /telemetry-cycles — reexecutar é idempotente.
  */
 import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,6 +18,7 @@ import { join } from 'node:path';
 import { canonicalJson, computePayloadFingerprint } from '@dynamox/contracts';
 
 import { buildCycle } from './payload';
+import { runPlantHistory } from './history/run';
 import { assessFleet, type FleetAssessment } from './assess';
 import { ensurePlant, resolveResourceIds, type PlantBootstrapResult } from './bootstrap';
 import { deliberate } from './deliberate';
@@ -293,7 +298,11 @@ async function main(): Promise<void> {
       await runPlantRosbag();
       return;
     }
-    console.error('Uso: plant bootstrap|baseline|condition|assess|deliberate|rosbag');
+    if (sub === 'history') {
+      await runPlantHistory(process.argv.slice(4));
+      return;
+    }
+    console.error('Uso: plant bootstrap|baseline|condition|assess|deliberate|rosbag|history [--dry-run --days N --every MIN --sensors A,B --workers N --concurrency N --report path]');
     process.exit(2);
   }
 

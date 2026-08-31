@@ -130,6 +130,11 @@ npm run plant -- condition    # snapshot com 1 sensor em condição sintética
 npm run plant -- assess       # observacional: ranking + estados pelos dados do banco
 npm run plant -- deliberate   # loop completo com aquisição confirmatória
 npm run plant -- rosbag       # F8: JSONL → bag → reconstrução → replay (exige ROS)
+
+# histórico sintético de 30 dias (mesmo contrato; ver docs/analysis/05-simulation/history-dataset.md)
+npm run twin:history -- --dry-run          # plano, lacunas, instantes reservados, bench
+npm run twin:history                       # carga idempotente (reexecutar → duplicate)
+npm run history:purge -- --yes             # remove só o dataset
 ```
 
 ## 10. Testes

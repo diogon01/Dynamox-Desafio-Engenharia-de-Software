@@ -157,6 +157,52 @@ export async function ingestPayload(
   return { status: response.status, body };
 }
 
+/** Resultado bruto de uma tentativa de ingestão — nunca lança por status HTTP. */
+export interface IngestAttempt {
+  /** 0 quando a requisição nem completou (rede/timeout). */
+  status: number;
+  body: IngestionResponse | null;
+  errorCode: string | null;
+  errorBody: unknown;
+  networkError?: string;
+}
+
+/**
+ * Variante NÃO lançadora de `ingestPayload`, para quem precisa classificar cada
+ * resposta (retry, duplicata, conflito). Aceita o corpo já serializado para não
+ * stringificar duas vezes em cargas grandes.
+ */
+export async function tryIngestPayload(
+  config: TwinApiConfig,
+  token: string,
+  payload: unknown,
+  idempotencyKey: string,
+  options: { timeoutMs?: number } = {},
+): Promise<IngestAttempt> {
+  const body = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  let response: Response;
+  try {
+    response = await fetch(`${config.baseUrl}/telemetry-cycles`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Idempotency-Key': idempotencyKey,
+      },
+      body,
+      signal: AbortSignal.timeout(options.timeoutMs ?? HTTP_TIMEOUT_MS),
+    });
+  } catch (error) {
+    return { status: 0, body: null, errorCode: null, errorBody: null, networkError: String((error as Error).message ?? error) };
+  }
+  const parsed = await parseJson(response, 'Ingestão').catch(() => null);
+  if (response.status === 200 || response.status === 201) {
+    return { status: response.status, body: parsed as IngestionResponse, errorCode: null, errorBody: null };
+  }
+  const code = parsed && typeof parsed === 'object' && 'code' in parsed ? String((parsed as { code: unknown }).code) : null;
+  return { status: response.status, body: null, errorCode: code, errorBody: parsed };
+}
+
 export interface SeriesSummary {
   id: string;
   sensorSerialNumber: string;

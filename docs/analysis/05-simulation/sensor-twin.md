@@ -88,6 +88,16 @@ Duas restrições explícitas, ambas cobertas por teste:
 O limiar `SYNTHETIC_ATTENTION_RATIO = 2.0` é **didático**, calibrado contra o próprio
 gerador para separar os dois cenários sintéticos. Não é threshold industrial.
 
+## Histórico sintético
+
+Além das três fases da demonstração, o twin popula um mês de aquisições para a mesma
+frota — `npm run twin:history` — pelo mesmo `POST /telemetry-cycles`, com regime
+operacional, eventos rotulados e verdade-terreno em `metadata.history`. A grade é
+absoluta e termina antes das janelas da planta, de modo que a demonstração ao vivo e os
+testes de integração continuam válidos. Especificação em
+[`history-dataset.md`](./history-dataset.md); decisão em
+[ADR-0010](../06-decisions/adr-0010-history-through-contract.md).
+
 ## O que ele não é
 
 Nunca afirma ser: reprodução do sensor Dynamox real ou da banda completa do HF+;

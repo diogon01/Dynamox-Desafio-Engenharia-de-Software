@@ -75,6 +75,8 @@ transição `SUSPECT → CONFIRMED_ATTENTION` e a **fronteira** supervisor × si
 spec varre o código-fonte e falha se os módulos de decisão voltarem a referenciar a
 maquinaria de cenário.
 
+O histórico sintético (`src/history/`) tem specs puros — grade absoluta e instantes reservados para várias âncoras, monotonicidade e alvos da narrativa, validade de todos os overrides no gerador, classificação de respostas e política de retry do driver — e uma fatia de integração opt-in (`test/history.integration.spec.ts`) que prova criação pelo contrato e reexecução 100 % `duplicate`.
+
 ## Performance
 
 `npm run perf:latency` mede o requisito do enunciado ("latência abaixo de 350 ms") de forma
@@ -103,6 +105,42 @@ migrações aplicadas do zero, seed e a suíte inteira. Duas propriedades saem d
   é do gerador, não do ambiente.
 
 Comandos: [`docs/SETUP.md`](../../SETUP.md).
+
+## Bottlenecks expostos pelo histórico e direção da próxima fase
+
+O dataset [`history`](../05-simulation/history-dataset.md) (≈165 mil amostras por série)
+é usado **deliberadamente** para revelar consultas que não escalam. Nada abaixo é
+"degradação aceita": é o primeiro alvo da fase de performance, medido antes e depois da
+carga (baseline em `history-dataset.md`), e não se esconde reduzindo o dataset.
+
+| # | Onde | O que acontece | Evidência |
+|---|---|---|---|
+| 1 | `apps/web/src/features/dashboard/dashboardSlice.ts` (`fetchConditionEvidence`) + `api/client.ts` (`getAllSamples`) | baixa as 24 séries radiais inteiras, 5.000 por página, sequencial — centenas de requisições e milhões de amostras no Redux | medido |
+| 2 | `dashboardAggregations.ts` (`computeSampleStats`) | `Math.min(...values)`/`Math.max` estouram a pilha acima de ~120 mil valores — o Explorador quebra em séries históricas | observado |
+| 3 | `dashboardAggregations.ts` (`buildTrendView`, `buildWeeklyAcquisitionMap`, `groupAcquisitionWindows`) | agregação no browser: modo "por aquisição" desliga acima de 48 janelas; heatmap satura; ordenações O(N log N) por render | observado |
+| 4 | `apps/api/src/telemetry/telemetry.service.ts` (`GET /time-series`) | 60 × `COUNT(*)` + 60 últimas amostras por requisição | `perf:latency` antes/depois |
+| 5 | `GET /time-series/:id/samples` | `OFFSET` profundo degrada as páginas finais | medido |
+| 6 | `simulation/sensor-twin/src/assess.ts` | supervisor pagina séries inteiras; `twin:integration` estoura timeout após a carga | observado |
+| 7 | ingestão | `IN (60 instantes)` + `createMany` por série e PK UUID aleatória — throughput ao longo da carga | relatório da carga |
+
+**Direção obrigatória (não implementada nesta etapa; guiada por `EXPLAIN ANALYZE`):**
+
+- **O dashboard não baixa amostras brutas em massa.** Overview → agregações server-side;
+  heatmap → buckets por dia/hora (`GROUP BY sensor, day, hour` devolvendo `count`,
+  `coverage`, `avg`, `min`, `max` e, quando existir, desvio/baseline); tendência →
+  agregação temporal adequada ao período; drill-down → consulta restrita ao intervalo
+  selecionado; amostras brutas → só quando explicitamente pedidas para investigação.
+- **Drill-down hierárquico:** dashboard → máquina → sensor → dia → hora → aquisição →
+  amostra bruta. Cada nível restringe o próximo; nada é pré-carregado "porque poderia ser
+  investigado". Clicar em (dia, hora) do heatmap dispara uma requisição só daquela janela.
+- **O frontend não é a camada analítica.** Evitar `milhões de amostras → Redux →
+  map/filter/reduce → Recharts`; preferir `PostgreSQL → agregação → DTO compacto →
+  Redux/query state → Recharts`.
+- **Técnicas a considerar, com medição:** índices compostos série + timestamp, keyset
+  pagination em vez de `OFFSET` profundo, `GROUP BY`/`date_trunc`/`FILTER`, window
+  functions, CTEs e `LATERAL` quando úteis, agregações por bucket e downsampling,
+  `min/max/avg/count` no banco; materialized views e cache **somente se as medições
+  justificarem**.
 
 ## Limites de verificação
 

@@ -35,6 +35,7 @@ import { OUTCOME_TO_PRISMA, type StateRecord, stateUpdateData, toStateRecord } f
 import { type CycleEvidence, loadCycleEvidence, loadLearningRows } from './alerts.sql';
 import { buildBaselineProfile } from './core/baseline';
 import { stepThreshold } from './core/decision';
+import { type FleetPresenceDecision, type PresencePoint, sweepPresence } from './core/presence';
 import type { ActiveEpisode, CycleSample, StepResult, ThresholdState } from './core/types';
 
 type Tx = Prisma.TransactionClient;
@@ -113,6 +114,35 @@ export interface ApplyOptions {
   /** Timeout da transação; o padrão cobre um ciclo, o backfill pede mais para um dia inteiro. */
   timeoutMs?: number;
 }
+
+export interface SweepOptions {
+  /**
+   * Restringe a varredura aos pontos de UMA máquina — só presença por sensor, sem frota
+   * (a frota é a planta inteira; um recorte não pode abrir nem resolver o episódio dela).
+   */
+  machineId?: string;
+  timeoutMs?: number;
+}
+
+export interface SweepSummary {
+  instrumented: number;
+  silent: number;
+  opened: number;
+  escalated: number;
+  resolved: number;
+  fleet: FleetPresenceDecision['kind'];
+}
+
+export const EMPTY_SWEEP: Readonly<SweepSummary> = Object.freeze({
+  instrumented: 0,
+  silent: 0,
+  opened: 0,
+  escalated: 0,
+  resolved: 0,
+  fleet: 'none',
+});
+
+export const FLEET_SCOPE = 'fleet';
 
 export class AlertEngine {
   constructor(
@@ -510,6 +540,275 @@ export class AlertEngine {
     await this.resolveSilence(tx, active, cycle.startedAt, cycle.cycleId);
     point.actives.set(rule.id, null);
     summary.resumed += 1;
+  }
+
+  /**
+   * Varredura de presença com um relógio dado (o de parede no timer, o replayado no backfill):
+   * quem está mudo, há quanto tempo, e se a planta inteira parou junto. Trava os estados de
+   * presença dos pontos instrumentados para não abrir um SENSOR_SILENT por cima de um ciclo
+   * que está sendo aplicado neste exato momento.
+   */
+  async sweepPresence(nowMs: number, options: SweepOptions = {}): Promise<SweepSummary> {
+    const rule = this.rules.find(isPresenceRule);
+    if (!rule) return { ...EMPTY_SWEEP };
+    const scoped = options.machineId !== undefined;
+    const effectiveRule: RuleRecord = scoped ? { ...rule, fleetCollapseFraction: null } : rule;
+    const fleetKey = activeKeyFor(rule.id, FLEET_SCOPE);
+
+    return this.prisma.$transaction(
+      async (tx) => {
+        const candidates = await tx.alertRuleState.findMany({
+          where: {
+            ruleId: rule.id,
+            lastSeenAt: { not: null },
+            monitoringPoint: { sensor: { isNot: null }, ...(scoped ? { machineId: options.machineId } : {}) },
+          },
+          include: { monitoringPoint: { include: { machine: true, sensor: true } } },
+          orderBy: { id: 'asc' },
+        });
+        if (candidates.length === 0) return { ...EMPTY_SWEEP };
+
+        const ids = candidates.map((row) => row.id);
+        await tx.$queryRaw`SELECT s.id FROM alert_rule_states s WHERE s.id = ANY(${ids}::text[]) ORDER BY s.id FOR UPDATE OF s`;
+        // Relê depois do lock: o valor que decide é o que ninguém mais está alterando.
+        const fresh = new Map(
+          (await tx.alertRuleState.findMany({ where: { id: { in: ids } }, select: { id: true, lastSeenAt: true } })).map(
+            (row) => [row.id, row.lastSeenAt],
+          ),
+        );
+        const actives = await tx.alertOccurrence.findMany({
+          where: {
+            activeKey: { in: [...candidates.map((row) => activeKeyFor(rule.id, row.monitoringPointId)), fleetKey] },
+          },
+        });
+        const activeFor = (scope: string) => actives.find((row) => row.activeKey === activeKeyFor(rule.id, scope)) ?? null;
+
+        const points: PresencePoint[] = candidates.flatMap((row) => {
+          const lastSeenAt = fresh.get(row.id) ?? row.lastSeenAt;
+          if (!lastSeenAt) return [];
+          return [
+            {
+              monitoringPointId: row.monitoringPointId,
+              sensorId: row.monitoringPoint.sensor?.id ?? null,
+              lastSeenAtMs: lastSeenAt.getTime(),
+              active: toEpisode(activeFor(row.monitoringPointId)),
+            },
+          ];
+        });
+        const activeFleet = scoped ? null : activeFor(FLEET_SCOPE);
+        const sweep = sweepPresence(effectiveRule, points, toEpisode(activeFleet), nowMs);
+        const summary: SweepSummary = {
+          ...EMPTY_SWEEP,
+          instrumented: points.length,
+          silent: sweep.points.filter((p) => p.decision.kind === 'open' || p.decision.kind === 'escalate').length,
+          fleet: scoped ? 'none' : sweep.fleet.kind,
+        };
+        const now = new Date(nowMs);
+        const intervalSeconds = rule.expectedIntervalSeconds ?? 900;
+        const elapsedSeconds = (intervals: number) => Math.round(intervals * intervalSeconds);
+        const thresholdFor = (level: AlertLevel) => (level === 'A2' && rule.a2Threshold !== null ? rule.a2Threshold : rule.a1Threshold);
+
+        if (!scoped && sweep.fleet.kind === 'open') {
+          const { level, affectedCount, elapsedIntervals, silentSinceMs } = sweep.fleet;
+          const created = await tx.alertOccurrence.create({
+            data: {
+              ruleId: rule.id,
+              type: 'FLEET_SILENT',
+              scope: 'FLEET',
+              level: toPrismaAlertLevel(level),
+              state: 'ACTIVE',
+              activeKey: fleetKey,
+              openedAt: now,
+              lastEvaluatedAt: now,
+              metric: rule.metric,
+              unit: rule.unit,
+              thresholdMode: toPrismaAlertThresholdMode(rule.thresholdMode),
+              triggerAt: new Date(silentSinceMs),
+              triggerValue: elapsedSeconds(elapsedIntervals),
+              triggerBaseline: intervalSeconds,
+              triggerMeasure: elapsedIntervals,
+              triggerThreshold: thresholdFor(level),
+              consecutiveEvaluations: 1,
+              peakValue: elapsedSeconds(elapsedIntervals),
+              peakMeasure: elapsedIntervals,
+              peakAt: now,
+              lastValue: elapsedSeconds(elapsedIntervals),
+              lastMeasure: elapsedIntervals,
+              affectedCount,
+              policyVersion: rule.policyVersion,
+            },
+          });
+          await tx.alertEvent.create({
+            data: {
+              alertId: created.id,
+              type: 'OPENED',
+              toState: 'ACTIVE',
+              toLevel: created.level,
+              occurredAt: now,
+              value: elapsedSeconds(elapsedIntervals),
+              measure: elapsedIntervals,
+              threshold: thresholdFor(level),
+            },
+          });
+          summary.opened += 1;
+        } else if (!scoped && sweep.fleet.kind === 'update' && activeFleet) {
+          const { level, affectedCount, elapsedIntervals, escalate } = sweep.fleet;
+          await tx.alertOccurrence.update({
+            where: { id: activeFleet.id },
+            data: {
+              lastEvaluatedAt: now,
+              lastValue: elapsedSeconds(elapsedIntervals),
+              lastMeasure: elapsedIntervals,
+              peakValue: elapsedSeconds(elapsedIntervals),
+              peakMeasure: elapsedIntervals,
+              peakAt: now,
+              affectedCount,
+              ...(escalate
+                ? {
+                    level: 'A2' as const,
+                    acknowledgedAt: null,
+                    acknowledgedById: null,
+                    acknowledgedByEmail: null,
+                    acknowledgedLevel: null,
+                    acknowledgeNote: null,
+                  }
+                : {}),
+            },
+          });
+          if (escalate) {
+            await tx.alertEvent.create({
+              data: {
+                alertId: activeFleet.id,
+                type: 'ESCALATED',
+                fromState: 'ACTIVE',
+                toState: 'ACTIVE',
+                fromLevel: activeFleet.level,
+                toLevel: 'A2',
+                occurredAt: now,
+                value: elapsedSeconds(elapsedIntervals),
+                measure: elapsedIntervals,
+                threshold: thresholdFor(level),
+                note: activeFleet.acknowledgedAt ? 'Reconhecimento anterior invalidado pela escalada.' : null,
+              },
+            });
+            summary.escalated += 1;
+          }
+        } else if (!scoped && sweep.fleet.kind === 'resolve' && activeFleet) {
+          await this.resolveSilence(tx, activeFleet, now, null);
+          summary.resolved += 1;
+        }
+
+        for (const entry of sweep.points) {
+          const row = candidates.find((candidate) => candidate.monitoringPointId === entry.monitoringPointId);
+          if (!row) continue;
+          const active = activeFor(entry.monitoringPointId);
+          const { decision } = entry;
+
+          if (decision.kind === 'open') {
+            const created = await tx.alertOccurrence.create({
+              data: {
+                ruleId: rule.id,
+                type: 'SENSOR_SILENT',
+                scope: 'POINT',
+                level: toPrismaAlertLevel(decision.level),
+                state: 'ACTIVE',
+                activeKey: activeKeyFor(rule.id, entry.monitoringPointId),
+                machineId: row.monitoringPoint.machine.id,
+                machineName: row.monitoringPoint.machine.name,
+                monitoringPointId: entry.monitoringPointId,
+                monitoringPointName: row.monitoringPoint.name,
+                sensorId: row.monitoringPoint.sensor?.id ?? null,
+                sensorSerialNumber: row.monitoringPoint.sensor?.serialNumber ?? null,
+                openedAt: now,
+                lastEvaluatedAt: now,
+                metric: rule.metric,
+                unit: rule.unit,
+                thresholdMode: toPrismaAlertThresholdMode(rule.thresholdMode),
+                triggerAt: new Date(decision.silentSinceMs),
+                triggerValue: elapsedSeconds(decision.elapsedIntervals),
+                triggerBaseline: intervalSeconds,
+                triggerMeasure: decision.elapsedIntervals,
+                triggerThreshold: thresholdFor(decision.level),
+                consecutiveEvaluations: 1,
+                peakValue: elapsedSeconds(decision.elapsedIntervals),
+                peakMeasure: decision.elapsedIntervals,
+                peakAt: now,
+                lastValue: elapsedSeconds(decision.elapsedIntervals),
+                lastMeasure: decision.elapsedIntervals,
+                policyVersion: rule.policyVersion,
+              },
+            });
+            await tx.alertEvent.create({
+              data: {
+                alertId: created.id,
+                type: 'OPENED',
+                toState: 'ACTIVE',
+                toLevel: created.level,
+                occurredAt: now,
+                value: elapsedSeconds(decision.elapsedIntervals),
+                measure: decision.elapsedIntervals,
+                threshold: thresholdFor(decision.level),
+              },
+            });
+            summary.opened += 1;
+          } else if (decision.kind === 'escalate' && active) {
+            await tx.alertOccurrence.update({
+              where: { id: active.id },
+              data: {
+                level: 'A2',
+                lastEvaluatedAt: now,
+                lastValue: elapsedSeconds(decision.elapsedIntervals),
+                lastMeasure: decision.elapsedIntervals,
+                peakValue: elapsedSeconds(decision.elapsedIntervals),
+                peakMeasure: decision.elapsedIntervals,
+                peakAt: now,
+                acknowledgedAt: null,
+                acknowledgedById: null,
+                acknowledgedByEmail: null,
+                acknowledgedLevel: null,
+                acknowledgeNote: null,
+              },
+            });
+            await tx.alertEvent.create({
+              data: {
+                alertId: active.id,
+                type: 'ESCALATED',
+                fromState: 'ACTIVE',
+                toState: 'ACTIVE',
+                fromLevel: active.level,
+                toLevel: 'A2',
+                occurredAt: now,
+                value: elapsedSeconds(decision.elapsedIntervals),
+                measure: decision.elapsedIntervals,
+                threshold: thresholdFor('A2'),
+                note: active.acknowledgedAt ? 'Reconhecimento anterior invalidado pela escalada.' : null,
+              },
+            });
+            summary.escalated += 1;
+          } else if (decision.kind === 'resolve' && active) {
+            await this.resolveSilence(tx, active, now, null);
+            summary.resolved += 1;
+          } else if (active && active.level === 'A2') {
+            // Continua mudo: a mesma linha avança.
+            const elapsedIntervals = (nowMs - (fresh.get(row.id)?.getTime() ?? nowMs)) / (intervalSeconds * 1000);
+            await tx.alertOccurrence.update({
+              where: { id: active.id },
+              data: {
+                lastEvaluatedAt: now,
+                lastValue: elapsedSeconds(elapsedIntervals),
+                lastMeasure: elapsedIntervals,
+                peakValue: elapsedSeconds(elapsedIntervals),
+                peakMeasure: elapsedIntervals,
+                peakAt: now,
+              },
+            });
+          }
+        }
+
+        return summary;
+      },
+      { maxWait: 5_000, timeout: options.timeoutMs ?? 15_000 },
+    );
   }
 
   protected async resolveSilence(tx: Tx, active: AlertOccurrence, at: Date, cycleId: string | null): Promise<void> {

@@ -13,6 +13,7 @@ import request from 'supertest';
 
 import { deterministicResourceId, type TelemetryCyclePayload } from '@dynamox/contracts';
 
+import { AlertsService } from '../src/alerts/alerts.service';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -72,6 +73,7 @@ describe('Alertas (e2e) — avaliação após a ingestão', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let bearer: string;
+  let machineId: string;
   let pointId: string;
   let sensorId: string;
   let vibrationRuleId: string;
@@ -107,6 +109,7 @@ describe('Alertas (e2e) — avaliação após a ingestão', () => {
     await removeFixtures();
 
     const machine = await prisma.machine.create({ data: { name: MACHINE_NAME, type: 'PUMP' } });
+    machineId = machine.id;
     const point = await prisma.monitoringPoint.create({
       data: { name: POINT_NAME, machineId: machine.id, externalResourceId: RESOURCE_ID },
     });
@@ -301,5 +304,59 @@ describe('Alertas (e2e) — avaliação após a ingestão', () => {
   it('o motor nunca leu o rótulo do produtor: a ocorrência não conhece cenário algum', async () => {
     const [alert] = await occurrences();
     expect(JSON.stringify(alert)).not.toMatch(/scenario|groundTruth/);
+  });
+
+  describe('presença — varredura com relógio replayado, restrita à máquina da fixture', () => {
+    const sweep = (iso: string) => app.get(AlertsService).sweepPresence(Date.parse(iso), { machineId });
+    const silence = () =>
+      prisma.alertOccurrence.findMany({ where: { monitoringPointId: pointId, type: 'SENSOR_SILENT' }, orderBy: { openedAt: 'asc' } });
+
+    it('sob Jest o timer nunca arma; 3 intervalos de silêncio ainda não são alerta', async () => {
+      expect(app.get(AlertsService)['timers']).toHaveLength(0);
+      const summary = await sweep('2026-04-01T12:30:00.000Z');
+      expect(summary.instrumented).toBe(1);
+      expect(summary.opened).toBe(0);
+      expect(await silence()).toHaveLength(0);
+    });
+
+    it('passadas 4 aquisições esperadas sem dado, abre SENSOR_SILENT A1 com o silêncio desde a última leitura', async () => {
+      const summary = await sweep('2026-04-01T13:00:00.000Z');
+      expect(summary).toMatchObject({ opened: 1, fleet: 'none' });
+      const [alert] = await silence();
+      expect(alert.type).toBe('SENSOR_SILENT');
+      expect(alert.level).toBe('A1');
+      expect(alert.scope).toBe('POINT');
+      expect(alert.openedAt.toISOString()).toBe('2026-04-01T13:00:00.000Z');
+      expect(alert.triggerAt.toISOString()).toBe('2026-04-01T11:45:02.000Z');
+      expect(alert.triggerThreshold).toBe(4);
+      expect(alert.triggerBaseline).toBe(900);
+      expect(alert.triggerMeasure).toBeCloseTo((Date.parse('2026-04-01T13:00:00.000Z') - Date.parse('2026-04-01T11:45:02.000Z')) / 900_000, 6);
+      expect(alert.machineName).toBe(MACHINE_NAME);
+      expect(alert.sensorSerialNumber).toBe(SENSOR_SERIAL);
+    });
+
+    it('a varredura seguinte não duplica; após 24 h escala o mesmo episódio para A2', async () => {
+      await sweep('2026-04-01T14:00:00.000Z');
+      expect(await silence()).toHaveLength(1);
+      const summary = await sweep('2026-04-02T12:00:00.000Z');
+      expect(summary.escalated).toBe(1);
+      const [alert] = await silence();
+      expect(alert.level).toBe('A2');
+      expect(alert.state).toBe('ACTIVE');
+      const events = await prisma.alertEvent.findMany({ where: { alertId: alert.id }, orderBy: { occurredAt: 'asc' } });
+      expect(events.map((e) => e.type)).toEqual(['OPENED', 'ESCALATED']);
+    });
+
+    it('a telemetria voltando resolve o silêncio no próprio ciclo (TELEMETRY_RESUMED)', async () => {
+      await ingest(cyclePayload(T('12:00').replace('2026-04-01', '2026-04-03'), 1.0)).expect(201);
+      const [alert] = await silence();
+      expect(alert.state).toBe('RESOLVED');
+      expect(alert.resolutionReason).toBe('TELEMETRY_RESUMED');
+      expect(alert.resolvedAt?.toISOString()).toBe('2026-04-03T12:00:00.000Z');
+      expect(alert.activeKey).toBeNull();
+      // O episódio de vibração resolvido antes continua sendo o único da família de condição.
+      const all = await occurrences();
+      expect(all.map((a) => a.type).sort()).toEqual(['SENSOR_SILENT', 'VIBRATION_THRESHOLD']);
+    });
   });
 });

@@ -39,6 +39,7 @@ import {
 import { EmptyState, ErrorState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
+import { AlertsSection } from '../../components/alerts/AlertsSection';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
 import { ConditionFilter } from '../../components/condition/ConditionFilter';
 import { ConditionTag, conditionColor } from '../../components/condition/ConditionTag';
@@ -593,6 +594,11 @@ export function MachinePage(): JSX.Element {
                 />
               ) : null}
             </Card>
+          </Box>
+
+          {/* ALERTAS — episódios persistidos do ativo, entre a operação (pontos) e o cadastro. */}
+          <Box sx={{ gridColumn: 'span 12' }}>
+            <AlertsSection scope={{ machine: asset?.machineName ?? machineKey }} />
           </Box>
 
           {/*

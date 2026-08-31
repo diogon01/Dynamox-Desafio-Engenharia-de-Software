@@ -34,6 +34,7 @@ import { EmptyState, ErrorState } from '@dynamox/ui';
 import { api } from '../../api/client';
 import { PageHeader } from '../../components/PageHeader';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
+import { AlertsSection } from '../../components/alerts/AlertsSection';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
 import { ConditionTag } from '../../components/condition/ConditionTag';
 import {
@@ -326,6 +327,11 @@ export function SensorPage(): JSX.Element {
             </Box>
           ) : null}
         </DashboardCard>
+      </Box>
+
+      {/* ALERTAS do sensor — antes das aquisições: o episódio aponta para a aquisição que o abriu. */}
+      <Box sx={{ mt: 2 }}>
+        <AlertsSection scope={{ sensor: serialNumber }} subtitle="Episódios abertos pelo motor para este sensor; cada um leva à aquisição que o disparou." />
       </Box>
 
       <Card variant="outlined" sx={{ mt: 2 }}>

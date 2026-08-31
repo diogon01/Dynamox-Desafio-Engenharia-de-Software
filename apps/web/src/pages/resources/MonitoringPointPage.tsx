@@ -30,6 +30,7 @@ import { DEFAULT_CONDITION_POLICY } from '@dynamox/domain';
 import { EmptyState, ErrorState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
+import { AlertsSection } from '../../components/alerts/AlertsSection';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
 import { ConditionTag, conditionColor } from '../../components/condition/ConditionTag';
 import {
@@ -367,6 +368,16 @@ export function MonitoringPointPage(): JSX.Element {
               </Stack>
             </Card>
           </Box>
+
+          {/* ALERTAS — depois da identidade: quem chega por um alerta confirma o ponto e vê o episódio. */}
+          {point?.sensorSerialNumber ? (
+            <Box sx={{ gridColumn: 'span 12' }}>
+              <AlertsSection
+                scope={{ sensor: point.sensorSerialNumber }}
+                subtitle="Episódios do sensor instalado neste ponto, com a baseline aprendida aqui — diferente da condição acima."
+              />
+            </Box>
+          ) : null}
 
           <Box sx={{ gridColumn: 'span 12' }}>
             <Card variant="outlined">

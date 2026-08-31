@@ -39,7 +39,9 @@ Comandos citados na coluna *Evidência* estão documentados em
 | Requisito | Implementação | Testes | Evidência | Limitações |
 |---|---|---|---|---|
 | CRUD de máquinas na API | `apps/api/src/machines/` | `machines.e2e-spec.ts`, `machines.service.spec.ts`, `machines.dto.spec.ts` | `/api/docs` → seção *machines* | — |
-| Listar, criar, editar e excluir máquinas na UI | `apps/web/src/components/MachinesPanel.tsx`, `features/machines/` | `MachinesPanel.spec.tsx`, `machinesSlice.spec.ts` | painel de máquinas | exclusão avisa sobre cascata nos pontos |
+| Listar, criar, editar e excluir máquinas na UI | `apps/web/src/pages/resources/` (`MachinesListPage`, `MachineFormPage`, `MachinePage`, `DeleteMachineDialog`), `features/machines/` | `machines-crud.spec.tsx`, `machinesSlice.spec.ts` | `/machines`, `/machines/new`, `/machines/:key/edit` | cada tela é uma rota; a exclusão mostra a cascata (pontos vão junto, sensores só se desassociam) antes do clique |
+| Cadastro de ponto dentro da máquina | `apps/web/src/pages/resources/PointFormPage.tsx` | `machines-crud.spec.tsx` | `/machines/P-101/points/new` | a máquina vem da rota; o sensor é associado depois, na página do ponto |
+| Associação de sensor pela página do ponto | `apps/web/src/pages/resources/AssignSensorDialog.tsx` | `machines-crud.spec.tsx` | botão "Associar sensor" em ponto sem sensor | oferece só os modelos compatíveis com o tipo da máquina; o backend continua sendo a barreira |
 | Pontos de monitoramento e associação de sensor | `apps/api/src/monitoring-points/` | `monitoring-points.e2e-spec.ts` (+ corrida `PATCH` × associação) | `POST /monitoring-points/:id/sensor` | um sensor por ponto (índice único) |
 | Regra `Pump` recusa `TcAg`/`TcAs` | `libs/domain`, `monitoring-points.service.ts`, `machines.service.ts` | e2e nos dois fluxos | associar `TcAg` em `Pump` → `409` | vale na associação **e** na troca de tipo |
 | Paginação de 5 na tabela | `monitoring-points.dto.ts` (`DEFAULT_PAGE_SIZE`), painel | `rbac-and-query.e2e-spec.ts`, `MonitoringPointsPanel.spec.tsx` | tabela de pontos | paginação é global, não por máquina |

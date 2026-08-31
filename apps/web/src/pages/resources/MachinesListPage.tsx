@@ -159,12 +159,18 @@ export function MachinesListPage(): JSX.Element {
             >
               <TableHead>
                 <TableRow>
-                  <TableCell>Identificação</TableCell>
-                  <TableCell>Tipo</TableCell>
-                  <TableCell align="right">Pontos</TableCell>
-                  <TableCell align="right">Sensores</TableCell>
-                  <TableCell>Condição</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Última leitura</TableCell>
+                  <TableCell sx={{ width: '34%' }}>Identificação</TableCell>
+                  <TableCell sx={{ width: '12%' }}>Tipo</TableCell>
+                  <TableCell align="right" sx={{ width: '8%' }}>
+                    Pontos
+                  </TableCell>
+                  <TableCell align="right" sx={{ width: '10%' }}>
+                    Sensores
+                  </TableCell>
+                  <TableCell sx={{ width: '12%' }}>Condição</TableCell>
+                  <TableCell sx={{ width: '16%', display: { xs: 'none', md: 'table-cell' } }}>
+                    Última leitura
+                  </TableCell>
                   <TableCell align="right" sx={{ width: 96 }}>
                     Ações
                   </TableCell>

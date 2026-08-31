@@ -1,7 +1,6 @@
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
-import Stack from '@mui/material/Stack';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
@@ -30,7 +29,7 @@ import { machineTag } from '@dynamox/domain';
 import { EmptyState, ErrorState, LoadingState } from '@dynamox/ui';
 
 import { api } from '../../api/client';
-import { InvestigationBreadcrumbs } from '../../components/investigation/InvestigationBreadcrumbs';
+import { PageHeader } from '../../components/PageHeader';
 import { KpiStrip } from '../../components/investigation/KpiStrip';
 import { DashboardCard } from '../../components/dashboard/DashboardCard';
 import { StatusTag } from '../../components/dashboard/StatusTag';
@@ -41,8 +40,10 @@ import {
   formatNumber,
 } from '../../features/dashboard/dashboardFormatters';
 import {
+  TIME_ZONE_LABEL,
   formatChartTick,
   formatDateTime,
+  formatRange,
 } from '../../features/time/instant';
 import { links } from '../../features/investigation/links';
 import { useAnalyticsQuery, useTimeRange } from '../../features/investigation/useAnalyticsQuery';
@@ -146,11 +147,11 @@ export function SensorPage(): JSX.Element {
   };
 
   return (
-    <Box sx={{ pt: 2, pb: 3 }}>
-      <InvestigationBreadcrumbs
+    <Box sx={{ pb: 3 }}>
+      <PageHeader
         steps={[
           { label: 'Visão geral', to: '/' },
-          // Ativo e ponto só entram quando a condição já os identificou: um degrau da
+          // Máquina e ponto só entram quando a condição já os identificou: um degrau da
           // trilha nunca pode apontar para uma rota que ainda não sabemos montar.
           ...(point?.machineName
             ? [{ label: machineTag(point.machineName), to: links.machine(point.machineName, range) }]
@@ -165,33 +166,36 @@ export function SensorPage(): JSX.Element {
             : []),
           { label: serialNumber },
         ]}
-      />
-
-      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={1.5} sx={{ mb: 2 }}>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="h1" component="h1">
-            {serialNumber}
-          </Typography>
-          <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.25 }}>
-            {point
-              ? `${point.machineName} · ${point.monitoringPointName} · ${point.sensorModel ?? '—'}`
-              : 'Sensor da planta sintética.'}
-          </Typography>
-          <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
+        title={serialNumber}
+        subtitle={
+          point
+            ? `${point.machineName} · ${point.monitoringPointName} · ${point.sensorModel ?? '—'}`
+            : 'Sensor da planta sintética.'
+        }
+        chips={
+          <>
             {point ? <StatusTag kind={point.condition} /> : null}
-            <Chip size="small" variant="outlined" label={`Janela: ${formatDateTime(range.from)} → ${formatDateTime(range.to)}`} />
+            <Chip size="small" variant="outlined" label={formatRange(range.from, range.to)} />
+            <Chip size="small" variant="outlined" label={TIME_ZONE_LABEL} />
             <Chip size="small" variant="outlined" label={`Bucket: ${bucket}`} />
-          </Stack>
-        </Box>
-
-        <ToggleButtonGroup exclusive size="small" value={bucket} sx={{ alignSelf: { md: 'flex-start' } }}>
-          {RANGE_PRESETS.map((preset) => (
-            <ToggleButton key={preset.id} value={preset.bucket} onClick={() => applyPreset(preset)}>
-              {preset.label}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-      </Stack>
+          </>
+        }
+        actions={
+          <ToggleButtonGroup exclusive size="small" value={bucket} aria-label="Período consultado">
+            {RANGE_PRESETS.map((preset) => (
+              <ToggleButton
+                key={preset.id}
+                value={preset.bucket}
+                aria-label={preset.label}
+                onClick={() => applyPreset(preset)}
+                sx={{ px: 1.75 }}
+              >
+                {preset.label}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        }
+      />
 
       <KpiStrip
         items={[

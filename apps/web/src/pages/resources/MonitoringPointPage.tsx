@@ -105,7 +105,9 @@ export function MonitoringPointPage(): JSX.Element {
         title={point?.monitoringPointName ?? pointKey}
         subtitle={
           point
-            ? `${point.machineName} · ${point.sensorSerialNumber ?? 'sem sensor instalado'}${point.sensorModel ? ` · ${point.sensorModel}` : ''} · última leitura ${formatRelativeTime(point.window.lastAt)}`
+            ? `${point.machineName} · ${point.sensorSerialNumber ?? 'sem sensor instalado'}${point.sensorModel ? ` · ${point.sensorModel}` : ''} · ${
+                point.window.lastAt ? `última leitura ${formatRelativeTime(point.window.lastAt)}` : 'ainda sem leituras'
+              }`
             : 'Ponto de monitoramento.'
         }
         chips={

@@ -130,7 +130,9 @@ export function MachinePage(): JSX.Element {
         title={asset?.machineName ?? machineKey}
         subtitle={
           asset
-            ? `${asset.machineType === 'Pump' ? 'Bomba' : 'Ventilador'} · ${asset.kpis.points} ponto(s) monitorado(s) · última comunicação ${formatRelativeTime(asset.lastAt)}`
+            ? `${asset.machineType === 'Pump' ? 'Bomba' : 'Ventilador'} · ${asset.kpis.points} ponto(s) monitorado(s) · ${
+                asset.lastAt ? `última comunicação ${formatRelativeTime(asset.lastAt)}` : 'ainda sem leituras'
+              }`
             : 'Ativo da planta sintética.'
         }
         chips={

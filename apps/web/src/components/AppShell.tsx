@@ -43,13 +43,13 @@ const NAV_ITEMS: NavItem[] = [
   {
     to: '/machines',
     label: 'Máquinas',
-    description: 'Cadastro, edição e exclusão',
+    description: 'Cadastro e operação dos ativos',
     icon: <PrecisionManufacturingOutlinedIcon />,
   },
   {
     to: '/monitoring-points',
     label: 'Pontos e sensores',
-    description: 'Pontos de monitoramento e sensores',
+    description: 'Registro de toda a planta, com busca',
     icon: <SensorsOutlinedIcon />,
   },
 ];

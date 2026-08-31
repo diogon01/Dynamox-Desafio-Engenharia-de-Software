@@ -163,6 +163,21 @@ proteção (o frontend apenas espelha):
 | `GET` | `/api/time-series/:id/metrics` | `count`, mínimo, máximo, média, último valor e janela |
 | `DELETE` | `/api/time-series/:id` | Exclui a série e todas as amostras em cascata (`204`); `404` se não existir |
 
+Camada **analítica** — toda rota exige a janela `?from=&to=` em ISO 8601 UTC (`to` exclusivo,
+máximo de 90 dias). É o que garante que nenhuma consulta volte a varrer o histórico inteiro:
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/api/analytics/fleet-condition` | Condição de cada ponto na janela, com a aquisição atual e a de referência. `?includeTrend=true` acrescenta até 12 buckets das últimas 24 h |
+| `GET` | `/api/analytics/heatmap` | Cobertura da frota por bucket (`?bucket=hour\|day`) |
+| `GET` | `/api/analytics/time-windows` | Resumo por sensor de uma janela, paginado no servidor |
+| `GET` | `/api/analytics/machines/:machineKey` | Resumo da máquina e dos seus pontos. O identificador é o nome ou a etiqueta (`P-101`), nunca o UUID |
+| `GET` | `/api/analytics/machines/:machineKey/points/:pointKey` | Resumo do ponto: condição, janela e séries disponíveis |
+| `GET` | `/api/analytics/series/:seriesId/points` | Série agregada por bucket (`15m`, `1h`, `4h`, `1d`) |
+| `GET` | `/api/analytics/sensors/:serialNumber/acquisitions` | Aquisições do sensor, paginadas; `?includeTotal=true` custa uma contagem |
+| `GET` | `/api/analytics/acquisitions/:cycleId` | Detalhe da aquisição com estatística por série |
+| `GET` | `/api/analytics/acquisitions/:cycleId/samples` | **Único** ponto do sistema que devolve amostra bruta — recortado por aquisição e paginado por cursor keyset |
+
 A documentação interativa (Swagger UI) fica em <http://localhost:3000/api/docs>, com o
 documento OpenAPI 3 em `/api/docs-json`: todas as rotas e códigos de erro, com schemas
 dos corpos de requisição; os formatos de resposta estão descritos por texto e detalhados

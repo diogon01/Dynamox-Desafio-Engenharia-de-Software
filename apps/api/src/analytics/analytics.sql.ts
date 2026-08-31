@@ -180,36 +180,106 @@ const BUCKET_SECONDS: Record<SeriesBucket, number> = {
  * do intervalo — assim dois períodos diferentes concordam nas bordas, e o `date_trunc` não
  * precisa de um caso especial para 4 h.
  */
+/**
+ * De onde as aquisições de uma janela são contadas.
+ *
+ * - `ledger`: `alert_cycle_evidence` — uma linha por ciclo ingerido, índice por sensor e
+ *   instante. Milissegundos, qualquer que seja o tamanho da janela.
+ * - `samples`: `count(DISTINCT "ingestionCycleId")` sobre as próprias amostras — correto,
+ *   mas ~10× mais caro em 30 dias. É o fallback para dado carregado com o motor desligado e
+ *   ainda sem backfill, ou inserido fora da API.
+ *
+ * A escolha é do service (`acquisitionSource`), nunca do SQL: uma subconsulta "preguiçosa"
+ * dentro de CASE vira InitPlan no Postgres e é executada de qualquer jeito.
+ */
+export type AcquisitionSource = 'ledger' | 'samples';
+
 export function seriesPointsSql(
   seriesId: string,
   from: Date,
   to: Date,
   bucket: SeriesBucket,
+  source: AcquisitionSource,
 ): Prisma.Sql {
   const seconds = BUCKET_SECONDS[bucket];
+  if (source === 'samples') {
+    return Prisma.sql`
+      SELECT
+        to_timestamp(floor(extract(epoch FROM p."timestamp") / ${seconds}) * ${seconds}) AS bucket_start,
+        count(*)::bigint AS samples,
+        avg(p.value)     AS avg,
+        min(p.value)     AS min,
+        max(p.value)     AS max,
+        max(p."timestamp") AS last_at,
+        count(DISTINCT p."ingestionCycleId")::bigint AS acquisitions
+      FROM time_series_samples p
+      WHERE p."timeSeriesId" = ${seriesId}::text
+        AND p."timestamp" >= ${from} AND p."timestamp" < ${to}
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `;
+  }
   return Prisma.sql`
-    SELECT
-      to_timestamp(floor(extract(epoch FROM p."timestamp") / ${seconds}) * ${seconds}) AS bucket_start,
-      count(*)::bigint AS samples,
-      avg(p.value)     AS avg,
-      min(p.value)     AS min,
-      max(p.value)     AS max,
-      max(p."timestamp") AS last_at,
-      count(DISTINCT p."ingestionCycleId")::bigint AS acquisitions
-    FROM time_series_samples p
-    WHERE p."timeSeriesId" = ${seriesId}::text
-      AND p."timestamp" >= ${from} AND p."timestamp" < ${to}
-    GROUP BY 1
+    WITH serie AS (
+      SELECT s."serialNumber" AS serial
+      FROM time_series ts JOIN sensors s ON s.id = ts."sensorId"
+      WHERE ts.id = ${seriesId}::text
+    ),
+    buckets AS (
+      SELECT
+        to_timestamp(floor(extract(epoch FROM p."timestamp") / ${seconds}) * ${seconds}) AS bucket_start,
+        count(*)::bigint AS samples,
+        avg(p.value)     AS avg,
+        min(p.value)     AS min,
+        max(p.value)     AS max,
+        max(p."timestamp") AS last_at
+      FROM time_series_samples p
+      WHERE p."timeSeriesId" = ${seriesId}::text
+        AND p."timestamp" >= ${from} AND p."timestamp" < ${to}
+      GROUP BY 1
+    )
+    SELECT b.bucket_start, b.samples, b.avg, b.min, b.max, b.last_at, ev.n AS acquisitions
+    FROM buckets b
+    CROSS JOIN LATERAL (
+      SELECT count(*)::bigint AS n
+      FROM alert_cycle_evidence e, serie
+      WHERE e."sensorSerialNumber" = serie.serial
+        AND e."startedAt" >= b.bucket_start
+        AND e."startedAt" < b.bucket_start + make_interval(secs => ${seconds})
+    ) ev
     ORDER BY 1 ASC
   `;
 }
 
 /** Estatísticas da janela inteira: uma passada agregada, sem trazer amostra alguma. */
-export function seriesStatsSql(seriesId: string, from: Date, to: Date): Prisma.Sql {
+export function seriesStatsSql(seriesId: string, from: Date, to: Date, source: AcquisitionSource): Prisma.Sql {
+  if (source === 'samples') {
+    return Prisma.sql`
+      SELECT
+        count(*)::bigint AS samples,
+        count(DISTINCT p."ingestionCycleId")::bigint AS acquisitions,
+        min(p.value) AS min,
+        max(p.value) AS max,
+        avg(p.value) AS avg,
+        min(p."timestamp") AS first_at,
+        max(p."timestamp") AS last_at
+      FROM time_series_samples p
+      WHERE p."timeSeriesId" = ${seriesId}::text
+        AND p."timestamp" >= ${from} AND p."timestamp" < ${to}
+    `;
+  }
   return Prisma.sql`
+    WITH serie AS (
+      SELECT s."serialNumber" AS serial
+      FROM time_series ts JOIN sensors s ON s.id = ts."sensorId"
+      WHERE ts.id = ${seriesId}::text
+    )
     SELECT
       count(*)::bigint AS samples,
-      count(DISTINCT p."ingestionCycleId")::bigint AS acquisitions,
+      (
+        SELECT count(*)::bigint FROM alert_cycle_evidence e, serie
+        WHERE e."sensorSerialNumber" = serie.serial AND e."startedAt" >= ${from} AND e."startedAt" < ${to}
+      ) AS acquisitions,
       min(p.value) AS min,
       max(p.value) AS max,
       avg(p.value) AS avg,
@@ -236,16 +306,19 @@ export type HeatmapBucket = (typeof HEATMAP_BUCKETS)[number];
  *  - sem tocar em `value`, a consulta cabe no índice `(timeSeriesId, timestamp)` e roda como
  *    Index Only Scan com zero heap fetches (30 d: 975 ms · 7 d: 239 ms).
  */
-export function heatmapSql(
+/**
+ * Variante por AMOSTRAS do mapa de atividade — o fallback de `heatmapSql` para janelas em
+ * que o ledger de evidência ainda não existe (carga com o motor desligado e sem backfill,
+ * ou dado inserido fora da API). Varre a série âncora de cada sensor: correta, porém ~30×
+ * mais cara em 30 dias.
+ */
+export function heatmapSamplesSql(
   seriesIds: string[],
   from: Date,
   to: Date,
   bucket: HeatmapBucket,
 ): Prisma.Sql {
   const ids = Prisma.join(seriesIds.map((id) => Prisma.sql`${id}`));
-  // UTC EXPLÍCITO: `date_trunc`/`extract` sobre timestamptz seguem o fuso da SESSÃO. O
-  // produto inteiro fala UTC (banco, API, URL e tela), então a consulta declara o fuso em
-  // vez de depender da configuração do servidor.
   const hourExpression =
     bucket === 'hour'
       ? Prisma.sql`extract(hour from p."timestamp" AT TIME ZONE 'UTC')::int`
@@ -264,13 +337,41 @@ export function heatmapSql(
         ${hourExpression}                AS hour,
         p."timeSeriesId"                 AS series_id,
         count(*)                         AS samples,
-        -- 60 janelas de 1 s por aquisição: dividir evita o count(distinct) caro.
-        (count(*) / 60.0)                AS acquisitions
+        count(DISTINCT p."ingestionCycleId") AS acquisitions
       FROM time_series_samples p
       WHERE p."timeSeriesId" IN (${ids})
         AND p."timestamp" >= ${from} AND p."timestamp" < ${to}
       GROUP BY 1, 2, 3
     ) por_serie
+    GROUP BY 1, 2
+    ORDER BY 1, 2
+  `;
+}
+
+export function heatmapSql(from: Date, to: Date, bucket: HeatmapBucket): Prisma.Sql {
+  // UTC EXPLÍCITO: `date_trunc`/`extract` sobre timestamptz seguem o fuso da SESSÃO. O
+  // produto inteiro fala UTC (banco, API, URL e tela), então a consulta declara o fuso em
+  // vez de depender da configuração do servidor.
+  const hourExpression =
+    bucket === 'hour'
+      ? Prisma.sql`extract(hour from e."startedAt" AT TIME ZONE 'UTC')::int`
+      : Prisma.sql`0::int`;
+
+  // Uma linha por AQUISIÇÃO (ledger de evidência do motor, índice por instante), não uma
+  // por amostra: 30 dias são ~33 mil ciclos contra ~2 milhões de amostras da série âncora —
+  // 35 ms contra mais de um segundo. As amostras persistidas de cada aquisição vêm da
+  // própria linha do ciclo (`ingestion_cycles.sampleCount`), atribuídas ao bucket em que a
+  // aquisição começou.
+  return Prisma.sql`
+    SELECT
+      date_trunc('day', e."startedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS day,
+      ${hourExpression}                                 AS hour,
+      sum(c."sampleCount")::bigint                      AS samples,
+      count(*)::bigint                                  AS acquisitions,
+      count(DISTINCT e."sensorSerialNumber")::bigint    AS sensors
+    FROM alert_cycle_evidence e
+    JOIN ingestion_cycles c ON c.id = e."cycleId"
+    WHERE e."startedAt" >= ${from} AND e."startedAt" < ${to}
     GROUP BY 1, 2
     ORDER BY 1, 2
   `;
@@ -339,13 +440,25 @@ export function heatmapSeveritySql(from: Date, to: Date, bucket: HeatmapBucket):
  * Resumo de uma JANELA temporal por sensor: o que cada ponto fez naquele intervalo.
  * Uma linha por sensor — o custo não cresce com o tamanho do histórico, só com a janela.
  */
-export function timeWindowSql(from: Date, to: Date, serialNumbers?: readonly string[]): Prisma.Sql {
+export function timeWindowSql(
+  from: Date,
+  to: Date,
+  serialNumbers: readonly string[] | undefined,
+  source: AcquisitionSource,
+): Prisma.Sql {
   // O recorte por sensor não muda a semântica: cada linha já é agregada por sensor, de
   // forma independente. A página do ativo lê dois sensores em vez dos doze da frota.
   const sensorFilter =
     serialNumbers === undefined
       ? Prisma.empty
       : Prisma.sql`AND s."serialNumber" IN (${Prisma.join(serialNumbers.map((serial) => Prisma.sql`${serial}`))})`;
+  const acquisitions =
+    source === 'ledger'
+      ? Prisma.sql`(
+          SELECT count(*)::bigint FROM alert_cycle_evidence e
+          WHERE e."sensorSerialNumber" = a.serial AND e."startedAt" >= ${from} AND e."startedAt" < ${to}
+        )`
+      : Prisma.sql`count(DISTINCT p."ingestionCycleId")::bigint`;
 
   return Prisma.sql`
     WITH anchor AS (
@@ -366,7 +479,7 @@ export function timeWindowSql(from: Date, to: Date, serialNumbers?: readonly str
     LEFT JOIN LATERAL (
       SELECT
         count(*)::bigint AS samples,
-        count(DISTINCT p."ingestionCycleId")::bigint AS acquisitions,
+        ${acquisitions} AS acquisitions,
         min(p.value) AS min, max(p.value) AS max, avg(p.value) AS avg,
         max(p."timestamp") AS last_at,
         (SELECT value FROM time_series_samples q

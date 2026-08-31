@@ -42,11 +42,13 @@ import { toDomainSensorModel } from '../common/sensor-model.mapper';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TimeRange } from './analytics.dto';
 import {
+  type AcquisitionSource,
   anchoredEvaluationFrom,
   acquisitionSamplesSql,
   acquisitionSeriesSql,
   fleetConditionSql,
   heatmapSeveritySql,
+  heatmapSamplesSql,
   heatmapSql,
   pointSeriesSql,
   sensorAcquisitionsCountSql,
@@ -254,6 +256,23 @@ export class AnalyticsService {
     return rows[0]?.last ?? null;
   }
 
+  /**
+   * De onde contar aquisições numa janela: o ledger de evidência por ciclo quando ele a
+   * cobre (uma linha por aquisição — milissegundos), senão as próprias amostras
+   * (`count(DISTINCT ciclo)`, correto e ~10× mais caro). O ledger só falta para dado
+   * carregado com o motor desligado e ainda sem backfill, ou inserido fora da API.
+   */
+  private async acquisitionSource(range: TimeRange, serialNumbers?: readonly string[]): Promise<AcquisitionSource> {
+    if (serialNumbers !== undefined && serialNumbers.length === 0) return 'samples';
+    const covered = await this.prisma.alertCycleEvidence.count({
+      where: {
+        startedAt: { gte: range.from, lt: range.to },
+        ...(serialNumbers ? { sensorSerialNumber: { in: [...serialNumbers] } } : {}),
+      },
+    });
+    return covered > 0 ? 'ledger' : 'samples';
+  }
+
   /** Tendência curta por sensor, agregada no banco. Doze valores por sensor, no máximo. */
   private async trendBySensor(
     window: TimeRange,
@@ -347,11 +366,16 @@ export class AnalyticsService {
     return this.measured(
       `analytics/series-points bucket=${bucket}`,
       async () => {
+        const owner = await this.prisma.timeSeries.findUnique({
+          where: { id: seriesId },
+          select: { sensor: { select: { serialNumber: true } } },
+        });
+        const source = await this.acquisitionSource(range, owner?.sensor ? [owner.sensor.serialNumber] : undefined);
         const [points, stats] = await this.prisma.$transaction([
           this.prisma.$queryRaw<SeriesPointRow[]>(
-            seriesPointsSql(seriesId, range.from, range.to, bucket),
+            seriesPointsSql(seriesId, range.from, range.to, bucket, source),
           ),
-          this.prisma.$queryRaw<SeriesStatsRow[]>(seriesStatsSql(seriesId, range.from, range.to)),
+          this.prisma.$queryRaw<SeriesStatsRow[]>(seriesStatsSql(seriesId, range.from, range.to, source)),
         ]);
         const summary = stats[0];
 
@@ -410,15 +434,15 @@ export class AnalyticsService {
 
         // Cobertura e severidade são duas leituras do mesmo recorte: a primeira diz se o dado
         // chegou, a segunda diz o quanto ele estava ruim. Vão juntas em uma resposta só.
+        // A atividade sai do ledger de evidência (uma linha por aquisição) quando ele cobre a
+        // janela; sem ledger — carga com o motor desligado e sem backfill, ou dado inserido
+        // fora da API — cai na varredura por amostras, correta e mais cara.
+        const activitySql =
+          (await this.acquisitionSource(range)) === 'ledger'
+            ? heatmapSql(range.from, range.to, bucket)
+            : heatmapSamplesSql(anchors.map((series) => series.id), range.from, range.to, bucket);
         const [rows, severityRows] = await Promise.all([
-          this.prisma.$queryRaw<HeatmapRow[]>(
-            heatmapSql(
-              anchors.map((series) => series.id),
-              range.from,
-              range.to,
-              bucket,
-            ),
-          ),
+          this.prisma.$queryRaw<HeatmapRow[]>(activitySql),
           this.prisma.$queryRaw<HeatmapSeverityRow[]>(heatmapSeveritySql(range.from, range.to, bucket)),
         ]);
         const severityByBucket = new Map(
@@ -472,7 +496,7 @@ export class AnalyticsService {
       'analytics/time-window',
       async () => {
         const rows = await this.prisma.$queryRaw<TimeWindowRow[]>(
-          timeWindowSql(range.from, range.to, serialNumbers),
+          timeWindowSql(range.from, range.to, serialNumbers, await this.acquisitionSource(range, serialNumbers)),
         );
 
         const items = rows.map((row) => ({
@@ -689,11 +713,12 @@ export class AnalyticsService {
           .map((row) => row.sensor_serial)
           .filter((serial): serial is string => serial !== null);
 
+        const source = await this.acquisitionSource(range, serials);
         const [windowRows, trend] = await Promise.all([
           serials.length === 0
             ? Promise.resolve([] as TimeWindowRow[])
             : this.prisma.$queryRaw<TimeWindowRow[]>(
-                timeWindowSql(range.from, range.to, serials),
+                timeWindowSql(range.from, range.to, serials, source),
               ),
           serials.length === 0
             ? Promise.resolve(new Map<string, TrendPointDto[]>())
@@ -934,10 +959,11 @@ export class AnalyticsService {
           ).find((candidate) => candidate.monitoring_point_id === point.id) ?? null;
 
         const serial = row?.sensor_serial ?? null;
+        const source = await this.acquisitionSource(range, serial === null ? [] : [serial]);
         const [windowRows, trend, seriesRows] = await Promise.all([
           serial === null
             ? Promise.resolve([] as TimeWindowRow[])
-            : this.prisma.$queryRaw<TimeWindowRow[]>(timeWindowSql(range.from, range.to, [serial])),
+            : this.prisma.$queryRaw<TimeWindowRow[]>(timeWindowSql(range.from, range.to, [serial], source)),
           serial === null
             ? Promise.resolve(new Map<string, TrendPointDto[]>())
             : this.trendBySensor(evalWindow, [serial]),

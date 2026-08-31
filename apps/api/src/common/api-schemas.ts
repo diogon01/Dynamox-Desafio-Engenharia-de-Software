@@ -506,7 +506,7 @@ export class SeriesBucketPointResponse {
   @ApiProperty({ description: 'Amostras agregadas no bucket.', example: 900 })
   sampleCount!: number;
 
-  @ApiProperty({ description: 'Aquisições distintas no bucket.', example: 15 })
+  @ApiProperty({ description: 'Aquisições (ciclos de ingestão) iniciadas no bucket, contadas no ledger de evidência por ciclo.', example: 15 })
   acquisitionCount!: number;
 
   @ApiProperty({ type: Number, nullable: true, description: 'Média do bucket.', example: 0.0164 })
@@ -526,7 +526,7 @@ export class SeriesWindowStatsResponse {
   @ApiProperty({ description: 'Amostras na janela.', example: 40320 })
   sampleCount!: number;
 
-  @ApiProperty({ description: 'Aquisições na janela.', example: 672 })
+  @ApiProperty({ description: 'Aquisições (ciclos de ingestão) iniciadas na janela, contadas no ledger de evidência por ciclo.', example: 672 })
   acquisitionCount!: number;
 
   @ApiProperty({ type: Number, nullable: true, description: 'Mínimo da janela.', example: 0.0119 })
@@ -578,10 +578,10 @@ export class HeatmapBucketResponse {
   @ApiProperty({ description: 'Hora do bucket (0–23; 0 quando o bucket é diário).', example: 14 })
   hour!: number;
 
-  @ApiProperty({ description: 'Amostras persistidas no bucket.', example: 720 })
+  @ApiProperty({ description: 'Amostras persistidas pelas aquisições iniciadas no bucket (soma de `sampleCount` dos ciclos).', example: 720 })
   sampleCount!: number;
 
-  @ApiProperty({ description: 'Aquisições no bucket.', example: 12 })
+  @ApiProperty({ description: 'Aquisições (ciclos de ingestão) iniciadas no bucket, contadas no ledger de evidência por ciclo.', example: 12 })
   acquisitionCount!: number;
 
   @ApiProperty({ description: 'Sensores que reportaram no bucket.', example: 12 })
@@ -657,7 +657,7 @@ export class TimeWindowSensorResponse {
   @ApiProperty({ description: 'Amostras da série âncora na janela.', example: 180 })
   sampleCount!: number;
 
-  @ApiProperty({ description: 'Aquisições na janela.', example: 3 })
+  @ApiProperty({ description: 'Aquisições (ciclos de ingestão) iniciadas na janela, contadas no ledger de evidência por ciclo.', example: 3 })
   acquisitionCount!: number;
 
   @ApiProperty({ type: Number, nullable: true, description: 'Mínimo na janela.', example: 0.0121 })
@@ -1188,7 +1188,7 @@ export class PointSeriesResponse {
 }
 
 export class PointWindowResponse {
-  @ApiProperty({ description: 'Aquisições na janela.', example: 672 })
+  @ApiProperty({ description: 'Aquisições (ciclos de ingestão) iniciadas na janela, contadas no ledger de evidência por ciclo.', example: 672 })
   acquisitionCount!: number;
 
   @ApiProperty({ description: 'Amostras da série âncora na janela.', example: 40320 })

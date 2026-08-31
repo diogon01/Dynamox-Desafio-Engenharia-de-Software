@@ -121,6 +121,18 @@ async function main(): Promise<void> {
   const alertId = alertsResponse.ok
     ? (((await alertsResponse.json()) as { items: Array<{ id: string }> }).items[0]?.id ?? null)
     : null;
+  // Janela de 30 dias e uma máquina qualquer: as rotas analíticas mais caras (mapa de
+  // severidade, resumo do ativo, série agregada) são medidas no pior período que a
+  // interface oferece — é aí que "all requests" costuma falhar.
+  const window30d = new URLSearchParams({
+    from: new Date(now.getTime() - 30 * 86_400_000).toISOString(),
+    to: now.toISOString(),
+  }).toString();
+  const machinesResponse = await fetch(`${BASE_URL}/machines`, { headers: AUTH });
+  const machinesBody: unknown = machinesResponse.ok ? await machinesResponse.json() : [];
+  const machineKey = Array.isArray(machinesBody)
+    ? ((machinesBody[0] as { name?: string } | undefined)?.name ?? null)
+    : null;
 
   // Nomes únicos por execução: duas rodadas seguidas não conflitam entre si.
   const runId = Date.now().toString(36);
@@ -156,8 +168,48 @@ async function main(): Promise<void> {
       request: () => fetch(`${BASE_URL}/analytics/fleet-condition?${window7d}`, { headers: AUTH }),
     },
     {
+      name: 'GET /analytics/fleet-condition (30 d, +trend)',
+      request: () =>
+        fetch(`${BASE_URL}/analytics/fleet-condition?${window30d}&includeTrend=true`, { headers: AUTH }),
+    },
+    {
+      name: 'GET /analytics/heatmap (7 d, hora)',
+      request: () => fetch(`${BASE_URL}/analytics/heatmap?${window7d}&bucket=hour`, { headers: AUTH }),
+    },
+    {
+      name: 'GET /analytics/heatmap (30 d, hora)',
+      request: () => fetch(`${BASE_URL}/analytics/heatmap?${window30d}&bucket=hour`, { headers: AUTH }),
+    },
+    {
+      name: 'GET /analytics/machines (30 d)',
+      request: () => fetch(`${BASE_URL}/analytics/machines?${window30d}`, { headers: AUTH }),
+    },
+    ...(machineKey
+      ? [
+          {
+            name: 'GET /analytics/machines/:key (30 d)',
+            request: () =>
+              fetch(`${BASE_URL}/analytics/machines/${encodeURIComponent(machineKey)}?${window30d}`, {
+                headers: AUTH,
+              }),
+          } satisfies RouteSpec,
+        ]
+      : []),
+    {
+      name: 'GET /analytics/series/:id/points (30 d, 4 h)',
+      request: () =>
+        fetch(`${BASE_URL}/analytics/series/${seriesId}/points?${window30d}&bucket=4h`, { headers: AUTH }),
+    },
+    {
       name: 'GET /alerts?status=active',
       request: () => fetch(`${BASE_URL}/alerts?status=active`, { headers: AUTH }),
+    },
+    {
+      name: 'GET /alerts?search=… (50 por página)',
+      request: () =>
+        fetch(`${BASE_URL}/alerts?search=${encodeURIComponent((machineKey ?? 'p-').slice(0, 5).toLowerCase())}&pageSize=50`, {
+          headers: AUTH,
+        }),
     },
     ...(alertId
       ? [

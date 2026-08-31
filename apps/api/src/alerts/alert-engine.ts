@@ -600,14 +600,15 @@ export class AlertEngine {
         });
         const activeFleet = scoped ? null : activeFor(FLEET_SCOPE);
         const sweep = sweepPresence(effectiveRule, points, toEpisode(activeFleet), nowMs);
+        const intervalSeconds = rule.expectedIntervalSeconds ?? 900;
         const summary: SweepSummary = {
           ...EMPTY_SWEEP,
           instrumented: points.length,
-          silent: sweep.points.filter((p) => p.decision.kind === 'open' || p.decision.kind === 'escalate').length,
+          // Mudos de fato (cobertos pela frota ou não) — o que o operador quer saber do log.
+          silent: points.filter((p) => (nowMs - p.lastSeenAtMs) / (intervalSeconds * 1000) > rule.a1Threshold).length,
           fleet: scoped ? 'none' : sweep.fleet.kind,
         };
         const now = new Date(nowMs);
-        const intervalSeconds = rule.expectedIntervalSeconds ?? 900;
         const elapsedSeconds = (intervals: number) => Math.round(intervals * intervalSeconds);
         const thresholdFor = (level: AlertLevel) => (level === 'A2' && rule.a2Threshold !== null ? rule.a2Threshold : rule.a1Threshold);
 

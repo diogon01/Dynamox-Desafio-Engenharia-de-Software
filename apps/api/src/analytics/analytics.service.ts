@@ -42,7 +42,7 @@ import { toDomainSensorModel } from '../common/sensor-model.mapper';
 import { PrismaService } from '../prisma/prisma.service';
 import type { TimeRange } from './analytics.dto';
 import {
-  CONDITION_LOOKBACK_MS,
+  anchoredEvaluationFrom,
   acquisitionSamplesSql,
   acquisitionSeriesSql,
   fleetConditionSql,
@@ -227,23 +227,38 @@ export class AnalyticsService {
   }
 
   /**
-   * Janela em que a condição é avaliada: as últimas 24 h do recorte pedido. Mais velho
-   * que isso o próprio painel já classifica como desatualizado — e é a mesma janela que a
-   * tendência curta acompanha, para que miniatura e razão falem do mesmo período.
+   * Janela em que a condição é avaliada: as últimas 24 h DE DADO do recorte pedido — a
+   * mesma janela que a tendência curta acompanha, para que miniatura e razão falem do
+   * mesmo período. A âncora é a última amostra antes de `to`, não o relógio da consulta:
+   * ver `anchoredEvaluationFrom`.
    */
-  private evaluationWindow(range: TimeRange): TimeRange {
+  private async evaluationWindow(range: TimeRange): Promise<TimeRange> {
+    const dataEnd = await this.dataEndBefore(range.to);
     return {
-      from: new Date(Math.max(range.from.getTime(), range.to.getTime() - CONDITION_LOOKBACK_MS)),
+      from: anchoredEvaluationFrom(range.from.getTime(), range.to.getTime(), dataEnd?.getTime() ?? null),
       to: range.to,
     };
   }
 
+  /** Última amostra persistida antes de `to` — pelo índice (série, instante), uma sonda por série. */
+  private async dataEndBefore(to: Date): Promise<Date | null> {
+    const rows = await this.prisma.$queryRaw<Array<{ last: Date | null }>>`
+      SELECT max(l.last) AS last
+      FROM time_series ts
+      CROSS JOIN LATERAL (
+        SELECT max(p."timestamp") AS last
+        FROM time_series_samples p
+        WHERE p."timeSeriesId" = ts.id AND p."timestamp" < ${to}
+      ) l
+    `;
+    return rows[0]?.last ?? null;
+  }
+
   /** Tendência curta por sensor, agregada no banco. Doze valores por sensor, no máximo. */
   private async trendBySensor(
-    range: TimeRange,
+    window: TimeRange,
     serialNumbers?: readonly string[],
   ): Promise<Map<string, TrendPointDto[]>> {
-    const window = this.evaluationWindow(range);
     const rows = await this.prisma.$queryRaw<TrendRow[]>(
       sensorTrendSql(window.from, window.to, serialNumbers),
     );
@@ -265,11 +280,12 @@ export class AnalyticsService {
     return this.measured(
       'analytics/fleet-condition',
       async () => {
+        const window = await this.evaluationWindow(range);
         const rows = await this.prisma.$queryRaw<FleetConditionRow[]>(
-          fleetConditionSql(range.from, range.to),
+          fleetConditionSql(window.from, window.to),
         );
         const trend = options.includeTrend
-          ? await this.trendBySensor(range)
+          ? await this.trendBySensor(window)
           : new Map<string, TrendPointDto[]>();
 
         const points: FleetConditionPoint[] = rows.map((row) => {
@@ -664,8 +680,9 @@ export class AnalyticsService {
     return this.measured(
       'analytics/machine-summary',
       async () => {
+        const window = await this.evaluationWindow(range);
         const conditionRows = (
-          await this.prisma.$queryRaw<FleetConditionRow[]>(fleetConditionSql(range.from, range.to))
+          await this.prisma.$queryRaw<FleetConditionRow[]>(fleetConditionSql(window.from, window.to))
         ).filter((row) => row.machine_id === machine.id);
 
         const serials = conditionRows
@@ -680,7 +697,7 @@ export class AnalyticsService {
               ),
           serials.length === 0
             ? Promise.resolve(new Map<string, TrendPointDto[]>())
-            : this.trendBySensor(range, serials),
+            : this.trendBySensor(window, serials),
         ]);
         const windowByPoint = new Map(windowRows.map((row) => [row.point_id, row]));
 
@@ -788,6 +805,7 @@ export class AnalyticsService {
     return this.measured(
       'analytics/machine-list',
       async () => {
+        const window = await this.evaluationWindow(range);
         const [machines, conditionRows] = await Promise.all([
           this.prisma.machine.findMany({
             select: {
@@ -797,7 +815,7 @@ export class AnalyticsService {
               _count: { select: { monitoringPoints: true } },
             },
           }),
-          this.prisma.$queryRaw<FleetConditionRow[]>(fleetConditionSql(range.from, range.to)),
+          this.prisma.$queryRaw<FleetConditionRow[]>(fleetConditionSql(window.from, window.to)),
         ]);
 
         const byMachine = new Map<string, FleetConditionRow[]>();
@@ -907,10 +925,11 @@ export class AnalyticsService {
     return this.measured(
       'analytics/point-summary',
       async () => {
+        const evalWindow = await this.evaluationWindow(range);
         const row =
           (
             await this.prisma.$queryRaw<FleetConditionRow[]>(
-              fleetConditionSql(range.from, range.to),
+              fleetConditionSql(evalWindow.from, evalWindow.to),
             )
           ).find((candidate) => candidate.monitoring_point_id === point.id) ?? null;
 
@@ -921,7 +940,7 @@ export class AnalyticsService {
             : this.prisma.$queryRaw<TimeWindowRow[]>(timeWindowSql(range.from, range.to, [serial])),
           serial === null
             ? Promise.resolve(new Map<string, TrendPointDto[]>())
-            : this.trendBySensor(range, [serial]),
+            : this.trendBySensor(evalWindow, [serial]),
           serial === null
             ? Promise.resolve([] as PointSeriesRow[])
             : this.prisma.$queryRaw<PointSeriesRow[]>(

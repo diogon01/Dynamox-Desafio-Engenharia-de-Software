@@ -190,8 +190,15 @@ async function checkApi(): Promise<void> {
   const to = new Date().toISOString();
   const from = new Date(Date.now() - 7 * 86_400_000).toISOString();
   const condition = await authed(`/analytics/fleet-condition?from=${from}&to=${to}`);
-  const conditionBody = condition.ok ? ((await condition.json()) as { points: unknown[] }) : { points: [] };
+  const conditionBody = condition.ok
+    ? ((await condition.json()) as { points: unknown[]; counts: { unclassified: number; noData: number } })
+    : { points: [], counts: { unclassified: -1, noData: -1 } };
   record('API: /analytics/fleet-condition responde com os 12 pontos', condition.ok && conditionBody.points.length === 12, `HTTP ${condition.status} · ${conditionBody.points.length} pontos`);
+  record(
+    'API: condição segue classificada com o relógio além do dado',
+    condition.ok && conditionBody.counts.unclassified === 0 && conditionBody.counts.noData === 0,
+    `unclassified=${conditionBody.counts.unclassified} · noData=${conditionBody.counts.noData} — a janela ancora na última amostra, não em Date.now()`,
+  );
 
   const heatmap = await authed(`/analytics/heatmap?from=${from}&to=${to}&bucket=hour`);
   const heatmapBody = heatmap.ok ? ((await heatmap.json()) as { buckets: Array<{ maxDeviationRatio: number | null }> }) : { buckets: [] };

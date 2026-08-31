@@ -39,9 +39,21 @@ const FLEET_AGREEMENT = DEFAULT_CONDITION_POLICY.fleetAgreement;
  * A referência é sempre uma aquisição concreta — nunca a média do período, que já embutiria
  * a própria degradação.
  */
-export function fleetConditionSql(from: Date, to: Date): Prisma.Sql {
-  const evaluationFrom = new Date(Math.max(from.getTime(), to.getTime() - CONDITION_LOOKBACK_MS));
+/**
+ * Início da avaliação de condição: as últimas 24 h DE DADO dentro do recorte pedido.
+ *
+ * Ancorar no `to` da consulta (o relógio de quem pergunta) faria a referência deslizar para
+ * fora da janela assim que a ingestão parasse — planta parada, fim de uma demonstração — e
+ * toda a frota decairia para "sem classificação" com o passar das horas, sem nenhum dado
+ * novo para justificar a mudança. A âncora é a última amostra persistida antes de `to`
+ * (limitada ao próprio `to`): numa operação viva as duas coincidem.
+ */
+export function anchoredEvaluationFrom(fromMs: number, toMs: number, dataEndMs: number | null): Date {
+  const anchorMs = dataEndMs === null ? toMs : Math.min(toMs, dataEndMs + 1);
+  return new Date(Math.max(fromMs, anchorMs - CONDITION_LOOKBACK_MS));
+}
 
+export function fleetConditionSql(evaluationFrom: Date, to: Date): Prisma.Sql {
   return Prisma.sql`
     WITH radial AS (
       SELECT s."serialNumber" AS serial, ts.id AS series_id, ts.axis AS axis

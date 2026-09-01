@@ -242,7 +242,12 @@ export class AnalyticsService {
     };
   }
 
-  /** Última amostra persistida antes de `to` — pelo índice (série, instante), uma sonda por série. */
+  /**
+   * Última AQUISIÇÃO persistida antes de `to` — pelo índice (série, instante), uma sonda por
+   * série. Só amostras com ciclo de ingestão contam: a condição é calculada sobre aquisições,
+   * e uma amostra avulsa (o seed mínimo grava 30 delas ancoradas no relógio da execução)
+   * não pode puxar a âncora para um instante em que não houve aquisição alguma.
+   */
   private async dataEndBefore(to: Date): Promise<Date | null> {
     const rows = await this.prisma.$queryRaw<Array<{ last: Date | null }>>`
       SELECT max(l.last) AS last
@@ -250,7 +255,7 @@ export class AnalyticsService {
       CROSS JOIN LATERAL (
         SELECT max(p."timestamp") AS last
         FROM time_series_samples p
-        WHERE p."timeSeriesId" = ts.id AND p."timestamp" < ${to}
+        WHERE p."timeSeriesId" = ts.id AND p."timestamp" < ${to} AND p."ingestionCycleId" IS NOT NULL
       ) l
     `;
     return rows[0]?.last ?? null;

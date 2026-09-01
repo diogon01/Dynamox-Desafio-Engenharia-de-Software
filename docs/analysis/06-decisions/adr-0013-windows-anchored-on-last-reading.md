@@ -20,8 +20,10 @@ conjunto, sem erro algum.
 Duas âncoras, uma por camada, com a mesma semântica — **"últimas 24 h de dado"**:
 
 1. **Servidor.** `AnalyticsService.evaluationWindow` calcula o início da avaliação como
-   `max(from, min(to, última amostra antes de to) − 24 h)` (`anchoredEvaluationFrom`, função
-   pura). A última amostra é obtida por uma sonda por série pelo índice `(série, instante)`.
+   `max(from, min(to, última aquisição antes de to) − 24 h)` (`anchoredEvaluationFrom`, função
+   pura). A última aquisição é a amostra mais recente **com ciclo de ingestão**, obtida por uma
+   sonda por série pelo índice `(série, instante)` — uma amostra avulsa (como as 30 do seed
+   mínimo, ancoradas no relógio da execução) não move a âncora.
    Vale para a condição da frota, a lista e o resumo de máquinas, o resumo do ponto e a
    tendência curta.
 2. **Painel.** As janelas dos períodos (24 h / 7 d / 30 d) do dashboard ancoram na última
@@ -59,6 +61,8 @@ classificação do que já foi medido.
   `apps/api/src/analytics/evaluation-window.spec.ts` — tabela de casos (operação viva,
   ingestão parada, relógio divergente, sem dado, janela curta).
 - `apps/api/src/analytics/analytics.service.ts` — `evaluationWindow`, `dataEndBefore`.
+- `prisma/seed.ts` — as amostras de demonstração não são inseridas numa série que já tem
+  aquisições reais (reexecutar o seed depois do histórico continua seguro).
 - `apps/web/src/features/dashboard/dashboardSlice.ts` — `anchoredRangeForPeriod`;
   `apps/web/src/components/dashboard/OperationalDashboard.spec.tsx` — a consulta de condição
   vai ancorada no fim do dado e "24 h" continua mostrando dado.

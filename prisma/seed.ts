@@ -175,7 +175,18 @@ async function main(): Promise<void> {
     return { timeSeriesId: timeSeries.id, timestamp, value };
   });
 
-  await prisma.timeSeriesSample.createMany({ data: samples, skipDuplicates: true });
+  // As amostras de demonstração existem para um banco VAZIO mostrar alguma coisa. Se a série
+  // já recebeu aquisições reais pela API (planta de demonstração, histórico sintético),
+  // gravar 30 amostras avulsas ancoradas no relógio de agora só criaria uma "última leitura"
+  // falsa, à frente de todo o dado real. Reexecutar o seed precisa continuar seguro.
+  const realAcquisitions = await prisma.timeSeriesSample.count({
+    where: { timeSeriesId: timeSeries.id, ingestionCycleId: { not: null } },
+  });
+  if (realAcquisitions === 0) {
+    await prisma.timeSeriesSample.createMany({ data: samples, skipDuplicates: true });
+  } else {
+    console.log('  amostras demo......: não inseridas — a série já tem aquisições reais');
+  }
 
   const sampleCount = await prisma.timeSeriesSample.count({
     where: { timeSeriesId: timeSeries.id },

@@ -201,7 +201,7 @@ sequenceDiagram
   A-->>W: compact registry DTOs
   W->>A: GET /analytics/fleet-condition?from&to&includeTrend=true
   A->>S: fleetCondition(window)
-  S->>P: last sample before "to" (anchor)
+  S->>P: last acquisition before "to" (anchor)
   S->>P: synchronized acquisitions, radial RMS, reference (one query)
   P-->>S: 12 rows
   S-->>A: FleetConditionResponse (~15 KB)
@@ -362,8 +362,8 @@ Two decisions keep these queries fast and honest:
   samples. When a window has no ledger rows (data loaded with the engine disabled and not yet
   backfilled, or inserted outside the API) the service switches to the sample-based variant —
   correct, just slower ([ADR-0012](./analysis/06-decisions/adr-0012-analytics-on-the-cycle-ledger.md)).
-- **Windows are anchored on the last known reading, not on the wall clock.** Condition is
-  evaluated over the last 24 h *of data* inside the requested window; otherwise a stopped
+- **Windows are anchored on the last acquisition, not on the wall clock.** Condition is
+  evaluated over the last 24 h *of acquisitions* inside the requested window; otherwise a stopped
   plant (or a frozen demo) would silently decay to "unclassified" as the clock moves
   ([ADR-0013](./analysis/06-decisions/adr-0013-windows-anchored-on-last-reading.md)).
 

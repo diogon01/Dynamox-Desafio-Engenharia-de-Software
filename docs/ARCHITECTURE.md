@@ -6,6 +6,7 @@ this way, and where each mechanism lives. It links to the detailed engineering n
 [`docs/analysis/`](./analysis/README.md) instead of repeating them.
 
 Related: [Requirements coverage](./REQUIREMENTS.md) · [Setup & operations](./SETUP.md) ·
+[Screenshots](../README.md#at-a-glance) ·
 [Decision records](./analysis/06-decisions/README.md) · [Swagger](http://localhost:3000/api/docs)
 (when the API is running).
 

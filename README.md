@@ -28,6 +28,21 @@ top of the challenge — SQL-side analytics, an explainable alert engine and a r
 - **689 automated tests** (353 API incl. e2e against a real database, 212 web, 124 sensor twin),
   29 semantic demo invariants and a reproducible one-command demo environment.
 
+## At a glance
+
+| | |
+|---|---|
+| ![Operational dashboard: KPIs, inspection priority, sensor health and the severity map](docs/screenshots/dashboard.jpg) | ![Severity by date and hour, day profile, who drives severity and the aggregated time series](docs/screenshots/dashboard-severity.jpg) |
+| Operational dashboard — KPIs, inspection priority, sensor health, severity map | Severity date × hour, day profile, offenders and the aggregated series |
+| ![Machine page: window KPIs, 24 h trend per point, points and sensors, alerts](docs/screenshots/machine.jpg) | ![Monitoring points: paginated list of 5 with the four required columns, sortable and filterable](docs/screenshots/monitoring-points.jpg) |
+| Machine page — window KPIs, trend per point, points/sensors, alerts | Monitoring points — 5 per page, four columns, sort and filters |
+| ![Alerts list: status counts, search, filters, 50 per page](docs/screenshots/alerts-list.jpg) | ![Alert detail: level, trigger evidence, applied rule and timeline](docs/screenshots/alert-detail.jpg) |
+| Alerts — status counts, search, filters, 50 per page | Alert episode — evidence, applied rule, timeline |
+| ![Swagger UI of the application API](docs/screenshots/swagger.jpg) | |
+| Swagger UI — the runtime contract at `/api/docs` | |
+
+Screens captured from the demo environment (`npm run demo:prepare`); all data is synthetic.
+
 ## Stack
 
 | Layer | Technology |
